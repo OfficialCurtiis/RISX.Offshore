@@ -443,7 +443,7 @@ select:focus {
 }
 
 /* Session timer value uses same styling as other stat values */
-#statsSessionTime {
+#statSessionTime {
   font-variant-numeric: tabular-nums;
 }
 

@@ -17,6 +17,211 @@ function debounce(fn, delay = 150) {
 }
 
 // =========================
+// WALLET: DEMO REQUEST FLOW (localStorage)
+// =========================
+const WALLET_STORE_KEY = "RISX_WALLET_DEMO_V1";
+
+function loadWalletStore() {
+  try {
+    return JSON.parse(localStorage.getItem(WALLET_STORE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveWalletStore(store) {
+  localStorage.setItem(WALLET_STORE_KEY, JSON.stringify(store));
+}
+
+function getWalletId() {
+  // Use currentWallet if your repo has it; otherwise fall back to a default
+  if (typeof currentWallet === "string" && currentWallet.trim()) return currentWallet.trim();
+  return "demo-wallet";
+}
+
+function getWalletState() {
+  const store = loadWalletStore();
+  const id = getWalletId();
+
+  if (!store[id]) {
+    store[id] = {
+      currency: (typeof selectedCurrency === "string" ? selectedCurrency : "USDT"),
+      balance: (typeof balance === "number" ? balance : 1000),
+      requests: [] // {id,type,amount,currency,status,createdAt,updatedAt}
+    };
+    saveWalletStore(store);
+  }
+  return store[id];
+}
+
+function setWalletState(nextState) {
+  const store = loadWalletStore();
+  const id = getWalletId();
+  store[id] = nextState;
+  saveWalletStore(store);
+}
+
+function pushRequest(type, amount) {
+  const st = getWalletState();
+  const req = {
+    id: `req_${Math.random().toString(16).slice(2)}_${Date.now()}`,
+    type, // "deposit" | "withdraw"
+    amount: Number(amount),
+    currency: st.currency || "USDT",
+    status: "pending", // "pending" | "approved" | "rejected"
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  st.requests.unshift(req);
+  setWalletState(st);
+  return req;
+}
+
+function updateRequest(id, status) {
+  const st = getWalletState();
+  const r = st.requests.find(x => x.id === id);
+  if (!r) return null;
+  r.status = status;
+  r.updatedAt = Date.now();
+
+  // Apply balance effects only when status changes to approved
+  if (status === "approved") {
+    if (r.type === "deposit") st.balance += r.amount;
+    if (r.type === "withdraw") st.balance -= r.amount;
+  }
+
+  setWalletState(st);
+
+  // keep your existing global balance in sync if you use it
+  if (typeof balance === "number") {
+    balance = st.balance;
+    if (typeof updateBalanceDisplay === "function") updateBalanceDisplay();
+  }
+
+  return r;
+}
+
+function formatReqRow(r) {
+  const t = new Date(r.createdAt).toLocaleString();
+  return `${r.type.toUpperCase()} • ${r.amount} ${r.currency} • ${r.status.toUpperCase()} • ${t}`;
+}
+
+// Optional: small UI helpers if your HTML has these nodes
+function syncWalletUI() {
+  const st = getWalletState();
+
+  // If you have a balance node in your wallet panel, update it
+  const balNode =
+    document.getElementById("walletBalance") ||
+    document.getElementById("balance"); // fallback to old demo balance span
+  if (balNode) balNode.textContent = (st.balance ?? 0).toFixed ? st.balance.toFixed(2) : String(st.balance);
+
+  if (currencySelect) {
+    currencySelect.value = st.currency || "USDT";
+  }
+  if (walletCurrencyLabel) {
+    walletCurrencyLabel.textContent = st.currency || "USDT";
+  }
+}
+
+// Basic prompt fallback (so nothing breaks if modals aren’t there yet)
+function promptDeposit() {
+  const raw = prompt("Demo deposit amount (credits):", "100");
+  const amt = Number(raw);
+  if (!Number.isFinite(amt) || amt <= 0) return;
+  pushRequest("deposit", amt);
+  syncWalletUI();
+  alert("Deposit request created (pending). Open Admin to approve.");
+}
+
+function promptWithdraw() {
+  const raw = prompt("Demo withdraw amount (credits):", "50");
+  const amt = Number(raw);
+  if (!Number.isFinite(amt) || amt <= 0) return;
+  pushRequest("withdraw", amt);
+  syncWalletUI();
+  alert("Withdraw request created (pending). Open Admin to approve.");
+}
+
+function openAdminPrompt() {
+  const st = getWalletState();
+  const pending = st.requests.filter(r => r.status === "pending");
+
+  if (pending.length === 0) {
+    alert("No pending requests.");
+    return;
+  }
+
+  const menu = pending
+    .map((r, i) => `${i + 1}) ${formatReqRow(r)}\n   Approve: A${i + 1}   Reject: R${i + 1}`)
+    .join("\n\n");
+
+  const action = prompt(
+    `ADMIN (demo)\n\n${menu}\n\nType A# to approve or R# to reject (example: A1)`,
+    "A1"
+  );
+
+  if (!action) return;
+
+  const m = action.trim().match(/^([aArR])\s*(\d+)$/);
+  if (!m) return;
+
+  const letter = m[1].toLowerCase();
+  const idx = Number(m[2]) - 1;
+  const req = pending[idx];
+  if (!req) return;
+
+  updateRequest(req.id, letter === "a" ? "approved" : "rejected");
+  syncWalletUI();
+}
+
+function initWalletDemoFlow() {
+  // Grab fresh elements by ID (don’t rely on old const refs)
+  let connectEl  = document.getElementById("connectWalletBtn");
+  let depositEl  = document.getElementById("depositBtn");
+  let withdrawEl = document.getElementById("withdrawBtn");
+  let adminEl    = document.getElementById("adminBtn");
+
+  // Wipe any existing listeners by cloning (keeps same id/class/styles)
+  function wipeAndGet(el) {
+    if (!el || !el.parentNode) return el;
+    const clone = el.cloneNode(true);
+    el.parentNode.replaceChild(clone, el);
+    return clone;
+  }
+
+  connectEl  = wipeAndGet(connectEl);
+  depositEl  = wipeAndGet(depositEl);
+  withdrawEl = wipeAndGet(withdrawEl);
+  adminEl    = wipeAndGet(adminEl);
+
+  // Currency select changes wallet state
+  currencySelect?.addEventListener("change", () => {
+    const st = getWalletState();
+    st.currency = currencySelect.value || "USDT";
+    setWalletState(st);
+
+    if (typeof selectedCurrency === "string") selectedCurrency = st.currency;
+    syncWalletUI();
+  });
+
+  // Connect (prompt-based)
+  connectEl?.addEventListener("click", () => {
+    const input = prompt("Enter wallet address (demo):", getWalletId());
+    if (!input) return;
+    if (typeof currentWallet === "string") currentWallet = input.trim();
+    syncWalletUI();
+  });
+
+  // Deposit / Withdraw / Admin (prompt-based demo flow)
+  depositEl?.addEventListener("click", promptDeposit);
+  withdrawEl?.addEventListener("click", promptWithdraw);
+  adminEl?.addEventListener("click", openAdminPrompt);
+
+  syncWalletUI();
+}
+
+// =========================
 // RISX: CORE STATE
 // =========================
 const GRID_SIZE = 5;
@@ -653,11 +858,6 @@ function setActiveWallet(wallet){
 
   console.log("ACTIVE WALLET:", currentWallet);
   updateBalanceDisplay();
-}
-
-function persistWallet(){
-  if(!currentWallet) return;
-  saveWalletState(currentWallet, { balance, currency: selectedCurrency, updatedAt: Date.now() });
 }
 
 function userKey(name) {
@@ -1582,21 +1782,6 @@ currencySelect?.addEventListener("change", () => {
     }
     })();
 
-    // ✅ Wire Connect Wallet button (put right after bootWallet())
-if (connectWalletBtn) {
-  connectWalletBtn.addEventListener("click", () => {
-    const addr = (walletAddressInput?.value || "").trim();
-    setActiveWallet(addr);
-  });
-}
-
-// Optional: press Enter in the input to connect
-if (walletAddressInput) {
-  walletAddressInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") connectWalletBtn?.click();
-  });
-}
-
 depositBtn?.addEventListener("click", () => {
   const amt = Number(prompt("Demo deposit amount (credits):", "100") || 0);
   if (!amt || amt <= 0) return;
@@ -1925,7 +2110,10 @@ updateBalanceDisplay();
   startSessionTimer();
   updateSessionTimer();
 
-  // Session reset
+  // WALLET (demo request flow)
+  initWalletDemoFlow();
+
+  // Session reset  
   if (resetSessionBtn) {
     resetSessionBtn.addEventListener("click", () => {
       sessionRounds = 0;
