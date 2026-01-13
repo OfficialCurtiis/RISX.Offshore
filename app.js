@@ -1131,6 +1131,35 @@ function toast(msg) {
 }
 
 // =========================
+// 3.3 VALIDATION HELPERS
+// =========================
+function parseAmount(raw, { min = 0.01, max = 1e9, decimals = 2 } = {}) {
+  const n = Number(String(raw ?? "").replace(/,/g, "").trim());
+  if (!Number.isFinite(n)) return { ok: false, value: 0, msg: "Enter a valid number." };
+  if (n < min) return { ok: false, value: 0, msg: `Amount must be at least ${min}.` };
+  if (n > max) return { ok: false, value: 0, msg: `Amount too large.` };
+
+  const factor = 10 ** decimals;
+  const rounded = Math.floor(n * factor + 1e-9) / factor; // floor to avoid free rounding up
+  return { ok: true, value: rounded, msg: "" };
+}
+
+function parseTrimmed(raw, { minLen = 1, maxLen = 180, label = "Value" } = {}) {
+  const s = String(raw ?? "").trim();
+  if (s.length < minLen) return { ok: false, value: "", msg: `${label} is required.` };
+  if (s.length > maxLen) return { ok: false, value: "", msg: `${label} is too long.` };
+  return { ok: true, value: s, msg: "" };
+}
+
+// Demo-only address check (keeps junk out; not chain-specific)
+function isProbablyAddress(s) {
+  if (!s) return false;
+  if (s.length < 12) return false;
+  // allow letters/numbers and common chain separators
+  return /^[a-zA-Z0-9:_-]+$/.test(s);
+}
+
+// =========================
 // UTILS
 // =========================
 
@@ -2088,12 +2117,25 @@ function init() {
 
   // Withdraw requests
   function submitWithdrawRequest() {
-  const amt = Number(withdrawAmount.value || 0);
-  const addr = String(withdrawAddress.value || "").trim();
   if (!currentWallet) return toast("Connect wallet first.");
-  if (!addr) return (withdrawMsg.textContent = "Enter a destination address.");
-  if (!isFinite(amt) || amt <= 0) return (withdrawMsg.textContent = "Enter a valid amount.");
+
+  const amtCheck = parseAmount(withdrawAmount.value, { min: 0.01, decimals: 2 });
+  if (!amtCheck.ok) return (withdrawMsg.textContent = amtCheck.msg);
+
+  const addrCheck = parseTrimmed(withdrawAddress.value, { minLen: 12, maxLen: 120, label: "Destination address" });
+  if (!addrCheck.ok) return (withdrawMsg.textContent = addrCheck.msg);
+
+  if (!isProbablyAddress(addrCheck.value)) {
+    return (withdrawMsg.textContent = "Address format looks invalid.");
+  }
+
+  const amt = amtCheck.value;
+  const addr = addrCheck.value;
+
   if (amt > balance) return (withdrawMsg.textContent = "Insufficient balance.");
+
+  // ✅ prevent double-submit spam
+  if (withdrawSubmitBtn) withdrawSubmitBtn.disabled = true;
 
   const req = {
     id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
@@ -2104,13 +2146,19 @@ function init() {
     status: "PENDING",
     createdAt: Date.now()
   };
+
   const list = readList(withdrawalsKey);
   list.unshift(req);
   writeList(withdrawalsKey, list);
+
   withdrawAddress.value = "";
+  withdrawAmount.value = "";
   withdrawMsg.textContent = "Submitted. Status: PENDING.";
   renderWithdrawHistory();
-  }
+
+  // re-enable after tick (keeps UX snappy but blocks double clicks)
+  setTimeout(() => { if (withdrawSubmitBtn) withdrawSubmitBtn.disabled = false; }, 0);
+}
 
   if (withdrawSubmitBtn) withdrawSubmitBtn.addEventListener("click", submitWithdrawRequest);
   if (withdrawClearBtn) withdrawClearBtn.addEventListener("click", () => {
@@ -2253,7 +2301,7 @@ function renderAdmin() {
     const raw = localStorage.getItem(walletStoreKey(wallet));
     let s = { balance: 0, currency: "USDT" };
     if (raw) { try { s = JSON.parse(raw); } catch {} }
-    s.balance = clamp2((Number(s.balance)||0) + delta);
+    s.balance = clamp2(Math.max(0, (Number(s.balance)||0) + delta));
     localStorage.setItem(walletStoreKey(wallet), JSON.stringify(s));
     if (wallet === currentWallet) {
       balance = s.balance;
@@ -2268,19 +2316,26 @@ function renderAdmin() {
   const list = readList(key);
   const idx = list.findIndex(x => String(x.id) === String(id));
   if (idx < 0) return;
-  list[idx].status = status;
-  writeList(key, list);
+  const prev = list[idx].status;
 
-  // Apply balance effects when PAID
-  if (status === "PAID") {
-    const r = list[idx];
-    if (kind === "withdraw") {
-      // deduct from that wallet
-      adminAdjustBalance(r.wallet, -Number(r.amount || 0));
-    } else {
-      adminAdjustBalance(r.wallet, +Number(r.amount || 0));
-    }
+// ✅ If already finalized, do nothing (prevents double-apply)
+if (prev === "PAID" || prev === "VOID") return;
+
+// ✅ If already the same status, do nothing
+if (prev === status) return;
+
+list[idx].status = status;
+writeList(key, list);
+
+// Apply balance effects when PAID (ONLY ON TRANSITION TO PAID)
+if (status === "PAID") {
+  const r = list[idx];
+  if (kind === "withdraw") {
+    adminAdjustBalance(r.wallet, -Number(r.amount || 0));
+  } else {
+    adminAdjustBalance(r.wallet, +Number(r.amount || 0));
   }
+}
   renderAdmin();
 }
 
