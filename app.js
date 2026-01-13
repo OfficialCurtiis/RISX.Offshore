@@ -969,6 +969,41 @@ function userKey(name) {
 }
 
 // =========================
+// SESSION PERSISTENCE
+// =========================
+const SESSION_KEY = "RISX_SESSION_V1";
+
+function loadSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY) || "{}"); }
+  catch { return {}; }
+}
+
+function saveSession(data) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(data));
+}
+
+function restoreSessionStats() {
+  const s = loadSession();
+  sessionRounds  = Number(s.sessionRounds) || 0;
+  bestCrashMult  = Number(s.bestCrashMult) || 0;
+  minesWins      = Number(s.minesWins) || 0;
+  minesLosses    = Number(s.minesLosses) || 0;
+
+  // timer: if you want it to survive refresh, keep it
+  sessionStartMs = Number(s.sessionStartMs) || 0;
+}
+
+function persistSessionStats() {
+  saveSession({
+    sessionRounds,
+    bestCrashMult,
+    minesWins,
+    minesLosses,
+    sessionStartMs
+  });
+}
+
+// =========================
 // DOM HOOKS
 // =========================
 
@@ -1309,6 +1344,7 @@ function endMinesRound({ outcome, cashedOut, multiplier }) {
 sessionRounds++;
 
   updateSessionStats();
+  persistSessionStats();
 }
 
 function resetMinesResultCard() {
@@ -1398,100 +1434,6 @@ function setupPresetButtons() {
   presetLowBtn.addEventListener("click", () => setPresetMines(3, "Low"));
   presetMedBtn.addEventListener("click", () => setPresetMines(5, "Medium"));
   presetHighBtn.addEventListener("click", () => setPresetMines(8, "High"));
-}
-
-// =========================
-// WALLET CONTROLS
-// =========================
-
-function resetBalance() {
-  balance = 1000;
-  updateBalanceDisplay();
-  resultMessageEl.textContent = "Balance reset to 1000 demo credits.";
-  crashStatusMessage.textContent = "";
-}
-
-function switchUser() {
-  const name = prompt("Enter player name:", currentWallet || "Guest");
-  if (name === null) return;
-
-  const next = name.trim();
-  if (!next) return;
-
-  currentWallet = next;
-
-  // ✅ Persist active user FIRST so loadState can't revert you to Guest
-  localStorage.setItem(`${RISX_SAVE_KEY}::activeWallet`, currentWallet);
-
-  if (currentWalletEl) currentWalletEl.textContent = currentWallet;
-
-  updateBalanceDisplay();
-  renderCrashHistory();
-}
-
-// =========================
-// TABS
-// =========================
-
-function setupTabs() {
-  const tabButtons = document.querySelectorAll(".game-tab");
-  const gameSections = document.querySelectorAll(".game-section");
-
-  function show(target) {
-    // 1) Find section first (BEFORE we remove actives)
-    const targetSection = document.getElementById(`game-${target}`);
-
-    if (!targetSection) {
-      console.warn(`[RISX] Missing section: #game-${target}`);
-      // Fallback to mines so you never go blank
-      return show("mines");
-    }
-
-    // 2) Toggle tab active state
-    tabButtons.forEach(b => b.classList.toggle("active", b.dataset.target === target));
-
-    // 3) Toggle section active state
-    gameSections.forEach(section => section.classList.remove("active"));
-    targetSection.classList.add("active");
-
-    // 4) Optional: per-game renders (wrapped so errors won't blank UI)
-    try {
-      if (target === "plinko") {
-        requestAnimationFrame(() => {
-          try {
-          renderPlinkoBoard();
-          renderPlinkoBuckets();
-          } catch (e) {
-            console.error("[RISX] Plinko render error:", e);
-          }
-        });
-      }
-      if (target === "crash") {
-        // if you have any crash render/init calls, put them here
-        // iniCrash(); renderCrashHistory();
-      }
-      if (target === "mines") {
-        // if mines ever needs rebuild:
-        // buildMinesGrid();
-      }
-    } catch (e) {
-      console.error(`[RISX] Error switching to ${target}:`, e);
-      // fallback to mines instead of staying blank
-      return show("mines");
-    }
-  }
-
-  tabButtons.forEach(btn => {
-    btn.addEventListener("click", () => {
-      if (btn.classList.contains("disabled")) return;
-      const target = btn.dataset.target;
-      show(target);
-    });
-  });
-
-  // Ensure something is visible on load
-  const activeBtn = document.querySelector(".game-tab.active");
-  show(activeBtn?.dataset.target || "mines");
 }
 
 // =========================
@@ -1602,8 +1544,8 @@ function handleCrashBust() {
   crashStartBtn.disabled = false;
 
   sessionRounds++;
-  bestCrashMult = Math.max(bestCrashMult, crashCurrentMult);
   updateSessionStats();
+  persistSessionStats();
 
   showCrashToast(`Crashed at ${formatMult(crashCurrentMult)}.`);
 
@@ -1728,12 +1670,16 @@ function cashOutCrash() {
   if (!crashRoundActive || crashCrashed) return;
 
   const houseEdge = 0.02;
-  const payout = crashBet * crashCurrentMult * (1 - houseEdge);
+
+  // ✅ Freeze the multiplier at the moment of cashout
+  const cashedMult = Number(crashCurrentMult.toFixed(2));
+
+  const payout = crashBet * cashedMult * (1 - houseEdge);
 
   balance += payout;
   updateBalanceDisplay();
 
-  showCrashToast(`You cashed out at ${formatMult(crashCurrentMult)} for ${formatCredits(payout)} credits`);
+  showCrashToast(`You cashed out at ${formatMult(cashedMult)} for ${formatCredits(payout)} credits`);
 
   crashRoundActive = false;
   crashCrashed = false;
@@ -1746,8 +1692,12 @@ function cashOutCrash() {
   }
 
   sessionRounds++;
-  bestCrashMult = Math.max(bestCrashMult, crashCurrentMult);
+
+  // ✅ PERSONAL BEST = cashout only
+  bestCrashMult = Math.max(bestCrashMult, cashedMult);
+
   updateSessionStats();
+  persistSessionStats();
 
   // Freeze rocket where it is (no crash explosion)
   if (crashRocketEl) {
@@ -1757,7 +1707,7 @@ function cashOutCrash() {
   // History
   crashRounds.unshift({
     outcome: "cashout",
-    mult: crashCurrentMult
+    mult: cashedMult
   });
   if (crashRounds.length > 5) crashRounds.pop();
   renderCrashHistory();
@@ -1807,6 +1757,100 @@ function initCrash() {
   if (crashCurveLine) crashCurveLine.style.transform = "scaleX(0)";
   if (rocketTrailEl) rocketTrailEl.style.width = "0";
   syncCrashMultToRocket();
+}
+
+// =========================
+// WALLET CONTROLS
+// =========================
+
+function resetBalance() {
+  balance = 1000;
+  updateBalanceDisplay();
+  resultMessageEl.textContent = "Balance reset to 1000 demo credits.";
+  crashStatusMessage.textContent = "";
+}
+
+function switchUser() {
+  const name = prompt("Enter player name:", currentWallet || "Guest");
+  if (name === null) return;
+
+  const next = name.trim();
+  if (!next) return;
+
+  currentWallet = next;
+
+  // ✅ Persist active user FIRST so loadState can't revert you to Guest
+  localStorage.setItem(`${RISX_SAVE_KEY}::activeWallet`, currentWallet);
+
+  if (currentWalletEl) currentWalletEl.textContent = currentWallet;
+
+  updateBalanceDisplay();
+  renderCrashHistory();
+}
+
+// =========================
+// TABS
+// =========================
+
+function setupTabs() {
+  const tabButtons = document.querySelectorAll(".game-tab");
+  const gameSections = document.querySelectorAll(".game-section");
+
+  function show(target) {
+    // 1) Find section first (BEFORE we remove actives)
+    const targetSection = document.getElementById(`game-${target}`);
+
+    if (!targetSection) {
+      console.warn(`[RISX] Missing section: #game-${target}`);
+      // Fallback to mines so you never go blank
+      return show("mines");
+    }
+
+    // 2) Toggle tab active state
+    tabButtons.forEach(b => b.classList.toggle("active", b.dataset.target === target));
+
+    // 3) Toggle section active state
+    gameSections.forEach(section => section.classList.remove("active"));
+    targetSection.classList.add("active");
+
+    // 4) Optional: per-game renders (wrapped so errors won't blank UI)
+    try {
+      if (target === "plinko") {
+        requestAnimationFrame(() => {
+          try {
+          renderPlinkoBoard();
+          renderPlinkoBuckets();
+          } catch (e) {
+            console.error("[RISX] Plinko render error:", e);
+          }
+        });
+      }
+      if (target === "crash") {
+        // if you have any crash render/init calls, put them here
+        // iniCrash(); renderCrashHistory();
+      }
+      if (target === "mines") {
+        // if mines ever needs rebuild:
+        // buildMinesGrid();
+      }
+    } catch (e) {
+      console.error(`[RISX] Error switching to ${target}:`, e);
+      // fallback to mines instead of staying blank
+      return show("mines");
+    }
+  }
+
+  tabButtons.forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (btn.classList.contains("disabled")) return;
+      const target = btn.dataset.target;
+      show(target);
+    });
+  });
+
+  // Ensure something is visible on load
+  const activeBtn = document.querySelector(".game-tab.active");
+  show(activeBtn?.dataset.target || "mines");
 }
 
 // =========================
@@ -2253,6 +2297,8 @@ function renderAdmin() {
   buildMinesGrid();
   renderCrashHistory();
 
+  restoreSessionStats();
+
   // Session stats + timer
   updateSessionStats();
   startSessionTimer();
@@ -2271,6 +2317,7 @@ function renderAdmin() {
 
       resetSessionTimer();
       updateSessionStats();
+      persistSessionStats();
     });
   }
 
