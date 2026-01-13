@@ -421,9 +421,8 @@ function renderPlinkoBuckets() {
 }
 
 function setupProvablyFairDrawer() {
-  const openBtn = document.getElementById("openPfBtn");
   const modal = document.getElementById("pfModal");
-  if (!openBtn || !modal) return;
+  if (!modal) return;
 
   const close = () => {
     modal.classList.remove("open");
@@ -437,7 +436,9 @@ function setupProvablyFairDrawer() {
     document.body.style.overflow = "hidden";
   };
 
-  openBtn.addEventListener("click", open);
+  // ✅ Support multiple open buttons if both exist
+  document.getElementById("openPfBtn")?.addEventListener("click", open);
+  document.getElementById("pfOpenBtn")?.addEventListener("click", open);
 
   modal.addEventListener("click", (e) => {
     if (e.target && e.target.matches("[data-pf-close]")) close();
@@ -685,12 +686,26 @@ async function dropPlinkoBall() {
 
     const rows = PLINKO_DECISION_ROWS; // 14
 
-    const { bucketIndex, path } = await provablyFairPlinko({
+    const { bucketIndex, path, digestHex } = await provablyFairPlinko({
       serverSeed,
       clientSeed,
       nonce: plinkoNonce++,
       rows
     });
+
+    // ✅ INSERT THIS BLOCK RIGHT HERE
+    pfLastPlinko = {
+      serverSeed,
+      clientSeed,
+      nonce: plinkoNonce - 1,  // because plinkoNonce++ already incremented
+      rows,
+      bucketIndex,
+      path,
+      digestHex,
+    };
+    updatePfUI?.();
+    if (pfVerifyResultEl) pfVerifyResultEl.textContent = "";
+    // ✅ END INSERT
 
     const ballEl = spawnPlinkoBall();
     if (!ballEl) throw new Error("Could not spawn plinko ball.");
@@ -710,12 +725,12 @@ async function dropPlinkoBall() {
       `You hit ${formatMult(mult)} → ${formatCredits(payout - bet)} profit`;
 
   } catch (err) {
-  console.error(err);
-  if (plinkoMessageEl) plinkoMessageEl.textContent = `Plinko error: ${err?.message || err}`;
-} finally {
-  plinkoBallsInFlight = Math.max(0, plinkoBallsInFlight - 1);
-  if (plinkoBallsInFlight === 0) setPlinkoControlsLocked(false);
-}
+    console.error(err);
+    if (plinkoMessageEl) plinkoMessageEl.textContent = `Plinko error: ${err?.message || err}`;
+  } finally {
+    plinkoBallsInFlight = Math.max(0, plinkoBallsInFlight - 1);
+    if (plinkoBallsInFlight === 0) setPlinkoControlsLocked(false);
+  }
 }
 
 // -------------------------
@@ -774,6 +789,95 @@ async function provablyFairPlinko({ serverSeed, clientSeed, nonce, rows }) {
   }
 
   return { bucketIndex, path, digestHex: [...digest].map(b => b.toString(16).padStart(2,"0")).join("") };
+}
+
+// =========================
+// PROVABLY FAIR: LOGIC
+// =========================
+let pfServerRevealed = false;
+let pfLastPlinko = null; // { serverSeed, clientSeed, nonce, rows, bucketIndex, path, digestHex }
+
+function randomSeed(len = 32) {
+  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let out = "";
+  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
+async function updatePfCommitUI() {
+  if (!pfServerHashEl) return;
+  const commit = await sha256Hex(serverSeed);
+  pfServerHashEl.textContent = commit;
+}
+
+function updatePfUI() {
+  if (pfClientSeedInput) pfClientSeedInput.value = clientSeed || "";
+  if (pfNonceEl) pfNonceEl.textContent = String(plinkoNonce || 0);
+
+  if (pfServerSeedEl) {
+    pfServerSeedEl.textContent = pfServerRevealed ? (serverSeed || "—") : "Hidden";
+  }
+
+  if (pfLastRoundEl) {
+    if (!pfLastPlinko) pfLastRoundEl.textContent = "—";
+    else {
+      const shortDigest = pfLastPlinko.digestHex
+  ? `${pfLastPlinko.digestHex.slice(0, 12)}…`
+  : "—";
+
+pfLastRoundEl.textContent =
+  `plinko • nonce ${pfLastPlinko.nonce} • bucket ${pfLastPlinko.bucketIndex + 1}/${(pfLastPlinko.rows + 1)} • digest ${shortDigest}`;
+
+pfLastRoundEl.textContent =
+  `plinko • nonce ${pfLastPlinko.nonce} • bucket ${pfLastPlinko.bucketIndex + 1}/${(pfLastPlinko.rows + 1)} • digest ${shortDigest}`;
+    }
+  }
+}
+
+async function pfRevealServerSeed() {
+  pfServerRevealed = true;
+  updatePfUI();
+  await updatePfCommitUI(); // commit remains same; still useful to show
+}
+
+async function pfRotateServerSeed() {
+  // rotate = new secret server seed + reset nonce
+  serverSeed = randomSeed(40);
+  plinkoNonce = 0;
+  pfServerRevealed = false;
+  pfLastPlinko = null;
+
+  await updatePfCommitUI();
+  updatePfUI();
+  if (pfVerifyResultEl) pfVerifyResultEl.textContent = "";
+}
+
+function pfNewClientSeed() {
+  clientSeed = randomSeed(16);
+  updatePfUI();
+}
+
+function pfResetNonce() {
+  plinkoNonce = 0;
+  updatePfUI();
+}
+
+async function pfVerifyLast() {
+  if (!pfVerifyResultEl) return;
+
+  if (!pfLastPlinko) {
+    pfVerifyResultEl.textContent = "No last Plinko round yet.";
+    return;
+  }
+
+  const { serverSeed: s, clientSeed: c, nonce, rows, bucketIndex } = pfLastPlinko;
+
+  const regen = await provablyFairPlinko({ serverSeed: s, clientSeed: c, nonce, rows });
+
+  const ok = regen.bucketIndex === bucketIndex;
+  pfVerifyResultEl.textContent = ok
+    ? `✅ Verified. bucket=${regen.bucketIndex + 1}`
+    : `❌ Mismatch. got bucket=${regen.bucketIndex + 1}`;
 }
 
 // SESSION STATS (not persisted)
@@ -947,6 +1051,26 @@ const currentWalletDisplay  = document.getElementById("currentWalletDisplay");
 const walletStatusEl        = document.getElementById("walletStatus");
 
 let crashCurveLine = null;
+
+// =========================
+// PROVABLY FAIR: DOM HOOKS
+// =========================
+const pfModalEl            = document.getElementById("pfModal");
+const pfServerHashEl       = document.getElementById("pfServerHash");
+const pfClientSeedInput    = document.getElementById("pfClientSeed");
+const pfNewClientSeedBtn   = document.getElementById("pfNewClientSeedBtn");
+const pfNonceEl            = document.getElementById("pfNonce");
+const pfResetNonceBtn      = document.getElementById("pfResetNonceBtn");
+const pfServerSeedEl       = document.getElementById("pfServerSeed");
+const pfRevealBtn          = document.getElementById("pfRevealBtn");
+const pfRotateBtn          = document.getElementById("pfRotateBtn");
+const pfVerifyBtn          = document.getElementById("pfVerifyBtn");
+const pfVerifyResultEl     = document.getElementById("pfVerifyResult");
+const pfLastRoundEl        = document.getElementById("pfLastRound");
+
+// Optional: you might have 2 open buttons in HTML (one in plinko, one inside drawer)
+const openPfBtn            = document.getElementById("openPfBtn");
+const pfOpenBtn            = document.getElementById("pfOpenBtn");
 
 // =========================
 // UTILS
@@ -1689,6 +1813,30 @@ function initCrash() {
 // INIT
 // =========================
 
+function initProvablyFair() {
+  // Ensure seeds exist
+  if (!serverSeed || serverSeed === "CHANGE_ME_TO_RANDOM_LONG_SECRET") {
+    serverSeed = randomSeed(40);
+  }
+  if (!clientSeed) clientSeed = "Guest";
+
+  // Bind UI
+  pfClientSeedInput?.addEventListener("input", () => {
+    clientSeed = pfClientSeedInput.value || "";
+    updatePfUI();
+  });
+
+  pfNewClientSeedBtn?.addEventListener("click", pfNewClientSeed);
+  pfResetNonceBtn?.addEventListener("click", pfResetNonce);
+  pfRevealBtn?.addEventListener("click", pfRevealServerSeed);
+  pfRotateBtn?.addEventListener("click", pfRotateServerSeed);
+  pfVerifyBtn?.addEventListener("click", pfVerifyLast);
+
+  // Initial render
+  updatePfCommitUI();
+  updatePfUI();
+}
+
 function wireBetMultButtons(inputEl, halfBtn, twoXBtn, maxBtn) {
   if (!inputEl) return;
 
@@ -1759,19 +1907,19 @@ function initPlinko() {
 
 function init() {
 
-    // Wallet connect
-connectWalletBtn?.addEventListener("click", () => {
-  const input = prompt("Enter wallet address (demo):", currentWallet || "");
-  if (!input) return;
-  setActiveWallet(input);
-});
+      // Wallet connect
+  connectWalletBtn?.addEventListener("click", () => {
+    const input = prompt("Enter wallet address (demo):", currentWallet || "");
+    if (!input) return;
+    setActiveWallet(input);
+  });
 
-// Currency select
-currencySelect?.addEventListener("change", () => {
-  selectedCurrency = currencySelect.value;
-  if (walletCurrencyLabel) walletCurrencyLabel.textContent = selectedCurrency;
-  persistWallet();
-});
+  // Currency select
+  currencySelect?.addEventListener("change", () => {
+    selectedCurrency = currencySelect.value;
+    if (walletCurrencyLabel) walletCurrencyLabel.textContent = selectedCurrency;
+    persistWallet();
+  });
   
   // Boot: restore active wallet if present
   (function bootWallet(){
@@ -1782,24 +1930,24 @@ currencySelect?.addEventListener("change", () => {
     }
     })();
 
-depositBtn?.addEventListener("click", () => {
+  depositBtn?.addEventListener("click", () => {
   const amt = Number(prompt("Demo deposit amount (credits):", "100") || 0);
   if (!amt || amt <= 0) return;
   balance += amt;
   updateBalanceDisplay();
-});
+  });
 
-withdrawBtn?.addEventListener("click", () => {
+  withdrawBtn?.addEventListener("click", () => {
   const amt = Number(prompt("Demo withdraw amount (credits):", "50") || 0);
   if (!amt || amt <= 0) return;
   if (amt > balance) return alert("Insufficient balance.");
   balance -= amt;
   updateBalanceDisplay();
-});
+  });
 
-adminBtn?.addEventListener("click", () => {
-  alert(`Admin (demo)\nWallet: ${currentWallet}\nBalance: ${formatCredits(balance)}`);
-});
+  adminBtn?.addEventListener("click", () => {
+    alert(`Admin (demo)\nWallet: ${currentWallet}\nBalance: ${formatCredits(balance)}`);
+  });
 
 
   // =============================
@@ -1835,18 +1983,18 @@ adminBtn?.addEventListener("click", () => {
     openModal(withdrawModal);
   });
 
-if (adminBtn) adminBtn.addEventListener("click", () => {
-  openModal(adminModal);
-  setAdminTab("deposits");
-  renderAdmin();
-});
+  if (adminBtn) adminBtn.addEventListener("click", () => {
+    openModal(adminModal);
+    setAdminTab("deposits");
+    renderAdmin();
+  });
 
-function refreshDepositAddress() {
-  const cur = depositCurrency.value;
-  // Demo: deterministic fake address per wallet+currency
-  const fake = `${cur}_${hashString(currentWallet).slice(0, 10)}_${hashString(cur).slice(0, 6)}`;
-  depositAddress.value = fake;
-}
+  function refreshDepositAddress() {
+    const cur = depositCurrency.value;
+    // Demo: deterministic fake address per wallet+currency
+    const fake = `${cur}_${hashString(currentWallet).slice(0, 10)}_${hashString(cur).slice(0, 6)}`;
+    depositAddress.value = fake;
+  }
 
   if (depositCurrency) depositCurrency.addEventListener("change", refreshDepositAddress);
 
@@ -1883,16 +2031,16 @@ function refreshDepositAddress() {
   withdrawAddress.value = "";
   withdrawMsg.textContent = "Submitted. Status: PENDING.";
   renderWithdrawHistory();
-}
+  }
 
-if (withdrawSubmitBtn) withdrawSubmitBtn.addEventListener("click", submitWithdrawRequest);
-if (withdrawClearBtn) withdrawClearBtn.addEventListener("click", () => {
+  if (withdrawSubmitBtn) withdrawSubmitBtn.addEventListener("click", submitWithdrawRequest);
+  if (withdrawClearBtn) withdrawClearBtn.addEventListener("click", () => {
   const list = readList(withdrawalsKey).filter(r => r.wallet !== currentWallet);
   writeList(withdrawalsKey, list);
   renderWithdrawHistory();
-});
+  });
 
-function renderWithdrawHistory() {
+  function renderWithdrawHistory() {
   if (!withdrawHistoryList) return;
   const list = readList(withdrawalsKey).filter(r => r.wallet === currentWallet);
   if (!list.length) {
@@ -1990,9 +2138,9 @@ function renderAdmin() {
   }
 
   adminMsg.textContent = "";
-}
+  }
 
-function renderAdminList(list, kind) {
+  function renderAdminList(list, kind) {
   if (!list.length) return `<div class="redeem-empty">Nothing here.</div>`;
   return list.map(r => `
     <div class="admin-row">
@@ -2009,34 +2157,34 @@ function renderAdminList(list, kind) {
   `).join("");
 }
 
-function aggregateUsers(deposits, withdrawals, q) {
-  const wallets = new Set([...deposits, ...withdrawals].map(x => x.wallet));
-  const out = [];
-  wallets.forEach(w => {
-    if (q && !w.toLowerCase().includes(q)) return;
-    const raw = localStorage.getItem(walletStoreKey(w));
-    let bal = 0, cur = "USDT";
-    if (raw) { try { const s = JSON.parse(raw); bal = Number(s.balance||0); cur = String(s.currency||"USDT"); } catch {} }
-    out.push({ wallet: w, balance: bal, currency: cur });
-  });
-  return out.sort((a,b)=>a.wallet.localeCompare(b.wallet));
-}
-
-function adminAdjustBalance(wallet, delta) {
-  const raw = localStorage.getItem(walletStoreKey(wallet));
-  let s = { balance: 0, currency: "USDT" };
-  if (raw) { try { s = JSON.parse(raw); } catch {} }
-  s.balance = clamp2((Number(s.balance)||0) + delta);
-  localStorage.setItem(walletStoreKey(wallet), JSON.stringify(s));
-  if (wallet === currentWallet) {
-    balance = s.balance;
-    selectedCurrency = s.currency;
-    updateBalanceDisplay();
+  function aggregateUsers(deposits, withdrawals, q) {
+    const wallets = new Set([...deposits, ...withdrawals].map(x => x.wallet));
+    const out = [];
+    wallets.forEach(w => {
+      if (q && !w.toLowerCase().includes(q)) return;
+      const raw = localStorage.getItem(walletStoreKey(w));
+      let bal = 0, cur = "USDT";
+      if (raw) { try { const s = JSON.parse(raw); bal = Number(s.balance||0); cur = String(s.currency||"USDT"); } catch {} }
+      out.push({ wallet: w, balance: bal, currency: cur });
+    });
+    return out.sort((a,b)=>a.wallet.localeCompare(b.wallet));
   }
-  renderAdmin();
-}
 
-function adminMark(id, kind, status) {
+  function adminAdjustBalance(wallet, delta) {
+    const raw = localStorage.getItem(walletStoreKey(wallet));
+    let s = { balance: 0, currency: "USDT" };
+    if (raw) { try { s = JSON.parse(raw); } catch {} }
+    s.balance = clamp2((Number(s.balance)||0) + delta);
+    localStorage.setItem(walletStoreKey(wallet), JSON.stringify(s));
+    if (wallet === currentWallet) {
+      balance = s.balance;
+      selectedCurrency = s.currency;
+      updateBalanceDisplay();
+    }
+    renderAdmin();
+  }
+
+  function adminMark(id, kind, status) {
   const key = (kind === "deposit") ? depositsKey : withdrawalsKey;
   const list = readList(key);
   const idx = list.findIndex(x => String(x.id) === String(id));
@@ -2057,27 +2205,27 @@ function adminMark(id, kind, status) {
   renderAdmin();
 }
 
-adminModal?.addEventListener("click", (e) => {
-  const paid = e.target.closest("[data-admin-paid]");
-  const voidBtn = e.target.closest("[data-admin-void]");
-  if (paid) return adminMark(paid.getAttribute("data-admin-paid"), paid.getAttribute("data-kind"), "PAID");
-  if (voidBtn) return adminMark(voidBtn.getAttribute("data-admin-void"), voidBtn.getAttribute("data-kind"), "VOID");
-});
+  adminModal?.addEventListener("click", (e) => {
+    const paid = e.target.closest("[data-admin-paid]");
+    const voidBtn = e.target.closest("[data-admin-void]");
+    if (paid) return adminMark(paid.getAttribute("data-admin-paid"), paid.getAttribute("data-kind"), "PAID");
+    if (voidBtn) return adminMark(voidBtn.getAttribute("data-admin-void"), voidBtn.getAttribute("data-kind"), "VOID");
+  });
 
-// Hotkey: Ctrl/Cmd + Shift + A to open Admin Ops (demo)
-document.addEventListener("keydown", (e) => {
-  const isMac = navigator.platform.toUpperCase().includes("MAC");
-  const mod = isMac ? e.metaKey : e.ctrlKey;
-  if (mod && e.shiftKey && (e.key === "A" || e.key === "a")) {
-    e.preventDefault();
-    openModal(adminModal);
-    setAdminTab("deposits");
-    renderAdmin();
-  }
-});
+  // Hotkey: Ctrl/Cmd + Shift + A to open Admin Ops (demo)
+  document.addEventListener("keydown", (e) => {
+    const isMac = navigator.platform.toUpperCase().includes("MAC");
+    const mod = isMac ? e.metaKey : e.ctrlKey;
+    if (mod && e.shiftKey && (e.key === "A" || e.key === "a")) {
+      e.preventDefault();
+      openModal(adminModal);
+      setAdminTab("deposits");
+      renderAdmin();
+    }
+  });
 
-// Demo "deposit request" shortcut: Ctrl/Cmd + Shift + D creates a pending deposit for current wallet
-document.addEventListener("keydown", (e) => {
+  // Demo "deposit request" shortcut: Ctrl/Cmd + Shift + D creates a pending deposit for current wallet
+  document.addEventListener("keydown", (e) => {
   const isMac = navigator.platform.toUpperCase().includes("MAC");
   const mod = isMac ? e.metaKey : e.ctrlKey;
   if (mod && e.shiftKey && (e.key === "D" || e.key === "d")) {
@@ -2096,10 +2244,10 @@ document.addEventListener("keydown", (e) => {
     list.unshift(req);
     writeList(depositsKey, list);
     toast("Created demo deposit request (+10 pending). Approve in Admin.");
-  }
-});
+    }
+  });
 
-updateBalanceDisplay();
+  updateBalanceDisplay();
   updateMinesInfoPanel(1.0, 0);
 
   buildMinesGrid();
@@ -2134,6 +2282,7 @@ updateBalanceDisplay();
   setupPresetButtons();
   setupTabs();
   setupProvablyFairDrawer();
+  initProvablyFair();
 
   // CRASH
   initCrash();
