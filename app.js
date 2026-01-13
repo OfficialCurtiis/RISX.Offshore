@@ -222,6 +222,21 @@ function initWalletDemoFlow() {
 }
 
 // =========================
+// ACTION LOCK (anti double-click)
+// =========================
+const __locks = Object.create(null);
+
+function withLock(key, fn) {
+  if (__locks[key]) return;
+  __locks[key] = true;
+  try { return fn(); }
+  finally {
+    // release next tick so rapid double clicks don't slip through
+    setTimeout(() => { __locks[key] = false; }, 0);
+  }
+}
+
+// =========================
 // RISX: CORE STATE
 // =========================
 const GRID_SIZE = 5;
@@ -1108,6 +1123,14 @@ const openPfBtn            = document.getElementById("openPfBtn");
 const pfOpenBtn            = document.getElementById("pfOpenBtn");
 
 // =========================
+// TOAST FALLBACK (safe)
+// =========================
+function toast(msg) {
+  if (!msg) return;
+  alert(msg);
+}
+
+// =========================
 // UTILS
 // =========================
 
@@ -1384,11 +1407,6 @@ if (minesSet.has(idx)) {
     outcome: "lose",
     cashedOut: false,
     multiplier: mult
-  });
-
-  // reveal the rest AFTER the card paints
-  requestAnimationFrame(() => {
-    revealAllMines();
   });
 
   return;
@@ -1792,6 +1810,17 @@ function switchUser() {
 // TABS
 // =========================
 
+function anyRoundActive() {
+  const minesActive =
+    startGameBtn?.disabled === true ||
+    cashOutBtn?.disabled === false;
+
+  const crashActive = !!crashRoundActive;
+  const plinkoActive = typeof plinkoBallsInFlight === "number" && plinkoBallsInFlight > 0;
+
+  return minesActive || crashActive || plinkoActive;
+}
+
 function setupTabs() {
   const tabButtons = document.querySelectorAll(".game-tab");
   const gameSections = document.querySelectorAll(".game-section");
@@ -1840,19 +1869,25 @@ function setupTabs() {
     }
   }
 
-  tabButtons.forEach(btn => {
-    btn.addEventListener("click", () => {
-      if (btn.classList.contains("disabled")) return;
-      const target = btn.dataset.target;
-      show(target);
-    });
+ tabButtons.forEach(btn => {
+  btn.addEventListener("click", () => {
+    if (btn.classList.contains("disabled")) return;
+
+    // ✅ BLOCK TAB SWITCH DURING ACTIVE ROUND
+    if (anyRoundActive()) {
+      toast?.("Finish the current round before switching games.");
+      return;
+    }
+
+    const target = btn.dataset.target;
+    show(target);
   });
+});
 
   // Ensure something is visible on load
   const activeBtn = document.querySelector(".game-tab.active");
   show(activeBtn?.dataset.target || "mines");
 }
-
 // =========================
 // INIT
 // =========================
@@ -1946,7 +1981,7 @@ function initPlinko() {
   let plinkoResizeRaf = 0;
 
   plinkoRiskEl?.addEventListener("change", renderPlinkoBuckets);
-  plinkoDropBtn?.addEventListener("click", dropPlinkoBall);
+  plinkoDropBtn?.addEventListener("click", () => withLock("plinkoDrop", dropPlinkoBall));
 }
 
 function init() {
@@ -2322,8 +2357,8 @@ function renderAdmin() {
   }
 
   // MINES
-  if (startGameBtn) startGameBtn.addEventListener("click", startMinesRound);
-  if (cashOutBtn) cashOutBtn.addEventListener("click", cashOutMines);
+  if (startGameBtn) startGameBtn.addEventListener("click", () => withLock("minesStart", startMinesRound));
+  if (cashOutBtn) cashOutBtn.addEventListener("click", () => withLock("minesCashout", cashOutMines));
   if (resetBalanceBtn) resetBalanceBtn.addEventListener("click", resetBalance);
 
   setupPresetButtons();
@@ -2333,8 +2368,8 @@ function renderAdmin() {
 
   // CRASH
   initCrash();
-  if (crashStartBtn) crashStartBtn.addEventListener("click", startCrashRound);
-  if (crashCashOutBtn) crashCashOutBtn.addEventListener("click", cashOutCrash);
+  if (crashStartBtn) crashStartBtn.addEventListener("click", () => withLock("crashStart", startCrashRound));
+  if (crashCashOutBtn) crashCashOutBtn.addEventListener("click", () => withLock("crashCashout", cashOutCrash));
 
   // PLINKO
   initPlinko();
