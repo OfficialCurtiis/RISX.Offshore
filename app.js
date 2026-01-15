@@ -1688,7 +1688,7 @@ function startCrashRound() {
     crashStatusMessage.textContent = "Enter a bet above 0.";
     return;
   }
-  if (bet > getBalance) {
+  if (bet > getBalance()) {
     crashStatusMessage.textContent = "Bet exceeds your balance.";
     return;
   }
@@ -1933,21 +1933,6 @@ function switchUser() {
 const depositsKey   = `${RISX_SAVE_KEY}::deposits`;
 const withdrawalsKey= `${RISX_SAVE_KEY}::withdrawals`;
 
-function escapeHtml(str) {
-  return String(str ?? "")
-    .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
-}
-
-function hashString(str) {
-  let h = 2166136261;
-  for (let i=0;i<str.length;i++){
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0).toString(16);
-}
-
 // Admin
 let adminTab = "deposits";
 function setAdminTab(tab){
@@ -1978,25 +1963,47 @@ function renderAdminList(list, kind){
   `).join("");
 }
 
-function adminMark(id, kind, status){
-  const key = (kind==="deposit") ? depositsKey : withdrawalsKey;
+function adminMark(id, kind, status) {
+  const key = (kind === "deposit") ? depositsKey : withdrawalsKey;
   const list = readList(key);
-  const idx = list.findIndex(x => String(x.id)===String(id));
+  const idx = list.findIndex(x => String(x.id) === String(id));
   if (idx < 0) return;
 
-  const prev = list[idx].status;
-  if (prev === "PAID" || prev === "VOID") return; // finalized
+  const prev = String(list[idx].status || "");
+
+  // already finalized? bail
+  if (prev === "PAID" || prev === "VOID") return;
+
+  // set + persist status first
   list[idx].status = status;
   writeList(key, list);
 
-  // APPLY MONEY ONLY WHEN MARKED PAID
+  // ✅ APPLY BALANCE EFFECTS FIRST (so UI always updates)
   if (status === "PAID") {
     const r = list[idx];
-    if (kind==="deposit") adminAdjustBalance(+Number(r.amount||0));
-    if (kind==="withdraw") adminAdjustBalance(-Number(r.amount||0));
+    const amt = Number(r.amount || 0);
+
+    if (Number.isFinite(amt) && amt > 0) {
+      if (kind === "withdraw") {
+        adminAdjustBalance(r.wallet, -amt);
+      } else {
+        adminAdjustBalance(r.wallet, +amt);
+      }
+    }
   }
 
-  renderAdmin();
+  // ✅ BACKEND/OUTBOX SEAM SHOULD NEVER BLOCK THE UI
+  try {
+    submitRequest?.(
+      "admin_mark",
+      { id, kind, status, wallet: list[idx].wallet, amount: list[idx].amount, currency: list[idx].currency },
+      null
+    );
+  } catch (e) {
+    console.warn("[RISX] submitRequest failed (ignored):", e);
+  }
+
+  renderAdmin?.();
 }
 
 // ----- Admin: apply balance changes ONLY when marking PAID -----
@@ -2011,28 +2018,6 @@ function adminAdjustBalance(wallet, delta) {
     updateBalanceDisplay?.();
     persistActiveWalletState(); // <-- this persists current wallet too
   }
-}
-
-// mark a deposit/withdraw request
-function adminMark(id, kind, status){
-  const key = (kind==="deposit") ? depositsKey : withdrawalsKey;
-  const list = readList(key);
-  const idx = list.findIndex(x => String(x.id)===String(id));
-  if (idx < 0) return;
-
-  const prev = list[idx].status;
-  if (prev === "PAID" || prev === "VOID") return; // finalized
-  list[idx].status = status;
-  writeList(key, list);
-
-  // APPLY MONEY ONLY WHEN MARKED PAID
-  if (status === "PAID") {
-    const r = list[idx];
-    if (kind==="deposit") adminAdjustBalance(+Number(r.amount||0));
-    if (kind==="withdraw") adminAdjustBalance(-Number(r.amount||0));
-  }
-
-  renderAdmin();
 }
 
 // main admin renderer
@@ -2350,14 +2335,6 @@ function init() {
   adminRefreshBtn?.addEventListener("click", renderAdmin);
   adminPendingOnly?.addEventListener("change", renderAdmin);
   adminSearch?.addEventListener("input", debounce(renderAdmin, 150));
-
-  // Admin click delegation for PAID/VOID
-  adminModal?.addEventListener("click", (e) => {
-    const paid = e.target.closest("[data-admin-paid]");
-    const voidBtn = e.target.closest("[data-admin-void]");
-    if (paid) return adminMark?.(paid.getAttribute("data-admin-paid"), paid.getAttribute("data-kind"), "PAID");
-    if (voidBtn) return adminMark?.(voidBtn.getAttribute("data-admin-void"), voidBtn.getAttribute("data-kind"), "VOID");
-  });
 
   // Modal close buttons
   document.querySelectorAll("[data-deposit-close]").forEach(btn =>
