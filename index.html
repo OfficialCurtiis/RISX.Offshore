@@ -49,13 +49,11 @@
         <button id="connectWalletBtn" class="btn secondary small" type="button">Connect</button>
       </div>
 
-      <div class="wallet-actions">
-        <button id="depositBtn" class="btn primary" type="button">Deposit</button>
-        <button id="withdrawBtn" class="btn secondary" type="button">Withdraw</button>
-        <button id="adminBtn" class="btn secondary small" type="button" title="Operator tools">Admin</button>
-      </div>
-
-      <button id="resetBalanceBtn" class="btn small secondary" type="button">Reset Demo Balance</button>
+     <div class="wallet-actions">
+      <button id="depositBtn" class="btn primary small" type="button">Deposit</button>
+      <button id="withdrawBtn" class="btn secondary small" type="button">Withdraw</button>
+      <button id="adminBtn" class="btn secondary small" type="button">Admin</button>
+    </div>
     </div>
   </header>
 
@@ -409,6 +407,7 @@
         </div>
       </div>
     </div>
+  </div>
 
 <!-- =========================
        DEPOSIT MODAL
@@ -443,8 +442,15 @@
           <div class="hint small">Use a unique address per player in a real build.</div>
         </div>
 
-        <div class="modal-actions">
-          <button id="copyDepositBtn" class="btn primary" type="button">Copy Address</button>
+        <div class="field">
+          <label for="depositAmount">Amount</label>
+          <input id="depositAmount" type="number" min="0" step="0.01" placeholder="100.00" />
+          <div class="hint small">Creates a pending deposit request. Balance updates when Admin marks PAID.</div>
+        </div>
+
+       <div class="modal-actions">
+          <button id="copyDepositBtn" class="btn secondary" type="button">Copy Address</button>
+          <button id="depositSubmitBtn" class="btn primary" type="button">Create Deposit Request</button>
           <button class="btn secondary" type="button" data-deposit-close>Close</button>
         </div>
 

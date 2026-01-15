@@ -17,208 +17,220 @@ function debounce(fn, delay = 150) {
 }
 
 // =========================
-// WALLET: DEMO REQUEST FLOW (localStorage)
+// Modal DOM refs (make them real, not window globals)
 // =========================
-const WALLET_STORE_KEY = "RISX_WALLET_DEMO_V1";
+const depositModal = document.getElementById("depositModal");
+const withdrawModal = document.getElementById("withdrawModal");
+const adminModal = document.getElementById("adminModal");
 
-function loadWalletStore() {
-  try {
-    return JSON.parse(localStorage.getItem(WALLET_STORE_KEY) || "{}");
-  } catch {
-    return {};
+const depositCurrency = document.getElementById("depositCurrency");
+const depositAddress = document.getElementById("depositAddress");
+const copyDepositBtn = document.getElementById("copyDepositBtn");
+const depositMsg = document.getElementById("depositMsg");
+
+// We'll add these in index.html in step 5:
+const depositAmount = document.getElementById("depositAmount");
+const depositSubmitBtn = document.getElementById("depositSubmitBtn");
+
+const withdrawAmount = document.getElementById("withdrawAmount");
+const withdrawAddress = document.getElementById("withdrawAddress");
+const withdrawSubmitBtn = document.getElementById("withdrawSubmitBtn");
+const withdrawClearBtn = document.getElementById("withdrawClearBtn");
+const withdrawMsg = document.getElementById("withdrawMsg");
+const withdrawHistoryList = document.getElementById("withdrawHistoryList");
+
+// Admin refs (you likely already have these; add only if missing)
+const adminTabDeposits = document.getElementById("adminTabDeposits");
+const adminTabWithdrawals = document.getElementById("adminTabWithdrawals");
+const adminTabUsers = document.getElementById("adminTabUsers");
+const adminViewDeposits = document.getElementById("adminViewDeposits");
+const adminViewWithdrawals = document.getElementById("adminViewWithdrawals");
+const adminViewUsers = document.getElementById("adminViewUsers");
+const adminRefreshBtn = document.getElementById("adminRefreshBtn");
+const adminPendingOnly = document.getElementById("adminPendingOnly");
+const adminSearch = document.getElementById("adminSearch");
+const adminMsg = document.getElementById("adminMsg");
+const adminCountDeposits = document.getElementById("adminCountDeposits");
+const adminCountWithdrawals = document.getElementById("adminCountWithdrawals");
+const adminCountUsers = document.getElementById("adminCountUsers");
+
+// =========================
+// Small utils required by wallet/admin UI
+// =========================
+
+// lightweight toast using the walletStatus line (no prompts)
+function toast(msg) {
+  const el = document.getElementById("walletStatus");
+  if (!el) { console.log("[RISX]", msg); return; }
+  const prev = el.textContent;
+  el.textContent = String(msg);
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { el.textContent = prev; }, 2200);
+}
+
+function clamp2(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.round(x * 100) / 100;
+}
+
+function adjustBalance(delta) {
+  balance = clamp2(Math.max(0, Number(balance || 0) + Number(delta || 0)));
+  updateBalanceDisplay?.();
+  persistActiveWalletState?.(); // keeps per-wallet storage in sync
+}
+
+function escapeHtml(str) {
+  return String(str ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+// =========================
+// WALLET STATE (single source of truth)
+// =========================
+
+function setBalance(next) {
+  balance = clamp2(Math.max(0, Number(next || 0)));
+  updateBalanceDisplay?.();
+  persistActiveWalletState?.();
+}
+
+function getActiveWallet() {
+  return String(localStorage.getItem(RISX_WALLET_KEY) || "").trim();
+}
+
+function setActiveWallet(w) {
+  const wallet = String(w || "").trim();
+  if (!wallet) return;
+
+  currentWallet = wallet;
+
+  // persist active wallet using YOUR existing key
+  localStorage.setItem(WALLET_KEY, wallet);
+
+  // load per-wallet state using YOUR existing store
+  const st = loadWalletState(wallet) || { balance: 1000, currency: "USDT" };
+
+  balance = Number(st.balance || 0);
+  selectedCurrency = String(st.currency || "USDT");
+
+  // reflect in UI
+  currentWalletEl && (currentWalletEl.textContent = wallet);
+  currencySelect && (currencySelect.value = selectedCurrency);
+  walletCurrencyLabel && (walletCurrencyLabel.textContent = selectedCurrency);
+
+  updateBalanceDisplay?.();
+
+  // make sure it exists in storage (seed once)
+  persistActiveWalletState();
+}
+
+// =========================
+// 3.4 BACKEND SEAM (API Transport + Outbox Queue)
+// =========================
+const RISX_API_MODE = "local"; // "local" (default) or "remote" later
+const RISX_OUTBOX_KEY = "RISX_OUTBOX_V1";
+
+function loadOutbox() {
+  try { return JSON.parse(localStorage.getItem(RISX_OUTBOX_KEY) || "[]"); }
+  catch { return []; }
+}
+function saveOutbox(list) {
+  localStorage.setItem(RISX_OUTBOX_KEY, JSON.stringify(list));
+}
+function enqueueJob(job) {
+  const list = loadOutbox();
+  list.unshift(job);
+  saveOutbox(list);
+  return job;
+}
+function markJob(id, patch) {
+  const list = loadOutbox();
+  const idx = list.findIndex(x => x.id === id);
+  if (idx < 0) return;
+  list[idx] = { ...list[idx], ...patch };
+  saveOutbox(list);
+}
+
+async function apiRequest(type, payload) {
+  // Later: swap this to fetch("/api/...", {method:"POST", body:...})
+  if (RISX_API_MODE === "remote") {
+    try {
+      const res = await fetch("/api/risx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, payload })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, error: data?.error || `HTTP ${res.status}` };
+      return { ok: true, data };
+    } catch (e) {
+      return { ok: false, error: e?.message || String(e) };
+    }
   }
+
+  // LOCAL MODE: pretend success and do nothing here.
+  return { ok: true, data: { mode: "local" } };
 }
 
-function saveWalletStore(store) {
-  localStorage.setItem(WALLET_STORE_KEY, JSON.stringify(store));
-}
-
-function getWalletId() {
-  // Use currentWallet if your repo has it; otherwise fall back to a default
-  if (typeof currentWallet === "string" && currentWallet.trim()) return currentWallet.trim();
-  return "demo-wallet";
-}
-
-function getWalletState() {
-  const store = loadWalletStore();
-  const id = getWalletId();
-
-  if (!store[id]) {
-    store[id] = {
-      currency: (typeof selectedCurrency === "string" ? selectedCurrency : "USDT"),
-      balance: (typeof balance === "number" ? balance : 1000),
-      requests: [] // {id,type,amount,currency,status,createdAt,updatedAt}
-    };
-    saveWalletStore(store);
-  }
-  return store[id];
-}
-
-function setWalletState(nextState) {
-  const store = loadWalletStore();
-  const id = getWalletId();
-  store[id] = nextState;
-  saveWalletStore(store);
-}
-
-function pushRequest(type, amount) {
-  const st = getWalletState();
-  const req = {
-    id: `req_${Math.random().toString(16).slice(2)}_${Date.now()}`,
-    type, // "deposit" | "withdraw"
-    amount: Number(amount),
-    currency: st.currency || "USDT",
-    status: "pending", // "pending" | "approved" | "rejected"
+// Unified “submit request” entry point (backend seam)
+async function submitRequest(type, payload, localApplyFn) {
+  const job = enqueueJob({
+    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+    type,
+    payload,
+    status: "QUEUED",      // QUEUED | SENT | FAILED
     createdAt: Date.now(),
     updatedAt: Date.now(),
-  };
-  st.requests.unshift(req);
-  setWalletState(st);
-  return req;
-}
-
-function updateRequest(id, status) {
-  const st = getWalletState();
-  const r = st.requests.find(x => x.id === id);
-  if (!r) return null;
-  r.status = status;
-  r.updatedAt = Date.now();
-
-  // Apply balance effects only when status changes to approved
-  if (status === "approved") {
-    if (r.type === "deposit") st.balance += r.amount;
-    if (r.type === "withdraw") st.balance -= r.amount;
-  }
-
-  setWalletState(st);
-
-  // keep your existing global balance in sync if you use it
-  if (typeof balance === "number") {
-    balance = st.balance;
-    if (typeof updateBalanceDisplay === "function") updateBalanceDisplay();
-  }
-
-  return r;
-}
-
-function formatReqRow(r) {
-  const t = new Date(r.createdAt).toLocaleString();
-  return `${r.type.toUpperCase()} • ${r.amount} ${r.currency} • ${r.status.toUpperCase()} • ${t}`;
-}
-
-// Optional: small UI helpers if your HTML has these nodes
-function syncWalletUI() {
-  const st = getWalletState();
-
-  // If you have a balance node in your wallet panel, update it
-  const balNode =
-    document.getElementById("walletBalance") ||
-    document.getElementById("balance"); // fallback to old demo balance span
-  if (balNode) balNode.textContent = (st.balance ?? 0).toFixed ? st.balance.toFixed(2) : String(st.balance);
-
-  if (currencySelect) {
-    currencySelect.value = st.currency || "USDT";
-  }
-  if (walletCurrencyLabel) {
-    walletCurrencyLabel.textContent = st.currency || "USDT";
-  }
-}
-
-// Basic prompt fallback (so nothing breaks if modals aren’t there yet)
-function promptDeposit() {
-  const raw = prompt("Demo deposit amount (credits):", "100");
-  const amt = Number(raw);
-  if (!Number.isFinite(amt) || amt <= 0) return;
-  pushRequest("deposit", amt);
-  syncWalletUI();
-  alert("Deposit request created (pending). Open Admin to approve.");
-}
-
-function promptWithdraw() {
-  const raw = prompt("Demo withdraw amount (credits):", "50");
-  const amt = Number(raw);
-  if (!Number.isFinite(amt) || amt <= 0) return;
-  pushRequest("withdraw", amt);
-  syncWalletUI();
-  alert("Withdraw request created (pending). Open Admin to approve.");
-}
-
-function openAdminPrompt() {
-  const st = getWalletState();
-  const pending = st.requests.filter(r => r.status === "pending");
-
-  if (pending.length === 0) {
-    alert("No pending requests.");
-    return;
-  }
-
-  const menu = pending
-    .map((r, i) => `${i + 1}) ${formatReqRow(r)}\n   Approve: A${i + 1}   Reject: R${i + 1}`)
-    .join("\n\n");
-
-  const action = prompt(
-    `ADMIN (demo)\n\n${menu}\n\nType A# to approve or R# to reject (example: A1)`,
-    "A1"
-  );
-
-  if (!action) return;
-
-  const m = action.trim().match(/^([aArR])\s*(\d+)$/);
-  if (!m) return;
-
-  const letter = m[1].toLowerCase();
-  const idx = Number(m[2]) - 1;
-  const req = pending[idx];
-  if (!req) return;
-
-  updateRequest(req.id, letter === "a" ? "approved" : "rejected");
-  syncWalletUI();
-}
-
-function initWalletDemoFlow() {
-  // Grab fresh elements by ID (don’t rely on old const refs)
-  let connectEl  = document.getElementById("connectWalletBtn");
-  let depositEl  = document.getElementById("depositBtn");
-  let withdrawEl = document.getElementById("withdrawBtn");
-  let adminEl    = document.getElementById("adminBtn");
-
-  // Wipe any existing listeners by cloning (keeps same id/class/styles)
-  function wipeAndGet(el) {
-    if (!el || !el.parentNode) return el;
-    const clone = el.cloneNode(true);
-    el.parentNode.replaceChild(clone, el);
-    return clone;
-  }
-
-  connectEl  = wipeAndGet(connectEl);
-  depositEl  = wipeAndGet(depositEl);
-  withdrawEl = wipeAndGet(withdrawEl);
-  adminEl    = wipeAndGet(adminEl);
-
-  // Currency select changes wallet state
-  currencySelect?.addEventListener("change", () => {
-    const st = getWalletState();
-    st.currency = currencySelect.value || "USDT";
-    setWalletState(st);
-
-    if (typeof selectedCurrency === "string") selectedCurrency = st.currency;
-    syncWalletUI();
+    tries: 0,
+    lastError: ""
   });
 
-  // Connect (prompt-based)
-  connectEl?.addEventListener("click", () => {
-    const input = prompt("Enter wallet address (demo):", getWalletId());
-    if (!input) return;
-    if (typeof currentWallet === "string") currentWallet = input.trim();
-    syncWalletUI();
-  });
+  // Always apply locally first (instant UX). Later your backend can reconcile.
+  if (typeof localApplyFn === "function") localApplyFn();
 
-  // Deposit / Withdraw / Admin (prompt-based demo flow)
-  depositEl?.addEventListener("click", promptDeposit);
-  withdrawEl?.addEventListener("click", promptWithdraw);
-  adminEl?.addEventListener("click", openAdminPrompt);
+  // If remote, attempt send in background (still same click flow)
+  if (RISX_API_MODE === "remote") {
+    markJob(job.id, { status: "SENT", tries: job.tries + 1, updatedAt: Date.now() });
+    const res = await apiRequest(type, payload);
+    if (!res.ok) {
+      markJob(job.id, {
+        status: "FAILED",
+        tries: job.tries + 1,
+        lastError: res.error || "unknown",
+        updatedAt: Date.now()
+      });
+      return { ok: false, error: res.error, jobId: job.id };
+    }
+  }
 
-  syncWalletUI();
+  return { ok: true, jobId: job.id };
+}
+
+// Optional: manual retry button later can call this
+async function retryFailedOutbox(limit = 10) {
+  if (RISX_API_MODE !== "remote") return { ok: true, retried: 0 };
+
+  const list = loadOutbox();
+  const failed = list.filter(j => j.status === "FAILED").slice(0, limit);
+
+  for (const j of failed) {
+    markJob(j.id, { status: "SENT", tries: (j.tries || 0) + 1, updatedAt: Date.now() });
+    const res = await apiRequest(j.type, j.payload);
+    if (!res.ok) {
+      markJob(j.id, {
+        status: "FAILED",
+        lastError: res.error || "unknown",
+        updatedAt: Date.now()
+      });
+    }
+  }
+
+  return { ok: true, retried: failed.length };
 }
 
 // =========================
@@ -321,10 +333,11 @@ function spawnJitterX() {
 }
 
 const PLINKO_TABLES = {
-  // length MUST be 15
-  low:  [14, 6, 3, 2, 1.4, 1.1, 0.9, 0.9, 0.9, 1.1, 1.4, 2, 3, 6, 14],
-  med:  [111,30,12,5,2.2,1.2,0.6,0.6,0.6,1.2,2.2,5,12,30,111],
-  high: [1000,130,50,12,4,0.2,0.20,0.2,0.2,0.2,4,12,50,130,1000],
+  // length MUST be 15 (rows=14 => 15 buckets)
+  // Goal: center hits most often AND pays lowest (house edge)
+  low:  [6, 3, 2, 1.4, 1.15, 0.9, 0.6, 0.4, 0.6, 0.9, 1.15, 1.4, 2, 3, 6],
+  med:  [12, 6, 3, 1.8, 1.2, 0.7, 0.45, 0.25, 0.45, 0.7, 1.2, 1.8, 3, 6, 12],
+  high: [40, 15, 6, 3, 1.6, 0.7, 0.35, 0.2, 0.35, 0.7, 1.6, 3, 6, 15, 40],
 };
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
@@ -457,10 +470,6 @@ function setupProvablyFairDrawer() {
 
   modal.addEventListener("click", (e) => {
     if (e.target && e.target.matches("[data-pf-close]")) close();
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && modal.classList.contains("open")) close();
   });
 }
 
@@ -691,10 +700,9 @@ async function dropPlinkoBall() {
     const bet = Number(plinkoBetAmountEl?.value || 0);
 
     if (bet <= 0) { plinkoMessageEl.textContent = "Enter a bet above 0."; return; }
-    if (bet > balance) { plinkoMessageEl.textContent = "Bet exceeds your balance."; return; }
+    if (bet > getBalance()) { plinkoMessageEl.textContent = "Bet exceeds your balance."; return; }
 
-    balance -= bet;
-    updateBalanceDisplay();
+    adjustBalance(-bet);
 
     plinkoBallsInFlight++;
     setPlinkoControlsLocked(true);
@@ -731,8 +739,7 @@ async function dropPlinkoBall() {
     highlightBucket(bucketIndex);
 
     const payout = bet * mult * 0.98;
-    balance += payout;
-    updateBalanceDisplay();
+    adjustBalance(+payout);
 
     if (plinkoOutcomeEl) plinkoOutcomeEl.textContent = `Bucket ${bucketIndex + 1}/${PLINKO_BUCKETS}`;
     if (plinkoMultEl) plinkoMultEl.textContent = formatMult(mult);
@@ -842,9 +849,6 @@ function updatePfUI() {
 
 pfLastRoundEl.textContent =
   `plinko • nonce ${pfLastPlinko.nonce} • bucket ${pfLastPlinko.bucketIndex + 1}/${(pfLastPlinko.rows + 1)} • digest ${shortDigest}`;
-
-pfLastRoundEl.textContent =
-  `plinko • nonce ${pfLastPlinko.nonce} • bucket ${pfLastPlinko.bucketIndex + 1}/${(pfLastPlinko.rows + 1)} • digest ${shortDigest}`;
     }
   }
 }
@@ -933,8 +937,6 @@ const crashRounds = []; // { outcome: 'bust'|'cashout', mult: number }
 const RISX_SAVE_KEY = "risx_demo_wallet_v2";
 const WALLET_KEY = `${RISX_SAVE_KEY}::activeWallet`;
 const walletStoreKey = (wallet) => `${RISX_SAVE_KEY}::wallet::${wallet}`;
-const depositsKey = `${RISX_SAVE_KEY}::deposits`;
-const withdrawalsKey = `${RISX_SAVE_KEY}::withdrawals`;
 
 function readList(key){ try{return JSON.parse(localStorage.getItem(key)||"[]")}catch{return []} }
 function writeList(key,arr){ localStorage.setItem(key, JSON.stringify(arr||[])); }
@@ -948,35 +950,14 @@ function saveWalletState(wallet, state){
   localStorage.setItem(walletStoreKey(wallet), JSON.stringify(state));
 }
 
-function persistWallet(){
+function persistActiveWalletState() {
   if (!currentWallet) return;
+
   saveWalletState(currentWallet, {
-    balance,
-    currency: selectedCurrency,
+    balance: clamp2(Number(balance || 0)),
+    currency: String(selectedCurrency || "USDT"),
     updatedAt: Date.now()
   });
-}
-
-function setActiveWallet(wallet){
-  const w = String(wallet || "").trim();
-  if (!w) return;
-
-  // persist active wallet
-  localStorage.setItem(WALLET_KEY, w);
-
-  currentWallet = w;
-  if (currentWalletEl) currentWalletEl.textContent = currentWallet;
-
-  // load wallet state (balance + currency)
-  const s = loadWalletState(w) || { balance: 0, currency: selectedCurrency };
-  balance = Number(s.balance || 0);
-  selectedCurrency = String(s.currency || selectedCurrency);
-
-  if (currencySelect) currencySelect.value = selectedCurrency;
-  if (walletCurrencyLabel) walletCurrencyLabel.textContent = selectedCurrency;
-
-  console.log("ACTIVE WALLET:", currentWallet);
-  updateBalanceDisplay();
 }
 
 function userKey(name) {
@@ -1024,7 +1005,6 @@ function persistSessionStats() {
 
 // Wallet / global
 const balanceEl        = document.getElementById("balance");
-const resetBalanceBtn  = document.getElementById("resetBalanceBtn");
 
 // Tabs
 const tabButtons = document.querySelectorAll(".game-tab");
@@ -1093,7 +1073,6 @@ const resetSessionBtn = document.getElementById("resetSessionBtn");
 const statSessionTimeEl = document.getElementById("statSessionTime");
 
 // User / daily
-const switchUserBtn   = document.getElementById("connectWalletBtn");
 const currentWalletEl   = document.getElementById("currentWallet");
 // Wallet connect UI
 const walletAddressInput    = document.getElementById("walletAddressInput");
@@ -1121,14 +1100,6 @@ const pfLastRoundEl        = document.getElementById("pfLastRound");
 // Optional: you might have 2 open buttons in HTML (one in plinko, one inside drawer)
 const openPfBtn            = document.getElementById("openPfBtn");
 const pfOpenBtn            = document.getElementById("pfOpenBtn");
-
-// =========================
-// TOAST FALLBACK (safe)
-// =========================
-function toast(msg) {
-  if (!msg) return;
-  alert(msg);
-}
 
 // =========================
 // 3.3 VALIDATION HELPERS
@@ -1163,6 +1134,63 @@ function isProbablyAddress(s) {
 // UTILS
 // =========================
 
+function wireBetMultButtons(inputEl, halfBtn, twoXBtn, maxBtn) {
+  if (!inputEl) return;
+
+  const read = () => Number(inputEl.value || 0);
+
+  const write = (v) => {
+    // keep it clean + non-negative
+    const vv = Math.max(0, Math.round(v * 100) / 100);
+    inputEl.value = String(vv);
+    // optional: triggers any listeners you have watching input changes
+    inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+
+  halfBtn?.addEventListener("click", () => {
+  const v = read();
+  if (v <= 0) return;
+  write(v / 2);
+});
+
+twoXBtn?.addEventListener("click", () => {
+  const v = read();
+  if (v <= 0) write(0.1);
+  else write(v * 2);
+});
+
+  maxBtn?.addEventListener("click", () => write(balance)); // uses your current demo balance
+}
+
+// Inputs
+const betAmountInput   = document.getElementById("betAmount");
+const crashBetAmountEl = document.getElementById("crashBetAmount");
+const plinkoBetAmountEl= document.getElementById("plinkoBetAmount");
+
+// Mines buttons
+wireBetMultButtons(
+  betAmountInput,
+  document.getElementById("minesHalfBtn"),
+  document.getElementById("mines2xBtn"),
+  document.getElementById("minesMaxBtn")
+);
+
+// Crash buttons
+wireBetMultButtons(
+  crashBetAmountEl,
+  document.getElementById("crashHalfBtn"),
+  document.getElementById("crash2xBtn"),
+  document.getElementById("crashMaxBtn")
+);
+
+// Plinko buttons
+wireBetMultButtons(
+  plinkoBetAmountEl,
+  document.getElementById("plinkoHalfBtn"),
+  document.getElementById("plinko2xBtn"),
+  document.getElementById("plinkoMaxBtn")
+);
+
 function formatCredits(value) {
   return Number(value || 0).toFixed(2);
 }
@@ -1173,7 +1201,7 @@ function formatMult(value) {
 
 function updateBalanceDisplay() {
   balanceEl.textContent = formatCredits(balance);
-  persistWallet();
+  persistActiveWalletState();
 }
 
 function updateMinesInfoPanel(mult, safeCount) {
@@ -1204,17 +1232,6 @@ function updateSessionStats() {
   statRoundsEl.textContent = sessionRounds;
   statBestCrashEl.textContent = bestCrashMult > 0 ? formatMult(bestCrashMult) : "—";
   statMinesWLEl.textContent = `${minesWins} / ${minesLosses}`;
-}
-
-function hashString(str) {
-  // small stable hash for display/keys (not crypto)
-  str = String(str ?? "");
-  let h = 2166136261; // FNV-1a
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0).toString(16);
 }
 
 // =========================
@@ -1325,17 +1342,19 @@ function startMinesRound() {
     resultMessageEl.textContent = "Enter a bet above 0.";
     return;
   }
-  if (bet > balance) {
-    resultMessageEl.textContent = "Bet exceeds your balance.";
-    return;
+  if (bet > getBalance()) {
+  resultMessageEl.textContent = "Bet exceeds your balance.";
+  return;
   }
+
+  adjustBalance(-bet);
   if (mCount < 1 || mCount >= TOTAL_CELLS) {
     resultMessageEl.textContent = "Mines must be between 1 and 24.";
     return;
   }
   if (!sessionStartMs) { sessionStartMs = Date.now(); startSessionTimer(); }
 
-  balance -= bet;
+ 
   currentBet = bet;
   currentMines = mCount;
   safeClicks = 0;
@@ -1669,7 +1688,7 @@ function startCrashRound() {
     crashStatusMessage.textContent = "Enter a bet above 0.";
     return;
   }
-  if (bet > balance) {
+  if (bet > getBalance) {
     crashStatusMessage.textContent = "Bet exceeds your balance.";
     return;
   }
@@ -1677,8 +1696,10 @@ function startCrashRound() {
 
   // Deduct bet
   balance -= bet;
-  updateBalanceDisplay();
   crashBet = bet;
+  updateBalanceDisplay();
+  persistActiveWalletState();
+  
 
   crashCrashPoint = generateCrashPoint();
   crashCurrentMult = 1.0;
@@ -1725,6 +1746,7 @@ function cashOutCrash() {
 
   balance += payout;
   updateBalanceDisplay();
+  persistActiveWalletState();
 
   showCrashToast(`You cashed out at ${formatMult(cashedMult)} for ${formatCredits(payout)} credits`);
 
@@ -1771,50 +1793,118 @@ function renderCrashHistory() {
   });
 }
 
-function initCrash() {
-  if (crashBigMultEl) crashBigMultEl.textContent = "1.00x";
-
-  if (crashStatusMessage) {
-    crashStatusMessage.textContent = "Place a bet and start a Crash round.";
-  }
-
-  if (crashCashOutBtn) crashCashOutBtn.disabled = true;
-
-  // Ensure curve line exists
-  let curveContainer = crashGraphInner?.querySelector(".crash-curve");
-  if (!curveContainer && crashGraphInner) {
-    curveContainer = document.createElement("div");
-    curveContainer.className = "crash-curve";
-    const line = document.createElement("div");
-    line.className = "crash-curve-line";
-    curveContainer.appendChild(line);
-    crashGraphInner.appendChild(curveContainer);
-    crashCurveLine = line;
-  } else if (curveContainer) {
-    crashCurveLine = curveContainer.querySelector(".crash-curve-line");
-  }
-
-  // Put the toast inside the graph so it overlays nicely
-  if (crashStatusMessage && crashGraphInner && crashStatusMessage.parentElement !== crashGraphInner) {
-  crashGraphInner.appendChild(crashStatusMessage);
-  crashStatusMessage.classList.add("crash-toast");
-  }
-
-  // Reset visuals
-  if (crashCurveLine) crashCurveLine.style.transform = "scaleX(0)";
-  if (rocketTrailEl) rocketTrailEl.style.width = "0";
-  syncCrashMultToRocket();
-}
-
 // =========================
 // WALLET CONTROLS
 // =========================
 
-function resetBalance() {
-  balance = 1000;
-  updateBalanceDisplay();
-  resultMessageEl.textContent = "Balance reset to 1000 demo credits.";
-  crashStatusMessage.textContent = "";
+function getBalance() {
+  return Number(balance || 0);
+}
+
+function hashString(str) {
+  str = String(str || "");
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+
+function submitDepositRequest(amount, address = "") {
+  if (!currentWallet) return toast?.("Connect wallet first.");
+
+  const amt = Number(amount);
+  if (!Number.isFinite(amt) || amt <= 0) {
+    return toast?.("Invalid deposit amount.");
+  }
+
+  const req = {
+    id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
+    wallet: currentWallet,                 // ✅ currentWallet ONLY
+    currency: String(selectedCurrency || "USDT"),
+    amount: clamp2(amt),
+    address: String(address || ""),
+    status: "PENDING",
+    createdAt: Date.now()
+  };
+
+  const list = readList(depositsKey);
+  list.unshift(req);
+  writeList(depositsKey, list);
+
+  return req; // balance changes only when Admin marks PAID
+}
+
+function submitWithdrawRequest() {
+  const amt = Number(withdrawAmount?.value || 0);
+  const addr = String(withdrawAddress?.value || "").trim();
+
+  if (!Number.isFinite(amt) || amt <= 0) { if(withdrawMsg) withdrawMsg.textContent="Enter a valid amount."; return; }
+  if (!addr) { if(withdrawMsg) withdrawMsg.textContent="Enter a destination address."; return; }
+  if (amt > balance) { if(withdrawMsg) withdrawMsg.textContent="Insufficient balance."; return; }
+
+  const req = {
+    id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
+    wallet: currentWallet,
+    currency: depositCurrency?.value || "USDT",
+    amount: clamp2(amt),
+    to: addr,
+    status: "PENDING",
+    createdAt: Date.now()
+  };
+
+  const list = readList(withdrawalsKey);
+  list.unshift(req);
+  writeList(withdrawalsKey, list);
+
+  withdrawAddress.value = "";
+  if (withdrawMsg) withdrawMsg.textContent = "Submitted. Status: PENDING.";
+  renderWithdrawHistory();
+}
+
+function refreshDepositAddress() {
+  if (!depositCurrency || !depositAddress) return;
+
+  const cur = depositCurrency.value || selectedCurrency || "USDT";
+  const wallet = String(currentWallet || "").trim() || "demo-wallet";
+
+  // deterministic fake address per wallet+currency (demo)
+  const fake = `${cur}_${hashString(wallet).slice(0, 10)}_${hashString(cur).slice(0, 6)}`;
+
+  depositAddress.value = fake;
+}
+
+function renderWithdrawHistory(){
+  if (!withdrawHistoryList) return;
+  const list = readList(withdrawalsKey).filter(r => r.wallet === currentWallet);
+
+  if (!list.length) {
+    withdrawHistoryList.innerHTML = `<div class="redeem-empty">No requests yet.</div>`;
+    return;
+  }
+
+  withdrawHistoryList.innerHTML = list.map(r => `
+    <div class="redeem-item">
+      <div class="redeem-item-top">
+        <div class="redeem-item-title">${Number(r.amount || 0).toFixed(2)} ${escapeHtml(r.currency)}</div>
+        <div class="redeem-item-status ${String(r.status||"").toLowerCase()}">${escapeHtml(r.status)}</div>
+      </div>
+      <div class="redeem-item-sub">${new Date(r.createdAt).toLocaleString()} • ${escapeHtml(r.to)}</div>
+    </div>
+  `).join("");
+}
+
+function openModal(el) {
+  if (!el) return;
+  el.classList.add("open");
+  el.setAttribute("aria-hidden", "false");
+}
+
+function closeModal(el) {
+  if (!el) return;
+  el.classList.remove("open");
+  el.setAttribute("aria-hidden", "true");
 }
 
 function switchUser() {
@@ -1833,6 +1923,161 @@ function switchUser() {
 
   updateBalanceDisplay();
   renderCrashHistory();
+}
+
+// =============================
+// ADMIN + WITHDRAW UI HELPERS (required)
+// Put this ABOVE function init()
+// =============================
+
+const depositsKey   = `${RISX_SAVE_KEY}::deposits`;
+const withdrawalsKey= `${RISX_SAVE_KEY}::withdrawals`;
+
+function escapeHtml(str) {
+  return String(str ?? "")
+    .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+}
+
+function hashString(str) {
+  let h = 2166136261;
+  for (let i=0;i<str.length;i++){
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16);
+}
+
+// Admin
+let adminTab = "deposits";
+function setAdminTab(tab){
+  adminTab = tab;
+  adminTabDeposits?.classList.toggle("active", tab==="deposits");
+  adminTabWithdrawals?.classList.toggle("active", tab==="withdrawals");
+  adminTabUsers?.classList.toggle("active", tab==="users");
+
+  adminViewDeposits?.classList.toggle("hidden", tab!=="deposits");
+  adminViewWithdrawals?.classList.toggle("hidden", tab!=="withdrawals");
+  adminViewUsers?.classList.toggle("hidden", tab!=="users");
+}
+
+function renderAdminList(list, kind){
+  if (!list.length) return `<div class="redeem-empty">Nothing here.</div>`;
+  return list.map(r => `
+    <div class="admin-row">
+      <div class="admin-col">
+        <div class="admin-title">${escapeHtml(r.wallet)}</div>
+        <div class="admin-sub">${kind} • ${Number(r.amount).toFixed(2)} ${escapeHtml(r.currency)}</div>
+        <div class="admin-sub">${new Date(r.createdAt).toLocaleString()}</div>
+      </div>
+      <div class="admin-actions">
+        <button class="btn small primary" data-admin-paid="${escapeHtml(r.id)}" data-kind="${kind}">PAID</button>
+        <button class="btn small secondary" data-admin-void="${escapeHtml(r.id)}" data-kind="${kind}">VOID</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function adminMark(id, kind, status){
+  const key = (kind==="deposit") ? depositsKey : withdrawalsKey;
+  const list = readList(key);
+  const idx = list.findIndex(x => String(x.id)===String(id));
+  if (idx < 0) return;
+
+  const prev = list[idx].status;
+  if (prev === "PAID" || prev === "VOID") return; // finalized
+  list[idx].status = status;
+  writeList(key, list);
+
+  // APPLY MONEY ONLY WHEN MARKED PAID
+  if (status === "PAID") {
+    const r = list[idx];
+    if (kind==="deposit") adminAdjustBalance(+Number(r.amount||0));
+    if (kind==="withdraw") adminAdjustBalance(-Number(r.amount||0));
+  }
+
+  renderAdmin();
+}
+
+// ----- Admin: apply balance changes ONLY when marking PAID -----
+function adminAdjustBalance(wallet, delta) {
+  const st = loadWalletState(wallet) || { balance: 0, currency: "USDT" };
+  st.balance = clamp2(Math.max(0, Number(st.balance || 0) + Number(delta || 0)));
+  saveWalletState(wallet, st);
+
+  if (wallet === currentWallet) {
+    balance = st.balance;
+    selectedCurrency = st.currency;
+    updateBalanceDisplay?.();
+    persistActiveWalletState(); // <-- this persists current wallet too
+  }
+}
+
+// mark a deposit/withdraw request
+function adminMark(id, kind, status){
+  const key = (kind==="deposit") ? depositsKey : withdrawalsKey;
+  const list = readList(key);
+  const idx = list.findIndex(x => String(x.id)===String(id));
+  if (idx < 0) return;
+
+  const prev = list[idx].status;
+  if (prev === "PAID" || prev === "VOID") return; // finalized
+  list[idx].status = status;
+  writeList(key, list);
+
+  // APPLY MONEY ONLY WHEN MARKED PAID
+  if (status === "PAID") {
+    const r = list[idx];
+    if (kind==="deposit") adminAdjustBalance(+Number(r.amount||0));
+    if (kind==="withdraw") adminAdjustBalance(-Number(r.amount||0));
+  }
+
+  renderAdmin();
+}
+
+// main admin renderer
+function renderAdmin() {
+  if (!adminViewDeposits || !adminViewWithdrawals || !adminViewUsers) return;
+
+  const q = (adminSearch?.value || "").trim().toLowerCase();
+  const pendingOnly = !!adminPendingOnly?.checked;
+
+  const deposits = readList(depositsKey);
+  const withdrawals = readList(withdrawalsKey);
+
+  // counts
+  adminCountDeposits && (adminCountDeposits.textContent = String(deposits.filter(d => d.status === "PENDING").length));
+  adminCountWithdrawals && (adminCountWithdrawals.textContent = String(withdrawals.filter(d => d.status === "PENDING").length));
+  if (adminCountUsers) {
+    const users = new Set([...deposits, ...withdrawals].map(x => x.wallet));
+    adminCountUsers.textContent = String(users.size);
+  }
+
+  if (adminTab === "deposits") {
+    const list = deposits
+      .filter(r => !pendingOnly || r.status === "PENDING")
+      .filter(r => !q || JSON.stringify(r).toLowerCase().includes(q));
+    adminViewDeposits.innerHTML = renderAdminList(list, "deposit");
+  } else if (adminTab === "withdrawals") {
+    const list = withdrawals
+      .filter(r => !pendingOnly || r.status === "PENDING")
+      .filter(r => !q || JSON.stringify(r).toLowerCase().includes(q));
+    adminViewWithdrawals.innerHTML = renderAdminList(list, "withdraw");
+  } else {
+    adminViewUsers.innerHTML = `<div class="redeem-empty">Users view (later).</div>`;
+  }
+
+  adminMsg && (adminMsg.textContent = "");
+}
+
+// delegate PAID/VOID clicks inside admin modal
+function bindAdminModalClicks() {
+  adminModal?.addEventListener("click", (e) => {
+    const paid = e.target.closest("[data-admin-paid]");
+    const voidBtn = e.target.closest("[data-admin-void]");
+    if (paid) return adminMark(paid.getAttribute("data-admin-paid"), paid.getAttribute("data-kind"), "PAID");
+    if (voidBtn) return adminMark(voidBtn.getAttribute("data-admin-void"), voidBtn.getAttribute("data-kind"), "VOID");
+  });
 }
 
 // =========================
@@ -1917,9 +2162,46 @@ function setupTabs() {
   const activeBtn = document.querySelector(".game-tab.active");
   show(activeBtn?.dataset.target || "mines");
 }
-// =========================
-// INIT
-// =========================
+// ==============================================
+//===============================================
+//                    INIT
+//===============================================
+// ==============================================
+
+function initCrash() {
+  if (crashBigMultEl) crashBigMultEl.textContent = "1.00x";
+
+  if (crashStatusMessage) {
+    crashStatusMessage.textContent = "Place a bet and start a Crash round.";
+  }
+
+  if (crashCashOutBtn) crashCashOutBtn.disabled = true;
+
+  // Ensure curve line exists
+  let curveContainer = crashGraphInner?.querySelector(".crash-curve");
+  if (!curveContainer && crashGraphInner) {
+    curveContainer = document.createElement("div");
+    curveContainer.className = "crash-curve";
+    const line = document.createElement("div");
+    line.className = "crash-curve-line";
+    curveContainer.appendChild(line);
+    crashGraphInner.appendChild(curveContainer);
+    crashCurveLine = line;
+  } else if (curveContainer) {
+    crashCurveLine = curveContainer.querySelector(".crash-curve-line");
+  }
+
+  // Put the toast inside the graph so it overlays nicely
+  if (crashStatusMessage && crashGraphInner && crashStatusMessage.parentElement !== crashGraphInner) {
+  crashGraphInner.appendChild(crashStatusMessage);
+  crashStatusMessage.classList.add("crash-toast");
+  }
+
+  // Reset visuals
+  if (crashCurveLine) crashCurveLine.style.transform = "scaleX(0)";
+  if (rocketTrailEl) rocketTrailEl.style.width = "0";
+  syncCrashMultToRocket();
+}
 
 function initProvablyFair() {
   // Ensure seeds exist
@@ -1945,63 +2227,6 @@ function initProvablyFair() {
   updatePfUI();
 }
 
-function wireBetMultButtons(inputEl, halfBtn, twoXBtn, maxBtn) {
-  if (!inputEl) return;
-
-  const read = () => Number(inputEl.value || 0);
-
-  const write = (v) => {
-    // keep it clean + non-negative
-    const vv = Math.max(0, Math.round(v * 100) / 100);
-    inputEl.value = String(vv);
-    // optional: triggers any listeners you have watching input changes
-    inputEl.dispatchEvent(new Event("input", { bubbles: true }));
-  };
-
-  halfBtn?.addEventListener("click", () => {
-  const v = read();
-  if (v <= 0) return;
-  write(v / 2);
-});
-
-twoXBtn?.addEventListener("click", () => {
-  const v = read();
-  if (v <= 0) write(0.1);
-  else write(v * 2);
-});
-
-  maxBtn?.addEventListener("click", () => write(balance)); // uses your current demo balance
-}
-
-// Inputs
-const betAmountInput   = document.getElementById("betAmount");
-const crashBetAmountEl = document.getElementById("crashBetAmount");
-const plinkoBetAmountEl= document.getElementById("plinkoBetAmount");
-
-// Mines buttons
-wireBetMultButtons(
-  betAmountInput,
-  document.getElementById("minesHalfBtn"),
-  document.getElementById("mines2xBtn"),
-  document.getElementById("minesMaxBtn")
-);
-
-// Crash buttons
-wireBetMultButtons(
-  crashBetAmountEl,
-  document.getElementById("crashHalfBtn"),
-  document.getElementById("crash2xBtn"),
-  document.getElementById("crashMaxBtn")
-);
-
-// Plinko buttons
-wireBetMultButtons(
-  plinkoBetAmountEl,
-  document.getElementById("plinkoHalfBtn"),
-  document.getElementById("plinko2xBtn"),
-  document.getElementById("plinkoMaxBtn")
-);
-
 function initPlinko() {
   renderPlinkoBoard();
   renderPlinkoBuckets();
@@ -2015,419 +2240,152 @@ function initPlinko() {
 
 function init() {
 
-      // Wallet connect
+  // ---------- basic UI boot ----------
+  bindAdminModalClicks?.();
+
+  updateBalanceDisplay?.();
+  updateMinesInfoPanel?.(1.0, 0);
+
+  buildMinesGrid?.();
+  renderCrashHistory?.();
+
+  restoreSessionStats?.();
+  updateSessionStats?.();
+  startSessionTimer?.();
+  updateSessionTimer?.();
+
+  // =============================
+  // WALLET BOOT (v2)
+  // =============================
+  // Restore last active wallet if present
+  const bootWallet = localStorage.getItem(WALLET_KEY) || "";
+  if (bootWallet) {
+    setActiveWallet(bootWallet); // loads + seeds + updates UI + persists
+  } else {
+    // optional: show placeholders
+    if (currentWalletEl) currentWalletEl.textContent = "—";
+  }
+
+  // =============================
+  // WALLET BUTTON WIRING (REAL FLOW)
+  // =============================
+
+  // Connect wallet (identity only)
   connectWalletBtn?.addEventListener("click", () => {
     const input = prompt("Enter wallet address (demo):", currentWallet || "");
     if (!input) return;
-    setActiveWallet(input);
+    setActiveWallet(input.trim());
   });
 
-  // Currency select
-  currencySelect?.addEventListener("change", () => {
-    selectedCurrency = currencySelect.value;
-    if (walletCurrencyLabel) walletCurrencyLabel.textContent = selectedCurrency;
-    persistWallet();
-  });
-  
-  // Boot: restore active wallet if present
-  (function bootWallet(){
-    const w = localStorage.getItem(WALLET_KEY) || "";
-    if (w) setActiveWallet(w);
-    else {
-    if (currentWalletEl) currentWalletEl.textContent = "—";
-    }
-    })();
-
+  // Deposit modal open
   depositBtn?.addEventListener("click", () => {
-  const amt = Number(prompt("Demo deposit amount (credits):", "100") || 0);
-  if (!amt || amt <= 0) return;
-  balance += amt;
-  updateBalanceDisplay();
+    if (!currentWallet) return toast?.("Connect wallet first.");
+    if (depositCurrency) depositCurrency.value = selectedCurrency || depositCurrency.value || "USDT";
+    refreshDepositAddress?.();
+    if (depositMsg) depositMsg.textContent = "";
+    openModal?.(depositModal);
   });
 
-  withdrawBtn?.addEventListener("click", () => {
-  const amt = Number(prompt("Demo withdraw amount (credits):", "50") || 0);
-  if (!amt || amt <= 0) return;
-  if (amt > balance) return alert("Insufficient balance.");
-  balance -= amt;
-  updateBalanceDisplay();
+  // Deposit currency changes address + currency
+  depositCurrency?.addEventListener("change", () => {
+    selectedCurrency = depositCurrency.value || selectedCurrency || "USDT";
+    refreshDepositAddress?.();
+    persistActiveWalletState?.();
   });
 
-  adminBtn?.addEventListener("click", () => {
-    alert(`Admin (demo)\nWallet: ${currentWallet}\nBalance: ${formatCredits(balance)}`);
-  });
+  // Create deposit request (PENDING only)
+ depositSubmitBtn?.addEventListener("click", () => {
+  if (!currentWallet) return toast?.("Connect wallet first.");
 
-
-  // =============================
-  // MODALS (Deposit / Withdraw / Admin)
-  // =============================
-  function openModal(el) {
-    if (!el) return;
-    el.classList.add("open");
-    el.setAttribute("aria-hidden", "false");
-  }
-  function closeModal(el) {
-    if (!el) return;
-    el.classList.remove("open");
-    el.setAttribute("aria-hidden", "true");
-  }
-
-  document.querySelectorAll("[data-deposit-close]").forEach(btn => btn.addEventListener("click", () => closeModal(depositModal)));
-  document.querySelectorAll("[data-withdraw-close]").forEach(btn => btn.addEventListener("click", () => closeModal(withdrawModal)));
-  document.querySelectorAll("[data-admin-close]").forEach(btn => btn.addEventListener("click", () => closeModal(adminModal)));
-
-  if (depositBtn) depositBtn.addEventListener("click", () => {
-    if (!currentWallet) return toast("Connect wallet first.");
-    depositCurrency.value = selectedCurrency;
-    refreshDepositAddress();
-    depositMsg.textContent = "";
-    openModal(depositModal);
-  });
-
-  if (withdrawBtn) withdrawBtn.addEventListener("click", () => {
-    if (!currentWallet) return toast("Connect wallet first.");
-    withdrawMsg.textContent = "";
-    renderWithdrawHistory();
-    openModal(withdrawModal);
-  });
-
-  if (adminBtn) adminBtn.addEventListener("click", () => {
-    openModal(adminModal);
-    setAdminTab("deposits");
-    renderAdmin();
-  });
-
-  function refreshDepositAddress() {
-    const cur = depositCurrency.value;
-    // Demo: deterministic fake address per wallet+currency
-    const fake = `${cur}_${hashString(currentWallet).slice(0, 10)}_${hashString(cur).slice(0, 6)}`;
-    depositAddress.value = fake;
-  }
-
-  if (depositCurrency) depositCurrency.addEventListener("change", refreshDepositAddress);
-
-  if (copyDepositBtn) copyDepositBtn.addEventListener("click", async () => {
-  try {
-    await navigator.clipboard.writeText(depositAddress.value);
-    depositMsg.textContent = "Copied.";
-  } catch {
-    depositMsg.textContent = "Copy failed (clipboard blocked).";
-  }
-  });
-
-  // Withdraw requests
-  function submitWithdrawRequest() {
-  if (!currentWallet) return toast("Connect wallet first.");
-
-  const amtCheck = parseAmount(withdrawAmount.value, { min: 0.01, decimals: 2 });
-  if (!amtCheck.ok) return (withdrawMsg.textContent = amtCheck.msg);
-
-  const addrCheck = parseTrimmed(withdrawAddress.value, { minLen: 12, maxLen: 120, label: "Destination address" });
-  if (!addrCheck.ok) return (withdrawMsg.textContent = addrCheck.msg);
-
-  if (!isProbablyAddress(addrCheck.value)) {
-    return (withdrawMsg.textContent = "Address format looks invalid.");
-  }
-
-  const amt = amtCheck.value;
-  const addr = addrCheck.value;
-
-  if (amt > balance) return (withdrawMsg.textContent = "Insufficient balance.");
-
-  // ✅ prevent double-submit spam
-  if (withdrawSubmitBtn) withdrawSubmitBtn.disabled = true;
-
-  const req = {
-    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-    wallet: currentWallet,
-    currency: selectedCurrency,
-    amount: clamp2(amt),
-    to: addr,
-    status: "PENDING",
-    createdAt: Date.now()
-  };
-
-  const list = readList(withdrawalsKey);
-  list.unshift(req);
-  writeList(withdrawalsKey, list);
-
-  withdrawAddress.value = "";
-  withdrawAmount.value = "";
-  withdrawMsg.textContent = "Submitted. Status: PENDING.";
-  renderWithdrawHistory();
-
-  // re-enable after tick (keeps UX snappy but blocks double clicks)
-  setTimeout(() => { if (withdrawSubmitBtn) withdrawSubmitBtn.disabled = false; }, 0);
-}
-
-  if (withdrawSubmitBtn) withdrawSubmitBtn.addEventListener("click", submitWithdrawRequest);
-  if (withdrawClearBtn) withdrawClearBtn.addEventListener("click", () => {
-  const list = readList(withdrawalsKey).filter(r => r.wallet !== currentWallet);
-  writeList(withdrawalsKey, list);
-  renderWithdrawHistory();
-  });
-
-  function renderWithdrawHistory() {
-  if (!withdrawHistoryList) return;
-  const list = readList(withdrawalsKey).filter(r => r.wallet === currentWallet);
-  if (!list.length) {
-    withdrawHistoryList.innerHTML = `<div class="redeem-empty">No requests yet.</div>`;
+  const amt = Number(depositAmount?.value || 0);
+  if (!Number.isFinite(amt) || amt <= 0) {
+    if (depositMsg) depositMsg.textContent = "Enter a valid amount.";
     return;
   }
-  withdrawHistoryList.innerHTML = list.map(r => `
-    <div class="redeem-item">
-      <div class="redeem-item-top">
-        <div class="redeem-item-title">${formatCredits(r.amount)} ${r.currency}</div>
-        <div class="redeem-item-status ${r.status.toLowerCase()}">${r.status}</div>
-      </div>
-      <div class="redeem-item-sub">${new Date(r.createdAt).toLocaleString()} • ${escapeHtml(r.to)}</div>
-    </div>
-  `).join("");
-}
 
-// Admin Ops
-let adminTab = "deposits";
-function setAdminTab(tab) {
-  adminTab = tab;
+  submitDepositRequest(amt, depositAddress?.value || "");
+  if (depositMsg) depositMsg.textContent = "Deposit request created (PENDING).";
+  if (depositAmount) depositAmount.value = "";
+  renderAdmin?.();
+});
 
-  // buttons
-  adminTabDeposits?.classList.toggle("active", tab === "deposits");
-  adminTabWithdrawals?.classList.toggle("active", tab === "withdrawals");
-  adminTabUsers?.classList.toggle("active", tab === "users");
-
-  // views
-  adminViewDeposits?.classList.toggle("hidden", tab !== "deposits");
-  adminViewWithdrawals?.classList.toggle("hidden", tab !== "withdrawals");
-  adminViewUsers?.classList.toggle("hidden", tab !== "users");
-}
-
-adminTabDeposits?.addEventListener("click", () => { setAdminTab("deposits"); renderAdmin(); });
-adminTabWithdrawals?.addEventListener("click", () => { setAdminTab("withdrawals"); renderAdmin(); });
-adminTabUsers?.addEventListener("click", () => { setAdminTab("users"); renderAdmin(); });
-
-adminRefreshBtn?.addEventListener("click", renderAdmin);
-adminPendingOnly?.addEventListener("change", renderAdmin);
-adminSearch?.addEventListener("input", debounce(renderAdmin, 150));
-
-function renderAdmin() {
-  const q = (adminSearch?.value || "").trim().toLowerCase();
-  const pendingOnly = !!adminPendingOnly?.checked;
-
-  const deposits = readList(depositsKey);
-  const withdrawals = readList(withdrawalsKey);
-
-  // counts
-  if (adminCountDeposits) adminCountDeposits.textContent = String(deposits.filter(d => d.status === "PENDING").length);
-  if (adminCountWithdrawals) adminCountWithdrawals.textContent = String(withdrawals.filter(d => d.status === "PENDING").length);
-  if (adminCountUsers) {
-    const users = new Set([...deposits, ...withdrawals].map(x => x.wallet));
-    adminCountUsers.textContent = String(users.size);
-  }
-
-  if (adminTab === "deposits") {
-    const list = deposits
-      .filter(r => !pendingOnly || r.status === "PENDING")
-      .filter(r => !q || JSON.stringify(r).toLowerCase().includes(q));
-    adminViewDeposits.innerHTML = renderAdminList(list, "deposit");
-  } else if (adminTab === "withdrawals") {
-    const list = withdrawals
-      .filter(r => !pendingOnly || r.status === "PENDING")
-      .filter(r => !q || JSON.stringify(r).toLowerCase().includes(q));
-    adminViewWithdrawals.innerHTML = renderAdminList(list, "withdraw");
-  } else {
-    const users = aggregateUsers(deposits, withdrawals, q);
-    adminViewUsers.innerHTML = users.length ? users.map(u => `
-      <div class="admin-row">
-        <div class="admin-col">
-          <div class="admin-title">${escapeHtml(u.wallet)}</div>
-          <div class="admin-sub">Balance: ${formatCredits(u.balance)} ${escapeHtml(u.currency)}</div>
-        </div>
-        <div class="admin-actions">
-          <button class="btn small secondary" data-admin-credit="${escapeHtml(u.wallet)}">+10</button>
-          <button class="btn small secondary" data-admin-debit="${escapeHtml(u.wallet)}">-10</button>
-        </div>
-      </div>
-    `).join("") : `<div class="redeem-empty">No users yet.</div>`;
-
-    // bind credit/debit
-    adminViewUsers.querySelectorAll("[data-admin-credit]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const w = btn.getAttribute("data-admin-credit");
-        adminAdjustBalance(w, +10);
-      });
-    });
-    adminViewUsers.querySelectorAll("[data-admin-debit]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const w = btn.getAttribute("data-admin-debit");
-        adminAdjustBalance(w, -10);
-      });
-    });
-  }
-
-  adminMsg.textContent = "";
-  }
-
-  function renderAdminList(list, kind) {
-  if (!list.length) return `<div class="redeem-empty">Nothing here.</div>`;
-  return list.map(r => `
-    <div class="admin-row">
-      <div class="admin-col">
-        <div class="admin-title">${escapeHtml(r.wallet)}</div>
-        <div class="admin-sub">${kind === "deposit" ? "Deposit" : "Withdraw"} • ${formatCredits(r.amount)} ${escapeHtml(r.currency)}</div>
-        <div class="admin-sub">${new Date(r.createdAt).toLocaleString()} • ${kind === "withdraw" ? ("To: " + escapeHtml(r.to)) : ("Addr: " + escapeHtml(r.address || ""))}</div>
-      </div>
-      <div class="admin-actions">
-        <button class="btn small primary" data-admin-paid="${escapeHtml(r.id)}" data-kind="${kind}">PAID</button>
-        <button class="btn small secondary" data-admin-void="${escapeHtml(r.id)}" data-kind="${kind}">VOID</button>
-      </div>
-    </div>
-  `).join("");
-}
-
-  function aggregateUsers(deposits, withdrawals, q) {
-    const wallets = new Set([...deposits, ...withdrawals].map(x => x.wallet));
-    const out = [];
-    wallets.forEach(w => {
-      if (q && !w.toLowerCase().includes(q)) return;
-      const raw = localStorage.getItem(walletStoreKey(w));
-      let bal = 0, cur = "USDT";
-      if (raw) { try { const s = JSON.parse(raw); bal = Number(s.balance||0); cur = String(s.currency||"USDT"); } catch {} }
-      out.push({ wallet: w, balance: bal, currency: cur });
-    });
-    return out.sort((a,b)=>a.wallet.localeCompare(b.wallet));
-  }
-
-  function adminAdjustBalance(wallet, delta) {
-    const raw = localStorage.getItem(walletStoreKey(wallet));
-    let s = { balance: 0, currency: "USDT" };
-    if (raw) { try { s = JSON.parse(raw); } catch {} }
-    s.balance = clamp2(Math.max(0, (Number(s.balance)||0) + delta));
-    localStorage.setItem(walletStoreKey(wallet), JSON.stringify(s));
-    if (wallet === currentWallet) {
-      balance = s.balance;
-      selectedCurrency = s.currency;
-      updateBalanceDisplay();
+  // Copy deposit address
+  copyDepositBtn?.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(depositAddress?.value || "");
+      if (depositMsg) depositMsg.textContent = "Copied.";
+    } catch {
+      if (depositMsg) depositMsg.textContent = "Copy failed.";
     }
-    renderAdmin();
-  }
+  });
 
-  function adminMark(id, kind, status) {
-  const key = (kind === "deposit") ? depositsKey : withdrawalsKey;
-  const list = readList(key);
-  const idx = list.findIndex(x => String(x.id) === String(id));
-  if (idx < 0) return;
-  const prev = list[idx].status;
+  // Withdraw modal open
+  withdrawBtn?.addEventListener("click", () => {
+    if (!currentWallet) return toast?.("Connect wallet first.");
+    if (withdrawMsg) withdrawMsg.textContent = "";
+    renderWithdrawHistory?.();
+    openModal?.(withdrawModal);
+  });
 
-// ✅ If already finalized, do nothing (prevents double-apply)
-if (prev === "PAID" || prev === "VOID") return;
+  // Withdraw submit/clear
+  withdrawSubmitBtn?.addEventListener("click", submitWithdrawRequest);
+  withdrawClearBtn?.addEventListener("click", () => {
+    const list = readList(withdrawalsKey).filter(r => r.wallet !== currentWallet);
+    writeList(withdrawalsKey, list);
+    renderWithdrawHistory?.();
+  });
 
-// ✅ If already the same status, do nothing
-if (prev === status) return;
+  // Admin open
+  adminBtn?.addEventListener("click", () => {
+    openModal?.(adminModal);
+    setAdminTab?.("deposits");
+    renderAdmin?.();
+  });
 
-list[idx].status = status;
-writeList(key, list);
+  // Admin tabs + filters
+  adminTabDeposits?.addEventListener("click", () => { setAdminTab?.("deposits"); renderAdmin?.(); });
+  adminTabWithdrawals?.addEventListener("click", () => { setAdminTab?.("withdrawals"); renderAdmin?.(); });
+  adminTabUsers?.addEventListener("click", () => { setAdminTab?.("users"); renderAdmin?.(); });
 
-// Apply balance effects when PAID (ONLY ON TRANSITION TO PAID)
-if (status === "PAID") {
-  const r = list[idx];
-  if (kind === "withdraw") {
-    adminAdjustBalance(r.wallet, -Number(r.amount || 0));
-  } else {
-    adminAdjustBalance(r.wallet, +Number(r.amount || 0));
-  }
-}
-  renderAdmin();
-}
+  adminRefreshBtn?.addEventListener("click", renderAdmin);
+  adminPendingOnly?.addEventListener("change", renderAdmin);
+  adminSearch?.addEventListener("input", debounce(renderAdmin, 150));
 
+  // Admin click delegation for PAID/VOID
   adminModal?.addEventListener("click", (e) => {
     const paid = e.target.closest("[data-admin-paid]");
     const voidBtn = e.target.closest("[data-admin-void]");
-    if (paid) return adminMark(paid.getAttribute("data-admin-paid"), paid.getAttribute("data-kind"), "PAID");
-    if (voidBtn) return adminMark(voidBtn.getAttribute("data-admin-void"), voidBtn.getAttribute("data-kind"), "VOID");
+    if (paid) return adminMark?.(paid.getAttribute("data-admin-paid"), paid.getAttribute("data-kind"), "PAID");
+    if (voidBtn) return adminMark?.(voidBtn.getAttribute("data-admin-void"), voidBtn.getAttribute("data-kind"), "VOID");
   });
 
-  // Hotkey: Ctrl/Cmd + Shift + A to open Admin Ops (demo)
-  document.addEventListener("keydown", (e) => {
-    const isMac = navigator.platform.toUpperCase().includes("MAC");
-    const mod = isMac ? e.metaKey : e.ctrlKey;
-    if (mod && e.shiftKey && (e.key === "A" || e.key === "a")) {
-      e.preventDefault();
-      openModal(adminModal);
-      setAdminTab("deposits");
-      renderAdmin();
-    }
-  });
+  // Modal close buttons
+  document.querySelectorAll("[data-deposit-close]").forEach(btn =>
+    btn.addEventListener("click", () => closeModal?.(depositModal))
+  );
+  document.querySelectorAll("[data-withdraw-close]").forEach(btn =>
+    btn.addEventListener("click", () => closeModal?.(withdrawModal))
+  );
+  document.querySelectorAll("[data-admin-close]").forEach(btn =>
+    btn.addEventListener("click", () => closeModal?.(adminModal))
+  );
 
-  // Demo "deposit request" shortcut: Ctrl/Cmd + Shift + D creates a pending deposit for current wallet
-  document.addEventListener("keydown", (e) => {
-  const isMac = navigator.platform.toUpperCase().includes("MAC");
-  const mod = isMac ? e.metaKey : e.ctrlKey;
-  if (mod && e.shiftKey && (e.key === "D" || e.key === "d")) {
-    if (!currentWallet) return;
-    e.preventDefault();
-    const req = {
-      id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-      wallet: currentWallet,
-      currency: selectedCurrency,
-      amount: 10,
-      address: depositAddress?.value || "",
-      status: "PENDING",
-      createdAt: Date.now()
-    };
-    const list = readList(depositsKey);
-    list.unshift(req);
-    writeList(depositsKey, list);
-    toast("Created demo deposit request (+10 pending). Approve in Admin.");
-    }
-  });
+  // =============================
+  // GAME WIRING
+  // =============================
+  startGameBtn?.addEventListener("click", () => withLock("minesStart", startMinesRound));
+  cashOutBtn?.addEventListener("click", () => withLock("minesCashout", cashOutMines));
 
-  updateBalanceDisplay();
-  updateMinesInfoPanel(1.0, 0);
+  setupPresetButtons?.();
+  setupTabs?.();
+  setupProvablyFairDrawer?.();
+  initProvablyFair?.();
 
-  buildMinesGrid();
-  renderCrashHistory();
+  initCrash?.();
+  crashStartBtn?.addEventListener("click", () => withLock("crashStart", startCrashRound));
+  crashCashOutBtn?.addEventListener("click", () => withLock("crashCashout", cashOutCrash));
 
-  restoreSessionStats();
-
-  // Session stats + timer
-  updateSessionStats();
-  startSessionTimer();
-  updateSessionTimer();
-
-  // WALLET (demo request flow)
-  initWalletDemoFlow();
-
-  // Session reset  
-  if (resetSessionBtn) {
-    resetSessionBtn.addEventListener("click", () => {
-      sessionRounds = 0;
-      bestCrashMult = 0;
-      minesWins = 0;
-      minesLosses = 0;
-
-      resetSessionTimer();
-      updateSessionStats();
-      persistSessionStats();
-    });
-  }
-
-  // MINES
-  if (startGameBtn) startGameBtn.addEventListener("click", () => withLock("minesStart", startMinesRound));
-  if (cashOutBtn) cashOutBtn.addEventListener("click", () => withLock("minesCashout", cashOutMines));
-  if (resetBalanceBtn) resetBalanceBtn.addEventListener("click", resetBalance);
-
-  setupPresetButtons();
-  setupTabs();
-  setupProvablyFairDrawer();
-  initProvablyFair();
-
-  // CRASH
-  initCrash();
-  if (crashStartBtn) crashStartBtn.addEventListener("click", () => withLock("crashStart", startCrashRound));
-  if (crashCashOutBtn) crashCashOutBtn.addEventListener("click", () => withLock("crashCashout", cashOutCrash));
-
-  // PLINKO
-  initPlinko();
+  initPlinko?.();
 }
 
 document.addEventListener("DOMContentLoaded", init);
