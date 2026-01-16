@@ -1,3 +1,56 @@
+//========================
+// Challenge modal bonding
+//========================
+const openChallengeBtn = document.getElementById("openChallengeBtn");
+const challengeModal = document.getElementById("challengeModal");
+const challengeTier = document.getElementById("challengeTier");
+const challengeStartBtn = document.getElementById("challengeStartBtn");
+const challengeMsg = document.getElementById("challengeMsg");
+
+let challengeActive = false;
+let challengeTierSelected = null;
+
+// Block closing until active
+document.querySelectorAll("[data-challenge-close]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    if (!challengeActive) {
+      if (challengeMsg) challengeMsg.textContent = "Pick a tier to begin.";
+      return;
+    }
+    closeModal(challengeModal);
+  });
+});
+
+challengeStartBtn?.addEventListener("click", () => {
+  const tier = challengeTier?.value || "beginner";
+  challengeTierSelected = tier;
+
+  // TODO next: set starting credits + limits per tier
+  // For now: just “unlock” app once tier chosen
+  challengeActive = true;
+
+  if (challengeMsg) challengeMsg.textContent = `Locked: ${tier.toUpperCase()} — Starting...`;
+
+  closeModal(challengeModal);
+  lockAppUI(false);
+});
+
+openChallengeBtn?.addEventListener("click", () => {
+  openModal(challengeModal);
+  if (challengeMsg) challengeMsg.textContent = "";
+});
+
+document.querySelectorAll("[data-challenge-close]").forEach(btn =>
+  btn.addEventListener("click", () => closeModal(challengeModal))
+);
+
+challengeStartBtn?.addEventListener("click", () => {
+  const tier = challengeTier?.value || "beginner";
+  // for now: just confirm. (We’ll enforce rules next.)
+  if (challengeMsg) challengeMsg.textContent = `Challenge locked: ${tier.toUpperCase()}.`;
+  closeModal(challengeModal);
+});
+
 // =========================
 // DOM REFS (declare only — no listeners here)
 // =========================
@@ -127,6 +180,35 @@ function setActiveWallet(w) {
 
   // make sure it exists in storage (seed once)
   persistActiveWalletState();
+}
+
+/*===============================
+     Challenge setup 
+//============================== */ 
+
+const challenge = {
+  active: false,
+  tier: null,
+  startBalance: 0,
+  target: 100,
+  maxBetPct: 0.1,
+  locked: false
+};
+
+function lockAppUI(locked) {
+  // disables the main game action buttons
+  document.getElementById("startGameBtn")?.toggleAttribute("disabled", locked);
+  document.getElementById("cashOutBtn")?.toggleAttribute("disabled", locked);
+
+  document.getElementById("crashStartBtn")?.toggleAttribute("disabled", locked);
+  document.getElementById("crashCashOutBtn")?.toggleAttribute("disabled", locked);
+
+  document.getElementById("plinkoDropBtn")?.toggleAttribute("disabled", locked);
+
+  // optional: also disable wallet buttons until tier picked
+  document.getElementById("depositBtn")?.toggleAttribute("disabled", locked);
+  document.getElementById("withdrawBtn")?.toggleAttribute("disabled", locked);
+  document.getElementById("adminBtn")?.toggleAttribute("disabled", locked);
 }
 
 // =========================
@@ -1930,6 +2012,9 @@ function switchUser() {
 // Put this ABOVE function init()
 // =============================
 
+// Force Challenge Tier selection on entry
+lockAppUI(true);
+openModal(document.getElementById("challengeModal"));
 const depositsKey   = `${RISX_SAVE_KEY}::deposits`;
 const withdrawalsKey= `${RISX_SAVE_KEY}::withdrawals`;
 
@@ -2224,6 +2309,8 @@ function initPlinko() {
 }
 
 function init() {
+  lockAppUI(true);
+  openModal(challengeModal);
 
   // ---------- basic UI boot ----------
   bindAdminModalClicks?.();
@@ -2287,6 +2374,18 @@ function init() {
     if (depositMsg) depositMsg.textContent = "Enter a valid amount.";
     return;
   }
+
+  challengeStartBtn?.addEventListener("click", () => {
+  const tier = challengeTier?.value || "beginner";
+  challengeTierSelected = tier;
+  challengeActive = true;
+
+  // TODO next step: apply tier rules + starting credits here
+  if (challengeMsg) challengeMsg.textContent = `Started: ${tier.toUpperCase()}`;
+
+  closeModal(challengeModal);
+  lockAppUI(false);
+});
 
   submitDepositRequest(amt, depositAddress?.value || "");
   if (depositMsg) depositMsg.textContent = "Deposit request created (PENDING).";
