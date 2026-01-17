@@ -22,6 +22,7 @@
   --accent-green-soft: #18c86a;
   --accent-red: #ff1f4b;
   --accent-gold: #d4af37;
+    --accent-purple: #7b3fe4;
 
   /* layout */
   --container: 1280px;
@@ -1911,67 +1912,185 @@ select:focus {
 .hint.muted{ opacity:.6; }
 
 /* =========================
-   LANDING PAGE
+   RISX LANDING PAGE (FINAL)
 ========================= */
 
 body.landing {
   margin: 0;
-  background: #0b0f1a;
-  color: #fff;
-  font-family: Inter, system-ui, sans-serif;
+  min-height: 100vh;
+  background: var(--bg-0);
 }
 
+/* Split container */
 .landing-split {
   display: flex;
-  height: 100vh;
+  min-height: 100vh;
+  position: relative;
 }
 
+/* Shared panel styles */
 .landing-panel {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   text-decoration: none;
-  transition: all 0.25s ease;
+  color: var(--text-main);
+  position: relative;
+  overflow: hidden;
+  transition: filter 0.3s ease, transform 0.3s ease;
 }
 
-.landing-panel .panel-inner {
+/* OPTION 2 — Cyber Purple */
+.landing-panel.challenge {
+  box-shadow: inset -1px 0 0 rgba(255,255,255,0.08);
+  background:
+    radial-gradient(
+      circle at 20% 20%,
+      rgba(140, 80, 255, 0.45),
+      rgba(90, 50, 180, 0.35) 35%,
+      var(--bg-1) 65%,
+      var(--bg-0)
+    );
+}
+
+.landing-panel.challenge:hover {
+  filter: brightness(1.08);
+}
+
+/* RIGHT — Casino (disabled) */
+.landing-panel.casino {
+  background:
+    radial-gradient(
+      circle at top right,
+      var(--bg-3),
+      var(--bg-0) 65%
+    );
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.landing-panel.casino::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 80% 80%,
+    rgba(29,242,127,0.08),
+    transparent 60%
+  );
+  pointer-events: none;
+}
+
+/* Content wrapper */
+body.landing .landing-content{
+  display: grid;
+  grid-template-rows: 72px 34px 52px 64px 22px; /* RISX, subtitle, desc, button, label */
+  align-items: center;
+  justify-items: center;
+  row-gap: 10px;
   text-align: center;
-  max-width: 420px;
+  max-width: 520px;
+  padding: 24px;
 }
 
-.landing-panel h1 {
-  font-size: 48px;
-  letter-spacing: 2px;
+.landing-content h1 {
+  font-size: 3.2rem;
+  letter-spacing: 1px;
+
+  /* ALIGNMENT FIX */
+  height: 3.8rem;
+  line-height: 3.8rem;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.landing-panel h2 {
+/* Subtitles */
+.landing-content p {
+  font-size: 1.05rem;
+  color: var(--text-muted);
+  margin-bottom: 1.75rem;
+}
+
+/* CTA button */
+.landing-cta {
+  display: inline-block;
+  padding: 14px 34px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  border-radius: 999px;
+  background: linear-gradient(
+    135deg,
+    var(--accent-green),
+    var(--accent-green-soft)
+  );
+  color: #04110a;
+  text-decoration: none;
+  box-shadow: 0 0 24px rgba(29, 242, 127, 0.35);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.landing-cta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 32px rgba(29, 242, 127, 0.55);
+}
+
+/* Disabled CTA */
+.landing-cta.disabled {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+
+/* Small label text */
+.landing-label {
   margin-top: 12px;
-  font-size: 24px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  letter-spacing: 0.6px;
 }
 
-.landing-panel p {
-  opacity: 0.85;
-  margin: 16px 0;
+.landing-split::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: rgba(255,255,255,0.08);
+  box-shadow: 0 0 18px rgba(255,255,255,0.05);
+  transform: translateX(-0.5px);
+  pointer-events: none;
 }
 
-.landing-panel.active {
-  background: linear-gradient(135deg, #111827, #020617);
-  cursor: pointer;
+/* Add-on: CTA glow pulse on hover */
+.landing-cta:hover {
+  filter: saturate(1.05);
 }
 
-.landing-panel.active:hover {
-  transform: scale(1.01);
+.landing-panel.challenge:hover .landing-cta {
+  box-shadow:
+    0 0 34px rgba(29, 242, 127, 0.60),
+    0 0 90px rgba(29, 242, 127, 0.18);
 }
 
-.landing-panel.locked {
-  background: #020617;
-  opacity: 0.5;
-  cursor: not-allowed;
+body.landing .landing-content h1,
+body.landing .landing-content h2,
+body.landing .landing-content p {
+  margin: 0;
 }
 
-.landing-panel .coins {
-  margin-top: 12px;
-  font-size: 12px;
-  opacity: 0.7;
+body.landing .landing-content h1{
+  line-height: 1;
+}
+
+body.landing .landing-cta.disabled{
+  margin-bottom: 10px;
+}
+
+body.landing .landing-label{
+  margin-top: 0;
 }
