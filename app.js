@@ -1,28 +1,59 @@
 // =========================
-// CHALLENGE MODE (v1)
+// CHALLENGE TIERS (shape must match game code)
 // =========================
-const CHALLENGE = {
-  enabled: true,          // flip to false if you want normal casino later
-  startCredits: 250,
-  goalCredits: 1000,
-
-  caps: {
-    crashMaxBetPct: 0.10,
+const CHALLENGE_TIERS = {
+  beginner: {
+    startCredits: 250,
+    goalCredits: 1000,
     minesMaxBetPct: 0.10,
+    crashMaxBetPct: 0.10,
     plinkoMaxBetPct: 0.05,
+    minesMin: 3,
     minesMaxCashoutMult: 2.5,
-    plinkoMaxMult: 25
+    plinkoMaxMult: 25,
+    crashAutoCashout: false
+  },
+
+  // Optional placeholders (you can tune later)
+  intermediate: {
+    startCredits: 200,
+    goalCredits: 1000,
+    minesMaxBetPct: 0.10,
+    crashMaxBetPct: 0.10,
+    plinkoMaxBetPct: 0.05,
+    minesMin: 3,
+    minesMaxCashoutMult: 2.5,
+    plinkoMaxMult: 25,
+    crashAutoCashout: false
+  },
+
+  pro: {
+    startCredits: 150,
+    goalCredits: 1000,
+    minesMaxBetPct: 0.10,
+    crashMaxBetPct: 0.10,
+    plinkoMaxBetPct: 0.05,
+    minesMin: 3,
+    minesMaxCashoutMult: 2.5,
+    plinkoMaxMult: 25,
+    crashAutoCashout: false
   }
 };
 
-function challengeMaxBet(pct){
-  return Math.max(0, getBalance() * pct);
-}
+const CHALLENGE = {
+  enabled: true,
+  active: false,
+  tier: null,
+  startBalance: 0,
+  target: 100,
+  maxBetPct: 0.1,
+  locked: false
+};
 
-const DEFAULT_START_BALANCE = 250; // challenge start
-// Challenge runtime state
-// ===== Challenge completion flag (global) =====
-let challengeCompleted = false;
+function getTier() {
+  const key = challengeTierSelected || CHALLENGE.tier || "beginner";
+  return CHALLENGE_TIERS[key] || CHALLENGE_TIERS.beginner;
+}
 
 // Optional: persist across refresh
 function saveChallengeCompleted(v){
@@ -43,9 +74,6 @@ const challengeModal = document.getElementById("challengeModal");
 const challengeTier = document.getElementById("challengeTier");
 const challengeStartBtn = document.getElementById("challengeStartBtn");
 const challengeMsg = document.getElementById("challengeMsg");
-
-let challengeActive = false;
-let challengeTierSelected = null;
 
 // =========================
 // DOM REFS (declare only — no listeners here)
@@ -132,15 +160,17 @@ function adjustBalance(delta) {
   updateBalanceDisplay?.();
   persistActiveWalletState?.(); // keeps per-wallet storage in sync
   // ✅ Challenge completion check (ONE place)
+    const goal = Number(CHALLENGE?.target ?? CHALLENGE?.goalCredits ?? 0);
+
   if (
     CHALLENGE.enabled &&
     !challengeCompleted &&
-    balance >= CHALLENGE.goalCredits
+    balance >= goal
   ) {
     challengeCompleted = true;
-    saveChallengeCompleted(true);
+    saveChallengeCompleted?.(true);
 
-    challengeToast(`✅ Goal reached: ${CHALLENGE.goalCredits}!`);
+    challengeToast?.(`✅ Goal reached: ${goal}!`);
     if (typeof openChallengeWinModal === "function") openChallengeWinModal();
   }
 }
@@ -198,15 +228,6 @@ function setActiveWallet(w) {
 /*===============================
      Challenge setup 
 //============================== */ 
-
-const challenge = {
-  active: false,
-  tier: null,
-  startBalance: 0,
-  target: 100,
-  maxBetPct: 0.1,
-  locked: false
-};
 
 function lockAppUI(locked) {
   // disables the main game action buttons
@@ -544,6 +565,9 @@ function renderPlinkoBuckets() {
 }
 
 function setupProvablyFairDrawer() {
+  if (setupProvablyFairDrawer._bound) return;
+  setupProvablyFairDrawer._bound = true;
+
   const modal = document.getElementById("pfModal");
   if (!modal) return;
 
@@ -559,12 +583,11 @@ function setupProvablyFairDrawer() {
     document.body.style.overflow = "hidden";
   };
 
-  // ✅ Support multiple open buttons if both exist
   document.getElementById("openPfBtn")?.addEventListener("click", open);
   document.getElementById("pfOpenBtn")?.addEventListener("click", open);
 
   modal.addEventListener("click", (e) => {
-    if (e.target && e.target.matches("[data-pf-close]")) close();
+    if (e.target?.matches("[data-pf-close]")) close();
   });
 }
 
@@ -793,14 +816,11 @@ function getBucketIndexFromFinalX(finalXBoardSpace) {
 async function dropPlinkoBall() {
   try {
     const bet = Number(plinkoBetAmountEl?.value || 0);
-    // Challenge cap (Plinko)
-  if (CHALLENGE.enabled) {
-    const cap = challengeMaxBet(CHALLENGE.caps.plinkoMaxBetPct);
-    if (bet > cap) { plinkoMessageEl.textContent = `Max bet is ${cap.toFixed(2)} (5%).`; return; }
-  }
-
+    const gate = enforceChallengeBet("plinko", bet);
+    if (!gate.ok) { plinkoMessageEl.textContent = gate.msg; return; }
+  
     if (bet <= 0) { plinkoMessageEl.textContent = "Enter a bet above 0."; return; }
-    if (bet > getBalance()) { plinkoMessageEl.textContent = "Bet exceeds your balance."; return; }
+    if (bet > (getBalance?.() ?? balance ?? 0)) { plinkoMessageEl.textContent = "Bet exceeds your balance."; return; }
 
     adjustBalance(-bet);
 
@@ -836,7 +856,9 @@ async function dropPlinkoBall() {
     await animatePlinkoBall(ballEl, rows, path, { targetBucketIndex: bucketIndex });
 
     let mult = getPlinkoMultiplier(bucketIndex);
-    if (CHALLENGE.enabled) mult = Math.min(mult, CHALLENGE.caps.plinkoMaxMult);
+    if (CHALLENGE.enabled && challengeActive) {
+    mult = Math.min(mult, getTier().plinkoMaxMult);
+    }
     highlightBucket(bucketIndex);
 
     const payout = bet * mult * 0.98;
@@ -1063,6 +1085,40 @@ function persistActiveWalletState() {
 
 function userKey(name) {
   return `${RISX_SAVE_KEY}::${name}`;
+}
+
+function challengeMaxBet(gameKey) {
+  const t = getTier();
+  const bal = Math.max(0, Number(getBalance?.() ?? balance ?? 0));
+
+  if (gameKey === "mines")  return bal * t.minesMaxBetPct;
+  if (gameKey === "crash")  return bal * t.crashMaxBetPct;
+  if (gameKey === "plinko") return bal * t.plinkoMaxBetPct;
+  return bal; // fallback
+}
+
+function enforceChallengeBet(gameKey, bet) {
+  if (!CHALLENGE.enabled || !challengeActive) return { ok: true };
+
+  const t = getTier();
+
+  // mines minimum mines rule
+  if (gameKey === "mines") {
+    const mines = Number(mineCountInput?.value || currentMines || 0);
+    const minMines = Number(t.minesMin || 1);
+  if (mines < minMines) {
+  return { ok: false, msg: `Challenge rule: Mines must be ≥ ${minMines}.` };
+  }
+  }
+
+  // max bet rule
+  const maxBet = challengeMaxBet(gameKey);
+  if (Number(bet) > maxBet) {
+    const bal = Math.max(1, Number(getBalance?.() ?? balance ?? 0));
+return { ok:false, msg:`Challenge rule: Max bet is ${formatCredits(maxBet)} (${Math.round((maxBet / bal)*100)}%).` };
+  }
+
+  return { ok: true };
 }
 
 // =========================
@@ -1439,11 +1495,8 @@ function startMinesRound() {
   if (gameActive) return;
 
   const bet = Number(betAmountInput.value || 0);
-  // Challenge cap (Mines)
-  if (CHALLENGE.enabled) {
-    const cap = challengeMaxBet(CHALLENGE.caps.minesMaxBetPct);
-    if (bet > cap) { resultMessageEl.textContent = `Max bet is ${cap.toFixed(2)} (10%).`; return; }
-  }
+  const gate = enforceChallengeBet("mines", bet);
+  if (!gate.ok) { resultMessageEl.textContent = gate.msg; return; }
 
   const mCount = Number(mineCountInput.value || 0);
 
@@ -1451,7 +1504,7 @@ function startMinesRound() {
     resultMessageEl.textContent = "Enter a bet above 0.";
     return;
   }
-  if (bet > getBalance()) {
+  if (bet > (getBalance?.() ?? balance ?? 0)) {
   resultMessageEl.textContent = "Bet exceeds your balance.";
   return;
   }
@@ -1552,12 +1605,16 @@ function onMinesCellClick(e) {
     return;
   }
 
-if (minesSet.has(idx)) {
-  // mark the clicked mine
-  cell.classList.add("mine");
-  cell.textContent = "";
+  if (minesSet.has(idx)) {
+    // mark the clicked mine
+    cell.classList.add("mine");
+    cell.textContent = "";
 
-  const mult = computeMinesMultiplier(currentMines, Math.max(1, safeClicks));
+    let mult = computeMinesMultiplier(currentMines, safeClicks);
+    if (CHALLENGE.enabled && challengeActive) {
+      const cap = Number(getTier()?.minesMaxCashoutMult || Infinity);
+      mult = Math.min(mult, cap);
+    }
 
   // end round FIRST so the result card shows immediately
   endMinesRound({
@@ -1587,9 +1644,10 @@ function cashOutMines() {
 
   let mult = computeMinesMultiplier(currentMines, safeClicks);
 
-  // Challenge cap (Mines cashout)
-  if (CHALLENGE.enabled) {
-    mult = Math.min(mult, CHALLENGE.caps.minesMaxCashoutMult);
+    // Challenge cap (Mines cashout)
+  if (CHALLENGE.enabled && challengeActive) {
+    const cap = Number(getTier()?.minesMaxCashoutMult || Infinity);
+    mult = Math.min(mult, cap);
   }
 
   endMinesRound({
@@ -1800,17 +1858,14 @@ function startCrashRound() {
   if (crashRoundActive) return;
 
   const bet = Number(crashBetAmountEl.value || 0);
-  // Challenge cap (Crash)
-  if (CHALLENGE.enabled) {
-    const cap = challengeMaxBet(CHALLENGE.caps.crashMaxBetPct);
-    if (bet > cap) { crashStatusMessage.textContent = `Max bet is ${cap.toFixed(2)} (10%).`; return; }
-  }
+  const gate = enforceChallengeBet("crash", bet);
+  if (!gate.ok) { crashStatusMessage.textContent = gate.msg; return; }
 
   if (bet <= 0) {
     crashStatusMessage.textContent = "Enter a bet above 0.";
     return;
   }
-  if (bet > getBalance()) {
+ if (bet > (getBalance?.() ?? balance ?? 0)) {
     crashStatusMessage.textContent = "Bet exceeds your balance.";
     return;
   }
@@ -2508,18 +2563,25 @@ function init() {
   // GAME WIRING
   // =============================
 
-  challengeStartBtn?.addEventListener("click", () => {
+ challengeStartBtn?.addEventListener("click", () => {
   const tier = challengeTier?.value || "beginner";
-  challengeTierSelected = tier;
-  challengeActive = true;
 
-  if (challengeMsg) challengeMsg.textContent = `Locked: ${tier.toUpperCase()} — Starting...`;
+  challengeTierSelected = tier;   // your existing variable
+  CHALLENGE.tier = tier;          // IMPORTANT: so other code paths don't see null
+
+  CHALLENGE.enabled = true;
+  challengeActive = true;
+  challengeCompleted = false;
+
+  // starting credits for the tier
+  const t = getTier();
+  balance = Number(t.startCredits || 0);
+  updateBalanceDisplay?.();
+  persistActiveWalletState?.();
 
   closeModal(challengeModal);
   lockAppUI(false);
-
-  // IMPORTANT (next step): set wallet + starting credits here later
-  });
+});
 
   startGameBtn?.addEventListener("click", () => withLock("minesStart", startMinesRound));
   cashOutBtn?.addEventListener("click", () => withLock("minesCashout", cashOutMines));
