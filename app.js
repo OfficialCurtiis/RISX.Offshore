@@ -1,70 +1,58 @@
+document.documentElement.classList.add("js-ready");
+
 // =========================
-// CHALLENGE TIERS (shape must match game code)
+// RISX: CORE STATE
 // =========================
-const CHALLENGE_TIERS = {
-  beginner: {
-    startCredits: 250,
-    goalCredits: 1000,
-    minesMaxBetPct: 0.10,
-    crashMaxBetPct: 0.10,
-    plinkoMaxBetPct: 0.05,
-    minesMin: 3,
-    minesMaxCashoutMult: 2.5,
-    plinkoMaxMult: 25,
-    crashAutoCashout: false
-  },
+const GRID_SIZE = 5;
+const TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
 
-  // Optional placeholders (you can tune later)
-  intermediate: {
-    startCredits: 200,
-    goalCredits: 1000,
-    minesMaxBetPct: 0.10,
-    crashMaxBetPct: 0.10,
-    plinkoMaxBetPct: 0.05,
-    minesMin: 3,
-    minesMaxCashoutMult: 2.5,
-    plinkoMaxMult: 25,
-    crashAutoCashout: false
-  },
+//wallet state
+let currentWallet = "";
+let balance = 0;
+let selectedCurrency = "USDT";
 
-  pro: {
-    startCredits: 150,
-    goalCredits: 1000,
-    minesMaxBetPct: 0.10,
-    crashMaxBetPct: 0.10,
-    plinkoMaxBetPct: 0.05,
-    minesMin: 3,
-    minesMaxCashoutMult: 2.5,
-    plinkoMaxMult: 25,
-    crashAutoCashout: false
-  }
-};
+// CHALLENGE STATE
+let challengeActive = false;
+let challengeCompleted = false;
+let challengeFailed = false;
+let challengeTierSelected = "beginner";
+let _lastBalanceForMercy = 0;
+let ROUND_ACTIVE = false;
 
-const CHALLENGE = {
-  enabled: true,
-  active: false,
-  tier: null,
-  startBalance: 0,
-  target: 100,
-  maxBetPct: 0.1,
-  locked: false
-};
+// SESSION STATS (not persisted)
+let sessionRounds = 0;
+let bestCrashMult = 0;
+let minesWins = 0;
+let minesLosses = 0;
 
-function getTier() {
-  const key = challengeTierSelected || CHALLENGE.tier || "beginner";
-  return CHALLENGE_TIERS[key] || CHALLENGE_TIERS.beginner;
-}
+// MINES STATE
+let currentBet = 10;
+let currentMines = 3;
+let gameActive = false;
+let minesSet = new Set();
+let safeClicks = 0;
 
-// Optional: persist across refresh
-function saveChallengeCompleted(v){
-  try { localStorage.setItem("RISX_CHALLENGE_DONE", v ? "1" : "0"); } catch {}
-}
-function loadChallengeCompleted(){
-  try { return localStorage.getItem("RISX_CHALLENGE_DONE") === "1"; } catch { return false; }
-}
+// PLINKO STATE
+let plinkoRows = 8;
+let plinkoBet = 10;
+let plinkoDropping = false;
+let lastPlinkoResult = null;
 
-// Seed on load
-challengeCompleted = loadChallengeCompleted();
+let serverSeed = "CHANGE_ME_TO_RANDOM_LONG_SECRET"; // secret until reveal
+let clientSeed = "Guest"; // let player edit this
+let plinkoNonce = 0;
+let plinkoBallsInFlight = 0;  // ✅ ADD THIS
+
+// CRASH STATE
+let crashRoundActive = false;
+let crashCrashed = false;
+let crashBet = 10;
+let crashCrashPoint = 0;      // multiplier at which round crashes
+let crashCurrentMult = 1.0;
+let crashStartTime = 0;
+let crashAnimFrameId = null;
+const crashMaxDisplayMult = 50; // cap visual rocket/curve at 50x
+const crashRounds = []; // { outcome: 'bust'|'cashout', mult: number }
 
 //========================
 // Challenge modal bonding
@@ -74,16 +62,22 @@ const challengeModal = document.getElementById("challengeModal");
 const challengeTier = document.getElementById("challengeTier");
 const challengeStartBtn = document.getElementById("challengeStartBtn");
 const challengeMsg = document.getElementById("challengeMsg");
+const tierSummary = document.getElementById("tierSummary");
+const challengeResetBtn = document.getElementById("challengeResetBtn");
 
 // =========================
-// DOM REFS (declare only — no listeners here)
+// DOM REFS (declare only once)
 // =========================
 const connectWalletBtn = document.getElementById("connectWalletBtn");
 const depositBtn = document.getElementById("depositBtn");
 const withdrawBtn = document.getElementById("withdrawBtn");
 const adminBtn = document.getElementById("adminBtn");
-const currencySelect = document.getElementById("currencySelect"); // make sure this id exists
-const walletCurrencyLabel = document.getElementById("walletCurrencyLabel"); // make sure exists
+const currencySelect = document.getElementById("currencySelect"); 
+const walletCurrencyLabel = document.getElementById("walletCurrencyLabel"); 
+const RISX_SAVE_KEY = "risx_demo_wallet_v2";
+const WALLET_KEY = `${RISX_SAVE_KEY}::activeWallet`;
+const walletStoreKey = (wallet) => `${RISX_SAVE_KEY}::wallet::${wallet}`;
+const CHALLENGE_WALLET_ID = "__RISX_CHALLENGE__";
 
 function debounce(fn, delay = 150) {
   let t;
@@ -130,8 +124,323 @@ const adminCountWithdrawals = document.getElementById("adminCountWithdrawals");
 const adminCountUsers = document.getElementById("adminCountUsers");
 
 // =========================
-// Small utils required by wallet/admin UI
+// DOM HOOKS
 // =========================
+
+// Wallet / global
+const balanceEl        = document.getElementById("balance");
+
+// Tabs
+const tabButtons = document.querySelectorAll(".game-tab");
+const gameSections = document.querySelectorAll(".game-section");
+
+// MINES: controls
+const mineCountInput   = document.getElementById("mineCount");
+const startGameBtn     = document.getElementById("startGameBtn");
+const cashOutBtn       = document.getElementById("cashOutBtn");
+
+const presetLowBtn     = document.getElementById("presetLowBtn");
+const presetMedBtn     = document.getElementById("presetMedBtn");
+const presetHighBtn    = document.getElementById("presetHighBtn");
+
+const betPlus10Btn     = document.getElementById("betPlus10Btn");
+const betPlus50Btn     = document.getElementById("betPlus50Btn");
+const betHalfBtn       = document.getElementById("betHalfBtn");
+const betMaxBtn        = document.getElementById("betMaxBtn");
+
+const presetHintEl     = document.getElementById("presetHint");
+const strategyMessageEl= document.getElementById("strategyMessage");
+const resultMessageEl  = document.getElementById("resultMessage");
+
+const gridEl           = document.querySelector(".mines-grid");
+const multiplierEl     = document.getElementById("multiplier");
+const safeClicksEl     = document.getElementById("safeClicks");
+
+
+// PLINKO: controls & UI
+const plinkoRowsEl      = document.getElementById("plinkoRows");
+const plinkoDropBtn     = document.getElementById("plinkoDropBtn");
+const plinkoMessageEl   = document.getElementById("plinkoMessage");
+const plinkoBoardEl     = document.getElementById("plinkoBoard");
+const plinkoBucketsEl   = document.getElementById("plinkoBuckets");
+const plinkoOutcomeEl   = document.getElementById("plinkoOutcome");
+const plinkoMultEl      = document.getElementById("plinkoMult");
+const plinkoBallEl      = document.getElementById("plinkoBall");
+const plinkoRiskEl      = document.getElementById("plinkoRisk");
+
+// MINES: overlay card
+const minesResultCard  = document.getElementById("minesResultCard");
+const minesResultTitle = document.getElementById("minesResultTitle");
+const minesResultMult  = document.getElementById("minesResultMultiplier");
+const minesResultWin   = document.getElementById("minesResultWin");
+
+// CRASH: controls & UI
+const crashBigMultEl     = document.getElementById("crashBigMult");
+const crashStatusMessage = document.getElementById("crashStatusMessage");
+const crashStartBtn      = document.getElementById("crashStartBtn");
+const crashCashOutBtn    = document.getElementById("crashCashOutBtn");
+const crashHistoryEl     = document.getElementById("crashHistory");
+const crashRocketEl      = document.getElementById("crashRocket");
+const rocketTrailEl      = document.getElementById("rocketTrail");
+const crashGraphInner    = document.querySelector(".crash-graph-inner");
+
+// SESSION STATS UI
+const statRoundsEl    = document.getElementById("statRounds");
+const statBestCrashEl = document.getElementById("statBestCrash");
+const statMinesWLEl   = document.getElementById("statMinesWL");
+const resetSessionBtn = document.getElementById("resetSessionBtn");
+const statSessionTimeEl = document.getElementById("statSessionTime");
+
+// User / daily
+const currentWalletEl   = document.getElementById("currentWallet");
+// Wallet connect UI
+const walletAddressInput    = document.getElementById("walletAddressInput");
+const currentWalletDisplay  = document.getElementById("currentWalletDisplay");
+const walletStatusEl        = document.getElementById("walletStatus");
+
+let crashCurveLine = null;
+
+// =========================
+// PROVABLY FAIR: DOM HOOKS
+// =========================
+const pfModalEl            = document.getElementById("pfModal");
+const pfServerHashEl       = document.getElementById("pfServerHash");
+const pfClientSeedInput    = document.getElementById("pfClientSeed");
+const pfNewClientSeedBtn   = document.getElementById("pfNewClientSeedBtn");
+const pfNonceEl            = document.getElementById("pfNonce");
+const pfResetNonceBtn      = document.getElementById("pfResetNonceBtn");
+const pfServerSeedEl       = document.getElementById("pfServerSeed");
+const pfRevealBtn          = document.getElementById("pfRevealBtn");
+const pfRotateBtn          = document.getElementById("pfRotateBtn");
+const pfVerifyBtn          = document.getElementById("pfVerifyBtn");
+const pfVerifyResultEl     = document.getElementById("pfVerifyResult");
+const pfLastRoundEl        = document.getElementById("pfLastRound");
+
+// Optional: you might have 2 open buttons in HTML (one in plinko, one inside drawer)
+const openPfBtn            = document.getElementById("openPfBtn");
+const pfOpenBtn            = document.getElementById("pfOpenBtn");
+
+// =========================
+// CHALLENGE TIERS (shape must match game code)
+// =========================
+
+const CHALLENGE_TIERS = {
+  beginner: {
+    entryUsd: 10,
+    prizeUsd: 100,
+    restartUsd: 7,
+    startCredits: 250,
+    mercyAllInAt: 50,
+    goalCredits: 10000,
+    minesMaxBetPct: 0.15,
+    crashMaxBetPct: 0.15,
+    plinkoMaxBetPct: 0.10,
+    minesMin: 3,
+    minesMaxCashoutMult: 4.5,
+    plinkoMaxMult: 40,
+    crashAutoCashout: false
+  },
+
+  // Optional placeholders (you can tune later)
+  intermediate: {
+    entryUsd: 25,
+    prizeUsd: 300,
+    restartUsd: 20,
+    startCredits: 500,
+    mercyAllInAt: 75,
+    goalCredits: 25000,
+    minesMaxBetPct: 0.12,
+    crashMaxBetPct: 0.12,
+    plinkoMaxBetPct: 0.08,
+    minesMin: 4,
+    minesMaxCashoutMult: 4.0,
+    plinkoMaxMult: 30,
+    crashAutoCashout: false
+  },
+
+  pro: {
+    entryUsd: 50,
+    prizeUsd: 1000,
+    restartUsd: 35,
+    startCredits: 750,
+    mercyAllInAt: 100,
+    goalCredits: 50000,
+    minesMaxBetPct: 0.12,
+    crashMaxBetPct: 0.12,
+    plinkoMaxBetPct: 0.08,
+    minesMin: 5,
+    minesMaxCashoutMult: 3.5,
+    plinkoMaxMult: 25,
+    crashAutoCashout: false
+  }
+};
+
+const CHALLENGE = {
+  enabled: true,
+  active: false,
+  tier: null,
+  startBalance: 0,
+  target: 100,
+  maxBetPct: 0.1,
+  locked: false
+};
+
+function getTier() {
+  const key = challengeTierSelected || CHALLENGE.tier || "beginner";
+  return CHALLENGE_TIERS[key] || CHALLENGE_TIERS.beginner;
+}
+
+function pct(n){ return Math.round((Number(n)||0) * 100); }
+
+function renderTierSummary() {
+  const el = document.getElementById("tierSummary");
+  if (!el) return;
+
+  const t = getTier();
+
+  // Safe fallbacks
+  const entry = Number(t.entryUsd || 0);
+  const prize = Number(t.prizeUsd || 0);
+
+    const key = (challengeTierSelected || CHALLENGE?.tier || "beginner");
+  const title = (t.label || key).toString().toUpperCase();
+
+  el.innerHTML = `
+    <div class="tier-summary-card">
+
+      <div class="redeem-note">
+        One run. No top-ups. Hit the goal or you reset.
+      </div>
+
+      <div class="tier-summary-top">
+        <div class="tier-summary-title">${title}</div>
+        <div class="tier-summary-prize">Prize: <span>$${prize}</span></div>
+      </div>
+
+      <div class="tier-summary-grid">
+        <div class="tier-kv"><div class="k">Entry</div><div class="v">$${entry}</div></div>
+        <div class="tier-kv"><div class="k">Restart</div><div class="v">$${Number(t.restartUsd || entry)}</div></div>
+        <div class="tier-kv"><div class="k">Start Credits</div><div class="v">${t.startCredits}</div></div>
+        <div class="tier-kv"><div class="k">Goal</div><div class="v">${t.goalCredits}</div></div>
+      </div>
+
+      <div class="tier-summary-rules">
+        <div class="rule-line">• Max bet (Mines & Crash): <b>${pct(t.minesMaxBetPct)}%</b> of balance</div>
+        <div class="rule-line">• Max bet (Plinko): <b>${pct(t.plinkoMaxBetPct)}%</b> of balance</div>
+        <div class="rule-line">• Mines cashouts capped at <b>${t.minesMaxCashoutMult}x</b></div>
+        <div class="rule-line">• Plinko can hit up to <b>${t.plinkoMaxMult}x</b></div>
+        <div class="rule-line">• Mines must be <b>${t.minesMin}+</b></div>
+      </div>
+
+      <div class="tier-summary-foot">
+        Start with <b>${t.startCredits}</b> credits. Reach <b>${t.goalCredits}</b> to win <b>$${prize}</b>.<br>
+        If you fail, restart the tier for <b>$${Number(t.restartUsd || entry)}</b>.
+      </div>
+
+    </div>
+  `;
+}
+
+// =========================
+// Small utils / Challenge helpers
+// =========================
+
+function mercyConfirm(msg, onConfirm) {
+  let wrap = document.getElementById("mercyConfirm");
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.id = "mercyConfirm";
+    wrap.style.position = "fixed";
+    wrap.style.inset = "0";
+    wrap.style.zIndex = "10000";
+    wrap.style.display = "flex";
+    wrap.style.alignItems = "center";
+    wrap.style.justifyContent = "center";
+    wrap.style.background = "rgba(0,0,0,0.45)";
+    wrap.innerHTML = `
+      <div style="
+        max-width: 420px;
+        width: calc(100vw - 32px);
+        padding: 18px;
+        border-radius: 16px;
+        background: rgba(10,15,30,0.95);
+        border: 1px solid rgba(255,255,255,0.15);
+        text-align: center;
+        box-shadow: 0 24px 70px rgba(0,0,0,0.55);
+      ">
+        <div id="mercyConfirmText" style="font-weight:700;margin-bottom:14px;"></div>
+        <button id="mercyConfirmBtn" class="btn primary" type="button">
+          I understand
+        </button>
+      </div>
+    `;
+    document.body.appendChild(wrap);
+  }
+
+  document.getElementById("mercyConfirmText").textContent = msg;
+  wrap.style.display = "flex";
+
+  const btn = document.getElementById("mercyConfirmBtn");
+  btn.onclick = () => {
+    wrap.style.display = "none";
+    onConfirm?.();
+  };
+}
+
+function loadChallengeState() {
+  try {
+    const isActive = localStorage.getItem("RISX_CH_ACTIVE") === "1";
+
+    challengeActive = isActive;
+    CHALLENGE.active = isActive;
+
+    const t = localStorage.getItem("RISX_CH_TIER");
+    if (t) {
+      challengeTierSelected = t;
+      CHALLENGE.tier = t;
+    }
+  } catch {}
+}
+
+function saveChallengeActive(v){
+  try { localStorage.setItem("RISX_CH_ACTIVE", v ? "1" : "0"); } catch {}
+}
+
+  // Optional: persist across refresh
+  function saveChallengeCompleted(v){
+    try { localStorage.setItem("RISX_CHALLENGE_DONE", v ? "1" : "0"); } catch {}
+  }
+  function loadChallengeCompleted(){
+    try { return localStorage.getItem("RISX_CHALLENGE_DONE") === "1"; } catch { return false; }
+  }
+
+  const CHALLENGE_STATUS_KEY = "RISX_CHALLENGE_STATUS"; // "active" | "failed" | "won" | ""
+
+  function setChallengeStatus(v) {
+    try { localStorage.setItem(CHALLENGE_STATUS_KEY, String(v || "")); } catch {}
+  }
+
+  function getChallengeStatus() {
+    try { return localStorage.getItem(CHALLENGE_STATUS_KEY) || ""; } catch { return ""; }
+  }
+
+  function clearChallengeStatus() {
+    try { localStorage.removeItem(CHALLENGE_STATUS_KEY); } catch {}
+  }
+
+  function saveChallengeStatus(status) {
+  setChallengeStatus(status);
+  }
+
+  function saveChallengeState() {
+    saveChallengeActive(challengeActive);
+
+    try {
+      if (challengeTierSelected) {
+        localStorage.setItem("RISX_CH_TIER", challengeTierSelected);
+      }
+    } catch {}
+  }
 
 function challengeToast(msg) {
   const el = document.getElementById("challengeToast");
@@ -155,24 +464,47 @@ function clamp2(n) {
   return Math.round(x * 100) / 100;
 }
 
-function adjustBalance(delta) {
-  balance = clamp2(Math.max(0, Number(balance || 0) + Number(delta || 0)));
+function adjustBalance(delta, opts = {}) {
+  const prev = Number(balance || 0);
+  balance = clamp2(Math.max(0, prev + Number(delta || 0)));
+
   updateBalanceDisplay?.();
-  persistActiveWalletState?.(); // keeps per-wallet storage in sync
-  // ✅ Challenge completion check (ONE place)
-    const goal = Number(CHALLENGE?.target ?? CHALLENGE?.goalCredits ?? 0);
+  persistActiveWalletState?.();
 
-  if (
-    CHALLENGE.enabled &&
-    !challengeCompleted &&
-    balance >= goal
-  ) {
+  showChallengeResetIfNeeded?.();
+}
+
+function postRoundChecks() {
+if (!CHALLENGE?.enabled || !challengeActive) return;
+
+  // ✅ Never judge mid-round
+  const roundActiveNow = (typeof anyRoundActive === "function") ? anyRoundActive() : false;
+  if (roundActiveNow) return;
+
+  const t = getTier?.() || {};
+  const bal = Number(getBalance?.() ?? balance ?? 0);
+  const goal = Number(t.goalCredits || 0);
+
+  // 🟢 WIN first
+  if (challengeActive && !challengeCompleted && goal > 0 && bal >= goal) {
     challengeCompleted = true;
-    saveChallengeCompleted?.(true);
-
-    challengeToast?.(`✅ Goal reached: ${goal}!`);
-    if (typeof openChallengeWinModal === "function") openChallengeWinModal();
+    challengeActive = false;
+    CHALLENGE.active = false;
+    setChallengeStatus?.("won");
+    saveChallengeActive?.(false);
+    toast?.(`✅ Goal reached: ${goal}!`);
+    showChallengeResetIfNeeded?.();
+    return;
   }
+
+  // 🔴 FAIL second (only after the round is fully done)
+  if (challengeActive && !challengeCompleted && bal <= 0) {
+    challengeFail?.("Balance hit 0");
+    showChallengeResetIfNeeded?.();
+    return;
+  }
+
+  showChallengeResetIfNeeded?.();
 }
 
 function escapeHtml(str) {
@@ -182,6 +514,123 @@ function escapeHtml(str) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function challengeFail(reason) {
+  challengeFailed = true;
+
+  setChallengeStatus?.("failed");
+  toast?.(`Challenge failed — ${reason}`);
+
+  challengeActive = false;
+  CHALLENGE.active = false;
+  saveChallengeActive?.(false);
+
+  openModal?.(challengeModal);
+  renderTierSummary?.();
+  showChallengeResetIfNeeded?.();
+  lockAppUI?.(true);
+}
+
+let _mercyOn = false;
+
+function getChallengeMaxBetForUI(gameKey) {
+  if (!(CHALLENGE?.enabled && challengeActive)) return null;
+  return clamp2(challengeMaxBet(gameKey));
+}
+
+function roundDownCents(n) {
+  return Math.floor(Number(n || 0) * 100) / 100;
+}
+
+function challengeMaxBet(gameKey) {
+  const t = getTier();
+  const bal = Math.max(0, Number(getBalance?.() ?? balance ?? 0));
+
+  // ---- MERCY MODE (all-in) ----
+  const inMercy = !!(CHALLENGE?.enabled && challengeActive && bal <= Number(t.mercyAllInAt || 0));
+
+  // toast only when ENTERING mercy (so it can happen again later)
+  if (inMercy && !_mercyOn) {
+    toast?.(`Low balance mercy: MAX = full balance (≤ ${roundDownCents(t.mercyAllInAt)}).`);
+  }
+  _mercyOn = false;
+
+  if (inMercy) return roundDownCents(bal);
+
+  // ---- NORMAL CAPS ----
+  if (gameKey === "mines")  return roundDownCents(bal * Number(t.minesMaxBetPct || 0));
+  if (gameKey === "crash")  return roundDownCents(bal * Number(t.crashMaxBetPct || 0));
+  if (gameKey === "plinko") return roundDownCents(bal * Number(t.plinkoMaxBetPct || 0));
+  return roundDownCents(bal);
+}
+
+function showChallengeResetIfNeeded() {
+  if (!challengeResetBtn) return;
+  const st = getChallengeStatus();
+  challengeResetBtn.style.display =
+    (st === "failed" || st === "won") ? "inline-flex" : "none";
+}
+
+function wipeChallengeWalletOnly() {
+  try {
+    localStorage.removeItem(walletStoreKey(CHALLENGE_WALLET_ID));
+  } catch {}
+}
+
+function resolveChallengeAfterRound() {
+  if (!CHALLENGE?.enabled || !challengeActive || challengeCompleted) return;
+
+  const goal = Number(getTier?.()?.goalCredits ?? CHALLENGE?.target ?? 0);
+
+  // WIN
+  if (goal > 0 && balance >= goal) {
+    challengeCompleted = true;
+    challengeActive = false;
+    CHALLENGE.active = false;
+    setChallengeStatus?.("won");
+    saveChallengeActive?.(false);
+    toast?.(`✅ Goal reached: ${goal}!`);
+    openModal?.(challengeModal);
+    renderTierSummary?.();
+    showChallengeResetIfNeeded?.();
+    return;
+  }
+
+  // FAIL
+  if (balance <= 0) {
+    challengeFail?.("Balance hit 0");
+    return;
+  }
+}
+
+function resetChallengeRun() {
+  // wipe run status
+  challengeCompleted = false;
+  challengeFailed = false;
+
+  clearChallengeStatus?.();
+  saveChallengeCompleted?.(false);
+
+  // wipe challenge wallet ONLY
+  wipeChallengeWalletOnly();
+
+  // reset flags
+  challengeActive = false;
+  CHALLENGE.active = false;
+  saveChallengeActive(false);
+  setChallengeStatus?.("won");
+
+  // reset balance to 0 until tier chosen again
+  balance = 0;
+  updateBalanceDisplay?.();
+
+  // reopen tier selection
+  openModal?.(challengeModal);
+  renderTierSummary?.();
+  showChallengeResetIfNeeded?.();
+
+  toast?.("Reset ready — pick a tier to start again.");
 }
 
 // =========================
@@ -195,7 +644,7 @@ function setBalance(next) {
 }
 
 function getActiveWallet() {
-  return String(localStorage.getItem(RISX_WALLET_KEY) || "").trim();
+  return String(localStorage.getItem(WALLET_KEY) || "").trim();
 }
 
 function setActiveWallet(w) {
@@ -204,14 +653,17 @@ function setActiveWallet(w) {
 
   currentWallet = wallet;
   challengeCompleted = loadChallengeCompleted();
+  const st = loadWalletState(wallet) || { balance: 1000, currency: "USDT" };
 
   // persist active wallet using YOUR existing key
   localStorage.setItem(WALLET_KEY, wallet);
 
-  // load per-wallet state using YOUR existing store
-  const st = loadWalletState(wallet) || { balance: DEFAULT_START_BALANCE, currency: "USDT" };
-
-  balance = Number(st.balance || 0);
+ // If challenge hasn't started yet, keep them locked at 0
+  if (!challengeActive && !CHALLENGE.active) {
+    balance = 0;
+  } else {
+    balance = (st && typeof st.balance === "number") ? st.balance : 0;
+  }
   selectedCurrency = String(st.currency || "USDT");
 
   // reflect in UI
@@ -243,6 +695,23 @@ function lockAppUI(locked) {
   document.getElementById("depositBtn")?.toggleAttribute("disabled", locked);
   document.getElementById("withdrawBtn")?.toggleAttribute("disabled", locked);
   document.getElementById("adminBtn")?.toggleAttribute("disabled", locked);
+}
+
+function setChallengeWalletUI() {
+  // hard-lock wallet identity + ops in challenge mode
+  const idsToDisable = ["connectWalletBtn", "depositBtn", "withdrawBtn", "adminBtn", "currencySelect"];
+  idsToDisable.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.disabled = true;
+    el.style.pointerEvents = "none";
+    el.style.opacity = "0.45";
+    el.setAttribute("aria-disabled", "true");
+  });
+
+  // status text
+  const ws = document.getElementById("walletStatus");
+  if (ws) ws.textContent = "Challenge Mode — wallet locked";
 }
 
 // =========================
@@ -364,15 +833,6 @@ function withLock(key, fn) {
   }
 }
 
-// =========================
-// RISX: CORE STATE
-// =========================
-const GRID_SIZE = 5;
-const TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
-
-let currentWallet = "";          // IMPORTANT: declared early now
-let balance = 0;
-let selectedCurrency = "USDT";
 // =========================
 // PLINKO: HELPERS & SETTINGS (14/15 model, flat top)
 // =========================
@@ -528,6 +988,11 @@ function renderPlinkoBoard() {
     }
   }
 }
+
+requestAnimationFrame(() => {
+  renderPlinkoBoard();
+  renderPlinkoBuckets();
+});
 
 function renderPlinkoBuckets() {
   if (!plinkoBucketsEl || !plinkoRiskEl) return;
@@ -814,60 +1279,26 @@ function getBucketIndexFromFinalX(finalXBoardSpace) {
 }
 
 async function dropPlinkoBall() {
+  if (ROUND_ACTIVE) return;
+  ROUND_ACTIVE = true;
+
   try {
     const bet = Number(plinkoBetAmountEl?.value || 0);
     const gate = enforceChallengeBet("plinko", bet);
     if (!gate.ok) { plinkoMessageEl.textContent = gate.msg; return; }
-  
+
     if (bet <= 0) { plinkoMessageEl.textContent = "Enter a bet above 0."; return; }
     if (bet > (getBalance?.() ?? balance ?? 0)) { plinkoMessageEl.textContent = "Bet exceeds your balance."; return; }
 
-    adjustBalance(-bet);
+    adjustBalance(-bet, { suppressChallengeChecks: true, suppressMercy: true });
 
     plinkoBallsInFlight++;
     setPlinkoControlsLocked(true);
 
-    const rows = PLINKO_DECISION_ROWS; // 14
-
-    const { bucketIndex, path, digestHex } = await provablyFairPlinko({
-      serverSeed,
-      clientSeed,
-      nonce: plinkoNonce++,
-      rows
-    });
-
-    // ✅ INSERT THIS BLOCK RIGHT HERE
-    pfLastPlinko = {
-      serverSeed,
-      clientSeed,
-      nonce: plinkoNonce - 1,  // because plinkoNonce++ already incremented
-      rows,
-      bucketIndex,
-      path,
-      digestHex,
-    };
-    updatePfUI?.();
-    if (pfVerifyResultEl) pfVerifyResultEl.textContent = "";
-    // ✅ END INSERT
-
-    const ballEl = spawnPlinkoBall();
-    if (!ballEl) throw new Error("Could not spawn plinko ball.");
-
-    await animatePlinkoBall(ballEl, rows, path, { targetBucketIndex: bucketIndex });
-
-    let mult = getPlinkoMultiplier(bucketIndex);
-    if (CHALLENGE.enabled && challengeActive) {
-    mult = Math.min(mult, getTier().plinkoMaxMult);
-    }
-    highlightBucket(bucketIndex);
+    // ... your plinko logic ...
 
     const payout = bet * mult * 0.98;
-    adjustBalance(+payout);
-
-    if (plinkoOutcomeEl) plinkoOutcomeEl.textContent = `Bucket ${bucketIndex + 1}/${PLINKO_BUCKETS}`;
-    if (plinkoMultEl) plinkoMultEl.textContent = formatMult(mult);
-    if (plinkoMessageEl) plinkoMessageEl.textContent =
-      `You hit ${formatMult(mult)} → ${formatCredits(payout - bet)} profit`;
+    adjustBalance(+payout, { suppressChallengeChecks: true, suppressMercy: true });
 
   } catch (err) {
     console.error(err);
@@ -875,6 +1306,7 @@ async function dropPlinkoBall() {
   } finally {
     plinkoBallsInFlight = Math.max(0, plinkoBallsInFlight - 1);
     if (plinkoBallsInFlight === 0) setPlinkoControlsLocked(false);
+    postRoundChecks(); 
   }
 }
 
@@ -1022,45 +1454,6 @@ async function pfVerifyLast() {
     : `❌ Mismatch. got bucket=${regen.bucketIndex + 1}`;
 }
 
-// SESSION STATS (not persisted)
-let sessionRounds = 0;
-let bestCrashMult = 0;
-let minesWins = 0;
-let minesLosses = 0;
-
-// MINES STATE
-let currentBet = 10;
-let currentMines = 3;
-let gameActive = false;
-let minesSet = new Set();
-let safeClicks = 0;
-
-// PLINKO STATE
-let plinkoRows = 8;
-let plinkoBet = 10;
-let plinkoDropping = false;
-let lastPlinkoResult = null;
-
-let serverSeed = "CHANGE_ME_TO_RANDOM_LONG_SECRET"; // secret until reveal
-let clientSeed = "Guest"; // let player edit this
-let plinkoNonce = 0;
-let plinkoBallsInFlight = 0;  // ✅ ADD THIS
-
-// CRASH STATE
-let crashRoundActive = false;
-let crashCrashed = false;
-let crashBet = 10;
-let crashCrashPoint = 0;      // multiplier at which round crashes
-let crashCurrentMult = 1.0;
-let crashStartTime = 0;
-let crashAnimFrameId = null;
-const crashMaxDisplayMult = 50; // cap visual rocket/curve at 50x
-const crashRounds = []; // { outcome: 'bust'|'cashout', mult: number }
-
-const RISX_SAVE_KEY = "risx_demo_wallet_v2";
-const WALLET_KEY = `${RISX_SAVE_KEY}::activeWallet`;
-const walletStoreKey = (wallet) => `${RISX_SAVE_KEY}::wallet::${wallet}`;
-
 function readList(key){ try{return JSON.parse(localStorage.getItem(key)||"[]")}catch{return []} }
 function writeList(key,arr){ localStorage.setItem(key, JSON.stringify(arr||[])); }
 
@@ -1085,16 +1478,6 @@ function persistActiveWalletState() {
 
 function userKey(name) {
   return `${RISX_SAVE_KEY}::${name}`;
-}
-
-function challengeMaxBet(gameKey) {
-  const t = getTier();
-  const bal = Math.max(0, Number(getBalance?.() ?? balance ?? 0));
-
-  if (gameKey === "mines")  return bal * t.minesMaxBetPct;
-  if (gameKey === "crash")  return bal * t.crashMaxBetPct;
-  if (gameKey === "plinko") return bal * t.plinkoMaxBetPct;
-  return bal; // fallback
 }
 
 function enforceChallengeBet(gameKey, bet) {
@@ -1157,108 +1540,6 @@ function persistSessionStats() {
 }
 
 // =========================
-// DOM HOOKS
-// =========================
-
-// Wallet / global
-const balanceEl        = document.getElementById("balance");
-
-// Tabs
-const tabButtons = document.querySelectorAll(".game-tab");
-const gameSections = document.querySelectorAll(".game-section");
-
-// MINES: controls
-const mineCountInput   = document.getElementById("mineCount");
-const startGameBtn     = document.getElementById("startGameBtn");
-const cashOutBtn       = document.getElementById("cashOutBtn");
-
-const presetLowBtn     = document.getElementById("presetLowBtn");
-const presetMedBtn     = document.getElementById("presetMedBtn");
-const presetHighBtn    = document.getElementById("presetHighBtn");
-
-const betPlus10Btn     = document.getElementById("betPlus10Btn");
-const betPlus50Btn     = document.getElementById("betPlus50Btn");
-const betHalfBtn       = document.getElementById("betHalfBtn");
-const betMaxBtn        = document.getElementById("betMaxBtn");
-
-const presetHintEl     = document.getElementById("presetHint");
-const strategyMessageEl= document.getElementById("strategyMessage");
-const resultMessageEl  = document.getElementById("resultMessage");
-
-const gridEl           = document.querySelector(".mines-grid");
-const multiplierEl     = document.getElementById("multiplier");
-const safeClicksEl     = document.getElementById("safeClicks");
-
-
-// PLINKO: controls & UI
-const plinkoRowsEl      = document.getElementById("plinkoRows");
-const plinkoDropBtn     = document.getElementById("plinkoDropBtn");
-const plinkoMessageEl   = document.getElementById("plinkoMessage");
-const plinkoBoardEl     = document.getElementById("plinkoBoard");
-const plinkoBucketsEl   = document.getElementById("plinkoBuckets");
-const plinkoOutcomeEl   = document.getElementById("plinkoOutcome");
-const plinkoMultEl      = document.getElementById("plinkoMult");
-const plinkoBallEl      = document.getElementById("plinkoBall");
-const plinkoRiskEl      = document.getElementById("plinkoRisk");
-
-requestAnimationFrame(() => {
-  renderPlinkoBoard();
-  renderPlinkoBuckets();
-});
-
-// MINES: overlay card
-const minesResultCard  = document.getElementById("minesResultCard");
-const minesResultTitle = document.getElementById("minesResultTitle");
-const minesResultMult  = document.getElementById("minesResultMultiplier");
-const minesResultWin   = document.getElementById("minesResultWin");
-
-// CRASH: controls & UI
-const crashBigMultEl     = document.getElementById("crashBigMult");
-const crashStatusMessage = document.getElementById("crashStatusMessage");
-const crashStartBtn      = document.getElementById("crashStartBtn");
-const crashCashOutBtn    = document.getElementById("crashCashOutBtn");
-const crashHistoryEl     = document.getElementById("crashHistory");
-const crashRocketEl      = document.getElementById("crashRocket");
-const rocketTrailEl      = document.getElementById("rocketTrail");
-const crashGraphInner    = document.querySelector(".crash-graph-inner");
-
-// SESSION STATS UI
-const statRoundsEl    = document.getElementById("statRounds");
-const statBestCrashEl = document.getElementById("statBestCrash");
-const statMinesWLEl   = document.getElementById("statMinesWL");
-const resetSessionBtn = document.getElementById("resetSessionBtn");
-const statSessionTimeEl = document.getElementById("statSessionTime");
-
-// User / daily
-const currentWalletEl   = document.getElementById("currentWallet");
-// Wallet connect UI
-const walletAddressInput    = document.getElementById("walletAddressInput");
-const currentWalletDisplay  = document.getElementById("currentWalletDisplay");
-const walletStatusEl        = document.getElementById("walletStatus");
-
-let crashCurveLine = null;
-
-// =========================
-// PROVABLY FAIR: DOM HOOKS
-// =========================
-const pfModalEl            = document.getElementById("pfModal");
-const pfServerHashEl       = document.getElementById("pfServerHash");
-const pfClientSeedInput    = document.getElementById("pfClientSeed");
-const pfNewClientSeedBtn   = document.getElementById("pfNewClientSeedBtn");
-const pfNonceEl            = document.getElementById("pfNonce");
-const pfResetNonceBtn      = document.getElementById("pfResetNonceBtn");
-const pfServerSeedEl       = document.getElementById("pfServerSeed");
-const pfRevealBtn          = document.getElementById("pfRevealBtn");
-const pfRotateBtn          = document.getElementById("pfRotateBtn");
-const pfVerifyBtn          = document.getElementById("pfVerifyBtn");
-const pfVerifyResultEl     = document.getElementById("pfVerifyResult");
-const pfLastRoundEl        = document.getElementById("pfLastRound");
-
-// Optional: you might have 2 open buttons in HTML (one in plinko, one inside drawer)
-const openPfBtn            = document.getElementById("openPfBtn");
-const pfOpenBtn            = document.getElementById("pfOpenBtn");
-
-// =========================
 // 3.3 VALIDATION HELPERS
 // =========================
 function parseAmount(raw, { min = 0.01, max = 1e9, decimals = 2 } = {}) {
@@ -1291,58 +1572,111 @@ function isProbablyAddress(s) {
 // UTILS
 // =========================
 
-function wireBetMultButtons(inputEl, halfBtn, twoXBtn, maxBtn) {
-    if (inputEl?._wiredMults) return;
-    inputEl._wiredMults = true;
+function wireBetMultButtons(gameKey, inputEl, halfBtn, twoXBtn, maxBtn) {
+  if (!inputEl || inputEl._wiredMults) return;
+  inputEl._wiredMults = true;
 
   const read = () => Number(inputEl.value || 0);
 
   const write = (v) => {
-    // keep it clean + non-negative
-    const vv = Math.max(0, Math.round(v * 100) / 100);
+    const vv = Math.max(0, Math.round(Number(v || 0) * 100) / 100);
     inputEl.value = String(vv);
-    // optional: triggers any listeners you have watching input changes
     inputEl.dispatchEvent(new Event("input", { bubbles: true }));
   };
 
+  const getBal = () => Math.max(0, Number(getBalance?.() ?? balance ?? 0));
+
+  const inMercyNow = () => {
+    const t = getTier?.() || {};
+    const bal = getBal();
+    const mercyAt = Number(t.mercyAllInAt || 0);
+    return !!(CHALLENGE?.enabled && challengeActive && bal > 0 && mercyAt > 0 && bal <= mercyAt);
+  };
+
+  const getMaxForUI = () => {
+    const bal = getBal();
+    if (inMercyNow()) return bal;                 // ✅ mercy = all-in
+    return Number(challengeMaxBet?.(gameKey) ?? 0); // ✅ challenge cap
+  };
+
+  const applyCap = (val) => Math.min(Number(val || 0), getMaxForUI());
+
+  const BASE_BET = 2.00;
+
   halfBtn?.addEventListener("click", () => {
-  const v = read();
-  if (v <= 0) return;
-  write(v / 2);
-});
+    const v = read();
+    const next = (v <= 0) ? (BASE_BET / 2) : (v / 2);   // 0 -> 1.00, 2 -> 1.00, 20 -> 10
+    write(applyCap(next));
+  });
 
-twoXBtn?.addEventListener("click", () => {
-  const v = read();
-  if (v <= 0) write(0.1);
-  else write(v * 2);
-});
+  twoXBtn?.addEventListener("click", () => {
+    const v = read();
+    const next = (v <= 0) ? (BASE_BET * 2) : (v * 2);   // 0 -> 4.00, 2 -> 4.00, 20 -> 40
+    write(applyCap(next));
+  });
 
-  maxBtn?.addEventListener("click", () => write(balance)); // uses your current demo balance
+  maxBtn?.addEventListener("click", () => {
+    const t = getTier?.() || {};
+    const bal = getBal();
+    const cap = Number(challengeMaxBet?.(gameKey) ?? 0);
+
+    if (inMercyNow()) {
+      const ok = confirm(
+        `Mercy Mode is active.\nMAX will bet your FULL balance: ${formatCredits(bal)}.\n\nProceed?`
+      );
+      if (!ok) return;
+      write(bal);                                 // ✅ ACTUAL all-in
+      return;
+    }
+
+    toast?.(`MAX = ${formatCredits(cap)} (${Math.round((cap / Math.max(1, bal)) * 100)}%)`);
+    write(cap);
+  });
 }
 
 // Inputs
-const betAmountInput   = document.getElementById("betAmount");
-const crashBetAmountEl = document.getElementById("crashBetAmount");
-const plinkoBetAmountEl= document.getElementById("plinkoBetAmount");
+const betAmountInput    = document.getElementById("betAmount");
+const crashBetAmountEl  = document.getElementById("crashBetAmount");
+const plinkoBetAmountEl = document.getElementById("plinkoBetAmount");
 
-// Mines buttons
+function setDefaultBetsIfEmpty() {
+  const defaults = [
+    { el: document.getElementById("betAmount"),      v: 2.00 }, // mines
+    { el: document.getElementById("crashBetAmount"), v: 2.00 }, // crash
+    { el: document.getElementById("plinkoBetAmount"),v: 2.00 }, // plinko
+  ];
+
+  defaults.forEach(({ el, v }) => {
+    if (!el) return;
+    const cur = Number(el.value || 0);
+    if (cur <= 0) {
+      el.value = v.toFixed(2);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  });
+}
+
+// Mines
 wireBetMultButtons(
+  "mines",
   betAmountInput,
   document.getElementById("minesHalfBtn"),
   document.getElementById("mines2xBtn"),
   document.getElementById("minesMaxBtn")
 );
 
-// Crash buttons
+// Crash
 wireBetMultButtons(
+  "crash",
   crashBetAmountEl,
   document.getElementById("crashHalfBtn"),
   document.getElementById("crash2xBtn"),
   document.getElementById("crashMaxBtn")
 );
 
-// Plinko buttons
+// Plinko
 wireBetMultButtons(
+  "plinko",
   plinkoBetAmountEl,
   document.getElementById("plinkoHalfBtn"),
   document.getElementById("plinko2xBtn"),
@@ -1358,8 +1692,7 @@ function formatMult(value) {
 }
 
 function updateBalanceDisplay() {
-  balanceEl.textContent = formatCredits(balance);
-  persistActiveWalletState();
+  if (balanceEl) balanceEl.textContent = formatCredits(balance);
 }
 
 function updateMinesInfoPanel(mult, safeCount) {
@@ -1426,6 +1759,28 @@ function startSessionTimer() {
 function resetSessionTimer() {
   sessionStartMs = Date.now();
   updateSessionTimer();
+}
+
+function resetSessionStats() {
+  // Reset timer
+  sessionStartMs = Date.now();
+  if (sessionTimerId) {
+    clearInterval(sessionTimerId);
+    sessionTimerId = null;
+  }
+  startSessionTimer();
+
+  // Reset stats variables
+  sessionRounds = 0;
+  bestCrashMult = 0;
+  minesWins     = 0;
+  minesLosses   = 0;
+
+  // Update UI
+  updateSessionStats?.();
+  updateSessionTimer?.();
+
+  console.log("Session stats reset");
 }
 
 // =========================
@@ -1509,7 +1864,7 @@ function startMinesRound() {
   return;
   }
 
-  adjustBalance(-bet);
+  adjustBalance(-bet, { suppressChallengeChecks: true, suppressMercy: true });
   if (mCount < 1 || mCount >= TOTAL_CELLS) {
     resultMessageEl.textContent = "Mines must be between 1 and 24.";
     return;
@@ -1549,35 +1904,19 @@ function endMinesRound({ outcome, cashedOut, multiplier }) {
       ? currentBet * multiplier
       : 0;
 
-  if (winAmount > 0) {
-    balance += winAmount;
-    updateBalanceDisplay();
-  }
-
-  // Overlay card
-  if (outcome === "lose") {
-    minesResultTitle.textContent = "You exploded";
-    minesResultMult.textContent = formatMult(multiplier);
-    minesResultWin.textContent = formatCredits(0);
-    minesResultCard.classList.add("lose");
+    if (winAmount > 0) {
+    adjustBalance(+winAmount, { suppressMercy: true, suppressChallengeChecks: true });
   } else {
-    minesResultTitle.textContent = cashedOut ? "You cashed out" : "Round over";
-    minesResultMult.textContent = formatMult(multiplier);
-    minesResultWin.textContent = formatCredits(winAmount);
-    minesResultCard.classList.remove("lose");
-  }
-  minesResultCard.classList.remove("hidden");
-
-  if (outcome === "lose") {
-  minesLosses++;
-  } else if (cashedOut) {
-  minesWins++;
+    // still persist if you want (optional)
+    persistActiveWalletState?.();
   }
 
-sessionRounds++;
+  // stats
+  updateSessionStats?.();
+  persistSessionStats?.();
 
-  updateSessionStats();
-  persistSessionStats();
+  // ✅ SINGLE source of truth
+  postRoundChecks?.();
 }
 
 function resetMinesResultCard() {
@@ -1681,8 +2020,6 @@ function setupPresetButtons() {
 // CRASH: LOGIC
 // =========================
 
-// Generates a random crash point with a heavy tail.
-// Most rounds 1–3x, some 3–10x, rare 10–50x+.
 function generateCrashPoint() {
   const houseEdge = 0.03;
   const r = Math.random();
@@ -1806,6 +2143,7 @@ function handleCrashBust() {
   });
   if (crashRounds.length > 5) crashRounds.pop();
   renderCrashHistory();
+  postRoundChecks?.();
 }
 
 let crashToastTimer = null;
@@ -1871,13 +2209,9 @@ function startCrashRound() {
   }
   if (!sessionStartMs) { sessionStartMs = Date.now(); startSessionTimer(); }
 
-  // Deduct bet
-  balance -= bet;
   crashBet = bet;
-  updateBalanceDisplay();
-  persistActiveWalletState();
+  adjustBalance(-bet, { suppressChallengeChecks: true, suppressMercy: true });
   
-
   crashCrashPoint = generateCrashPoint();
   crashCurrentMult = 1.0;
   crashCrashed = false;
@@ -1921,42 +2255,13 @@ function cashOutCrash() {
 
   const payout = crashBet * cashedMult * (1 - houseEdge);
 
-  balance += payout;
-  updateBalanceDisplay();
-  persistActiveWalletState();
+  adjustBalance(+payout, { suppressMercy: true, suppressChallengeChecks: true });
 
-  showCrashToast(`You cashed out at ${formatMult(cashedMult)} for ${formatCredits(payout)} credits`);
+  updateSessionStats?.();
+  persistSessionStats?.();
 
-  crashRoundActive = false;
-  crashCrashed = false;
-  crashCashOutBtn.disabled = true;
-  crashStartBtn.disabled = false;
-
-  if (crashAnimFrameId !== null) {
-    cancelAnimationFrame(crashAnimFrameId);
-    crashAnimFrameId = null;
-  }
-
-  sessionRounds++;
-
-  // ✅ PERSONAL BEST = cashout only
-  bestCrashMult = Math.max(bestCrashMult, cashedMult);
-
-  updateSessionStats();
-  persistSessionStats();
-
-  // Freeze rocket where it is (no crash explosion)
-  if (crashRocketEl) {
-    crashRocketEl.classList.remove("crashed");
-  }
-
-  // History
-  crashRounds.unshift({
-    outcome: "cashout",
-    mult: cashedMult
-  });
-  if (crashRounds.length > 5) crashRounds.pop();
-  renderCrashHistory();
+  // ✅ SINGLE source of truth
+  postRoundChecks?.();
 }
 
 function renderCrashHistory() {
@@ -2111,12 +2416,8 @@ function switchUser() {
 
 // =============================
 // ADMIN + WITHDRAW UI HELPERS (required)
-// Put this ABOVE function init()
 // =============================
 
-// Force Challenge Tier selection on entry
-lockAppUI(true);
-openModal(document.getElementById("challengeModal"));
 const depositsKey   = `${RISX_SAVE_KEY}::deposits`;
 const withdrawalsKey= `${RISX_SAVE_KEY}::withdrawals`;
 
@@ -2258,17 +2559,16 @@ function bindAdminModalClicks() {
 // =========================
 
 function anyRoundActive() {
-  const minesActive =
-    startGameBtn?.disabled === true ||
-    cashOutBtn?.disabled === false;
-
+  const minesActive = !!gameActive;
   const crashActive = !!crashRoundActive;
   const plinkoActive = typeof plinkoBallsInFlight === "number" && plinkoBallsInFlight > 0;
-
   return minesActive || crashActive || plinkoActive;
 }
 
 function setupTabs() {
+  if (setupTabs._didBind) return;
+  setupTabs._didBind = true;
+
   const tabButtons = document.querySelectorAll(".game-tab");
   const gameSections = document.querySelectorAll(".game-section");
 
@@ -2288,6 +2588,8 @@ function setupTabs() {
     // 3) Toggle section active state
     gameSections.forEach(section => section.classList.remove("active"));
     targetSection.classList.add("active");
+
+    setDefaultBetsIfEmpty();
 
     // 4) Optional: per-game renders (wrapped so errors won't blank UI)
     try {
@@ -2327,6 +2629,7 @@ function setupTabs() {
     }
 
     const target = btn.dataset.target;
+    if (!target) return;
     show(target);
   });
 });
@@ -2335,6 +2638,7 @@ function setupTabs() {
   const activeBtn = document.querySelector(".game-tab.active");
   show(activeBtn?.dataset.target || "mines");
 }
+
 // ==============================================
 //===============================================
 //                    INIT
@@ -2405,11 +2709,14 @@ function initProvablyFair() {
 }
 
 function initPlinko() {
+  // These can run every time (safe)
   renderPlinkoBoard();
   renderPlinkoBuckets();
   attachPlinkoResizeObserver();
 
-  let plinkoResizeRaf = 0;
+  // Bind events only once (prevents duplicates)
+  if (initPlinko._didBind) return;
+  initPlinko._didBind = true;
 
   plinkoRiskEl?.addEventListener("change", renderPlinkoBuckets);
   plinkoDropBtn?.addEventListener("click", () => withLock("plinkoDrop", dropPlinkoBall));
@@ -2419,8 +2726,36 @@ function init() {
   if (init._didBind) return;
   init._didBind = true;
 
+  // ---- restore challenge state FIRST ----
+  loadChallengeState(); // sets challengeActive + CHALLENGE.active from localStorage
+
+  console.log("Challenge active?", challengeActive);
+
+  const status = getChallengeStatus();
+
+  // If last run ended, do NOT auto-resume.
+  if (status === "failed" || status === "won") {
+  challengeActive = false;
+  CHALLENGE.active = false;
+  saveChallengeActive(false);
+  }
+
+  if (challengeActive) {
+  // already in a live challenge
+  setActiveWallet(CHALLENGE_WALLET_ID);
+  setChallengeWalletUI?.();
+  lockAppUI(false);
+  closeModal(challengeModal);
+} else {
+  // no challenge yet → lock and show tier modal
   lockAppUI(true);
   openModal(challengeModal);
+  renderTierSummary?.();
+}
+
+  challengeTierSelected = challengeTier?.value || "beginner";
+  CHALLENGE.tier = challengeTierSelected;
+  renderTierSummary();
 
   // ---------- basic UI boot ----------
   bindAdminModalClicks?.();
@@ -2439,28 +2774,36 @@ function init() {
   // =============================
   // WALLET BOOT (v2)
   // =============================
-  // Restore last active wallet if present
-  const bootWallet = localStorage.getItem(WALLET_KEY) || "";
-  if (bootWallet) {
-    setActiveWallet(bootWallet); // loads + seeds + updates UI + persists
-  } else {
-    // optional: show placeholders
-    if (currentWalletEl) currentWalletEl.textContent = "—";
+  if (!challengeActive) {
+    const bootWallet = localStorage.getItem(WALLET_KEY) || "";
+    if (bootWallet) {
+      setActiveWallet(bootWallet);
+    } else {
+      if (currentWalletEl) currentWalletEl.textContent = "—";
+    }
   }
 
   // =============================
-  // WALLET BUTTON WIRING (REAL FLOW)
+  // BUTTON WIRING (REAL FLOW)
   // =============================
 
   // Connect wallet (identity only)
   connectWalletBtn?.addEventListener("click", () => {
-    const input = prompt("Enter wallet address (demo):", currentWallet || "");
-    if (!input) return;
-    setActiveWallet(input.trim());
-  });
+  if (CHALLENGE?.enabled && challengeActive) {
+    toast?.("Challenge mode uses internal credits. Wallet connect is disabled.");
+    return;
+  }
+  const input = prompt("Enter wallet address (demo):", currentWallet || "");
+  if (!input) return;
+  setActiveWallet(input.trim());
+});
 
   // Deposit modal open
   depositBtn?.addEventListener("click", () => {
+    if (CHALLENGE?.enabled && challengeActive) {
+      toast?.("Deposits are disabled in Challenge mode.");
+      return;
+    }
     if (!currentWallet) return toast?.("Connect wallet first.");
     if (depositCurrency) depositCurrency.value = selectedCurrency || depositCurrency.value || "USDT";
     refreshDepositAddress?.();
@@ -2477,6 +2820,10 @@ function init() {
 
   // Create deposit request (PENDING only)
  depositSubmitBtn?.addEventListener("click", () => {
+  if (CHALLENGE?.enabled && challengeActive) {
+    toast?.("Challenge mode uses internal credits. Wallet connect is disabled.");
+    return;
+  }
   if (!currentWallet) return toast?.("Connect wallet first.");
 
   const amt = Number(depositAmount?.value || 0);
@@ -2503,6 +2850,10 @@ function init() {
 
   // Withdraw modal open
   withdrawBtn?.addEventListener("click", () => {
+    if (CHALLENGE?.enabled && challengeActive) {
+    toast?.("Challenge mode uses internal credits. Wallet connect is disabled.");
+    return;
+  }
     if (!currentWallet) return toast?.("Connect wallet first.");
     if (withdrawMsg) withdrawMsg.textContent = "";
     renderWithdrawHistory?.();
@@ -2528,8 +2879,9 @@ function init() {
   });
 
   openChallengeBtn?.addEventListener("click", () => {
-    openModal(challengeModal);
-    if (challengeMsg) challengeMsg.textContent = "";
+  openModal(challengeModal);
+  if (challengeMsg) challengeMsg.textContent = "";
+  renderTierSummary();
   });
 
   // Admin open
@@ -2537,6 +2889,13 @@ function init() {
     openModal?.(adminModal);
     setAdminTab?.("deposits");
     renderAdmin?.();
+  });
+
+  // Session reset
+  resetSessionBtn?.addEventListener("click", () => {
+  resetSessionStats?.();
+  updateSessionStats?.();
+  toast?.("Session reset.");
   });
 
   // Admin tabs + filters
@@ -2563,29 +2922,58 @@ function init() {
   // GAME WIRING
   // =============================
 
+  challengeTier?.addEventListener("change", () => {
+  challengeTierSelected = challengeTier.value;
+  renderTierSummary();
+});
+
  challengeStartBtn?.addEventListener("click", () => {
   const tier = challengeTier?.value || "beginner";
+  challengeTierSelected = tier;
+  CHALLENGE.tier = tier;
+  saveChallengeState?.();
+  setChallengeStatus("active");
 
-  challengeTierSelected = tier;   // your existing variable
-  CHALLENGE.tier = tier;          // IMPORTANT: so other code paths don't see null
-
+  // keep if you want v1 always-on gating
   CHALLENGE.enabled = true;
+
+  CHALLENGE.active = true;
   challengeActive = true;
+  saveChallengeActive(true);
   challengeCompleted = false;
+
+  setChallengeWalletUI();
+  setActiveWallet(CHALLENGE_WALLET_ID);
 
   // starting credits for the tier
   const t = getTier();
   balance = Number(t.startCredits || 0);
+  _lastBalanceForMercy = Number(balance || 0);
+  _mercyOn = false;  
   updateBalanceDisplay?.();
-  persistActiveWalletState?.();
+  persistActiveWalletState?.(); 
+  saveChallengeCompleted(false);
+  showChallengeResetIfNeeded();
+  setDefaultBetsIfEmpty();
+
+  if (challengeMsg) challengeMsg.textContent = `Challenge locked: ${tier.toUpperCase()}`;
 
   closeModal(challengeModal);
   lockAppUI(false);
 });
 
+if (challengeResetBtn && !challengeResetBtn._bound) {
+  challengeResetBtn._bound = true;
+  challengeResetBtn.addEventListener("click", () => {
+    resetChallengeRun();      // your existing logic
+    _mercyOn = false;
+  });
+}
+
   startGameBtn?.addEventListener("click", () => withLock("minesStart", startMinesRound));
   cashOutBtn?.addEventListener("click", () => withLock("minesCashout", cashOutMines));
 
+  setDefaultBetsIfEmpty();
   setupPresetButtons?.();
   setupTabs?.();
   setupProvablyFairDrawer?.();
@@ -2596,6 +2984,8 @@ function init() {
   crashCashOutBtn?.addEventListener("click", () => withLock("crashCashout", cashOutCrash));
 
   initPlinko?.();
+
+  document.documentElement.classList.remove("booting");
 }
 
 document.addEventListener("DOMContentLoaded", init);

@@ -74,6 +74,7 @@ body {
   gap: 16px;
 }
 
+
 .logo-block {
   text-align: left;
   display: flex;
@@ -1187,7 +1188,7 @@ select:focus {
 }
 
 .modal.open{
-  display: flex !important;
+  display: flex;
 }
 
 .modal .modal-card{
@@ -1221,6 +1222,11 @@ select:focus {
   font-size: 12px;
 }
 
+/* prevent modal flash during boot */
+html.booting .modal {
+  display: none !important;
+}
+
 .buy-packs{
   display:flex;
   flex-direction:column;
@@ -1236,6 +1242,7 @@ select:focus {
   outline: 2px solid rgba(255,255,255,0.18);
   background: rgba(255,255,255,0.10);
 }
+
 
 /*//////////////////////
 ////// REDEEM /////////*/
@@ -2094,3 +2101,88 @@ body.landing .landing-cta.disabled{
 body.landing .landing-label{
   margin-top: 0;
 }
+
+/* =========================
+   CHALLENGE MODAL LAYOUT FIX
+========================= */
+
+#challengeModal .modal-card{
+  width: min(860px, calc(100vw - 40px));
+  max-height: min(82vh, 760px);
+  overflow: auto;            /* prevents the inner content from spilling */
+}
+
+#challengeModal .modal-body{
+  display: grid;
+  gap: 12px;
+}
+
+#tierSummary{
+  width: 100%;
+}
+
+.tier-summary-card{
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(10, 15, 30, 0.62);
+  backdrop-filter: blur(10px);
+}
+
+.tier-summary-top{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.tier-summary-grid{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.tier-kv{
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(0,0,0,0.18);
+}
+
+.tier-kv .k{
+  font-size: .78rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.tier-kv .v{ font-weight: 700; }
+
+.tier-summary-rules{
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.rule-line{
+  margin: 6px 0;
+  line-height: 1.35;
+}
+
+.toast{
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(10,15,30,.85);
+  color: #fff;
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease;
+  z-index: 9999;
+}
+.toast.show{ opacity: 1; transform: translateX(-50%) translateY(-6px); }

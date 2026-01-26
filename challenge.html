@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="booting">
 <head>
   <meta charset="UTF-8" />
   <title>RISX — Where risk becomes reward.</title>
@@ -50,7 +50,7 @@
         <button id="connectWalletBtn" class="btn secondary small" type="button">Connect</button>
       </div>
 
-     <div class="wallet-actions">
+     <div class="wallet-actions" id="walletActions">
       <button id="depositBtn" class="btn primary small" type="button">Deposit</button>
       <button id="withdrawBtn" class="btn secondary small" type="button">Withdraw</button>
       <button id="adminBtn" class="btn secondary small" type="button">Admin</button>
@@ -413,7 +413,7 @@
   <!-- =========================
      CHALLENGE ENTRY MODAL
 ========================== -->
-<div id="challengeModal" class="modal open" aria-hidden="false">
+<div id="challengeModal" class="modal" aria-hidden="true">
   <div class="modal-card">
     <div class="modal-head">
       <div class="modal-title">Choose Your Challenge Tier</div>
@@ -428,14 +428,18 @@
       <div class="field">
         <label for="challengeTier">Tier</label>
         <select id="challengeTier">
-          <option value="beginner" selected>Beginner — $10 entry / 250 start</option>
-          <option value="intermediate">Intermediate — $25 entry / 500 start</option>
-          <option value="pro">Pro — $50 entry / 1000 start</option>
+          <option value="beginner" selected>Beginner</option>
+          <option value="intermediate">Intermediate</option>
+          <option value="pro">Pro</option>
         </select>
+         <div id="tierSummary"></div>
       </div>
 
       <div class="modal-actions">
         <button id="challengeStartBtn" class="btn primary" type="button">Start Challenge</button>
+        <button id="challengeResetBtn" class="btn secondary" type="button" style="display:none;">
+          Restart Challenge
+        </button>
       </div>
 
       <div id="challengeMsg" class="hint small"></div>
@@ -588,6 +592,7 @@
       </div>
     </div>
   </div>
+  <div id="toast" class="toast"></div>
 
   <script src="app.js"></script>
 </body>
