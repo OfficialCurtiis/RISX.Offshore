@@ -678,21 +678,43 @@
 </div>
 
 <style>
-  .risx-modal { position: fixed; inset: 0; z-index: 9999; }
-  .risx-modal__backdrop { position:absolute; inset:0; background: rgba(0,0,0,.65); }
-  .risx-modal__panel {
-    position: relative;
-    width: min(520px, calc(100% - 24px));
-    margin: 80px auto;
-    padding: 16px;
-    border-radius: 16px;
-    background: rgba(12, 14, 18, .94);
-    border: 1px solid rgba(255,255,255,.10);
-    box-shadow: 0 12px 40px rgba(0,0,0,.55);
+  /* Pay modal must win ALL stacking contexts */
+  #payModal.risx-modal {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 2147483647 !important; /* max-ish z-index */
   }
-  .risx-modal__close {
-    position:absolute; right:10px; top:10px;
-    padding: 6px 10px; border-radius: 10px;
+
+  #payModal .risx-modal__backdrop {
+    position: fixed !important;
+    inset: 0 !important;
+    background: rgba(0,0,0,.70) !important;
+  }
+
+  /* Center on screen no matter what other modals are doing */
+  #payModal .risx-modal__panel {
+    position: fixed !important;
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+
+    width: min(520px, calc(100% - 24px)) !important;
+    max-height: calc(100vh - 24px) !important;
+    overflow: auto !important;
+
+    padding: 16px !important;
+    border-radius: 16px !important;
+    background: rgba(12, 14, 18, .96) !important;
+    border: 1px solid rgba(255,255,255,.10) !important;
+    box-shadow: 0 12px 40px rgba(0,0,0,.55) !important;
+  }
+
+  #payModal .risx-modal__close {
+    position: absolute !important;
+    right: 10px !important;
+    top: 10px !important;
+    padding: 6px 10px !important;
+    border-radius: 10px !important;
   }
 </style>
 
