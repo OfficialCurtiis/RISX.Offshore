@@ -1354,9 +1354,8 @@ select:focus {
   display: none;
   align-items: center;
   justify-content: center;
-  overscroll-behavior: contain;
-  padding: 20px;
-  background: rgba(0,0,0,.70);
+  padding: 24px;
+  background: rgba(0,0,0,.6);
   z-index: 2147483647;
 }
 
@@ -1364,12 +1363,10 @@ select:focus {
   display: flex;
 }
 
-.modal-card {
-  width: min(820px, calc(100% - 24px));
-  max-height: calc(100vh - 40px);
+.modal .modal-card{
+  width: min(560px, 92vw);
+  max-height: min(82vh, 720px);
   overflow: auto;
-
-  margin: 0;                 /* IMPORTANT: no top margin pushing it */
 }
 
 .modal-head{
@@ -2428,6 +2425,37 @@ body.landing .landing-label{
   z-index: 9999;
 }
 .toast.show{ opacity: 1; transform: translateX(-50%) translateY(-6px); }
+
+/* Force challenge modal overlay to center */
+#challengeModal {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9998 !important;
+
+  /* center the card */
+  display: none; /* will be overridden by your JS if it uses display:block */
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 20px !important;
+
+  /* cleaner backdrop (less washed out) */
+  background: rgba(0,0,0,.70) !important;
+}
+
+/* If your JS uses display:block, this makes it flex when visible */
+#challengeModal[aria-hidden="false"],
+#challengeModal.is-open,
+#challengeModal.open {
+  display: flex !important;
+}
+
+/* Force the card to behave */
+#challengeModal .modal-card {
+  width: min(820px, calc(100% - 24px)) !important;
+  max-height: calc(100vh - 40px) !important;
+  overflow: auto !important;
+  margin: 0 !important;
+}
 
 /* ========================= */
 /* WALLET (COMPACT SUMMARY)  */
