@@ -624,6 +624,78 @@
   </div>
 </div>
 
-  <script src="app.js"></script>
+<!-- ========================= -->
+<!-- RISX CRYPTO PAY MODAL -->
+<!-- ========================= -->
+<div id="payModal" class="risx-modal" style="display:none;">
+  <div class="risx-modal__backdrop" data-pay-close></div>
+
+  <div class="risx-modal__panel">
+    <button class="risx-modal__close" data-pay-close aria-label="Close">✕</button>
+
+    <h2 style="margin:0 0 6px 0;">Unlock Tier</h2>
+    <div id="payTierLabel" style="opacity:.8; margin-bottom:12px;">Tier: —</div>
+
+    <label style="display:block; margin:10px 0 6px;">Pay with</label>
+    <select id="payCurrencySelect" style="width:100%; padding:10px; border-radius:10px;">
+      <option value="usdcsol">USDC (Solana)</option>
+      <option value="usdtsol">USDT (Solana)</option>
+      <option value="sol">SOL</option>
+      <option value="btc">BTC</option>
+      <option value="ltc">LTC</option>
+      <option value="trx">TRX</option>
+    </select>
+
+    <button id="payCreateBtn" style="margin-top:12px; width:100%; padding:12px; border-radius:12px;">
+      Create Payment
+    </button>
+
+    <div id="payStep2" style="display:none; margin-top:14px;">
+      <div style="opacity:.85; margin-bottom:8px;">Send exactly:</div>
+
+      <div style="padding:12px; border-radius:12px; background: rgba(255,255,255,.06);">
+        <div><strong>Amount:</strong> <span id="payAmount">—</span></div>
+        <div style="margin-top:6px;"><strong>To Address:</strong></div>
+        <div style="display:flex; gap:8px; align-items:center; margin-top:6px;">
+          <code id="payAddress" style="word-break:break-all; flex:1;">—</code>
+          <button id="payCopyBtn" style="padding:8px 10px; border-radius:10px;">Copy</button>
+        </div>
+      </div>
+
+      <div id="payStatus" style="margin-top:10px; opacity:.85;">Waiting for payment…</div>
+
+      <button id="payCheckBtn" style="margin-top:12px; width:100%; padding:12px; border-radius:12px;">
+        I Paid — Check Status
+      </button>
+    </div>
+
+    <div id="payUnlocked" style="display:none; margin-top:14px;">
+      <div style="padding:12px; border-radius:12px; background: rgba(29,242,127,.12); border: 1px solid rgba(29,242,127,.35);">
+        ✅ Tier unlocked. You can start the challenge now.
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .risx-modal { position: fixed; inset: 0; z-index: 9999; }
+  .risx-modal__backdrop { position:absolute; inset:0; background: rgba(0,0,0,.65); }
+  .risx-modal__panel {
+    position: relative;
+    width: min(520px, calc(100% - 24px));
+    margin: 80px auto;
+    padding: 16px;
+    border-radius: 16px;
+    background: rgba(12, 14, 18, .94);
+    border: 1px solid rgba(255,255,255,.10);
+    box-shadow: 0 12px 40px rgba(0,0,0,.55);
+  }
+  .risx-modal__close {
+    position:absolute; right:10px; top:10px;
+    padding: 6px 10px; border-radius: 10px;
+  }
+</style>
+
+<script src="app.js"></script>
+<script src="payments.js"></script>
 </body>
-</html>

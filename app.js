@@ -3307,8 +3307,30 @@ function init() {
   renderTierSummary();
 });
 
- challengeStartBtn?.addEventListener("click", () => {
+challengeStartBtn?.addEventListener("click", () => {
   const tier = challengeTier?.value || "beginner";
+
+  // =========================
+  // PAYMENT GATE (MVP)
+  // =========================
+  const unlockedTier = localStorage.getItem("risx_unlocked_tier");
+
+  // must match tier exactly (beginner/intermediate/pro)
+  if (unlockedTier !== tier) {
+    // open the crypto payment modal (from payments.js)
+    if (typeof window.RISX_openPayModalForTier === "function") {
+      window.RISX_openPayModalForTier(tier);
+      if (challengeMsg) challengeMsg.textContent = `Tier locked: ${tier.toUpperCase()} — complete payment to unlock.`;
+      return; // IMPORTANT: stop here so the challenge doesn't start
+    } else {
+      alert("Payment system not loaded yet. Make sure payments.js is included under app.js in challenge.html.");
+      return;
+    }
+  }
+
+  // =========================
+  // ORIGINAL START LOGIC
+  // =========================
   challengeTierSelected = tier;
   CHALLENGE.tier = tier;
   saveChallengeState?.();
@@ -3329,14 +3351,14 @@ function init() {
   const t = getTier();
   balance = Number(t.startCredits || 0);
   _lastBalanceForMercy = Number(balance || 0);
-  _mercyOn = false;  
+  _mercyOn = false;
   updateBalanceDisplay?.();
-  persistActiveWalletState?.(); 
+  persistActiveWalletState?.();
   saveChallengeCompleted(false);
   showChallengeResetIfNeeded();
   setDefaultBetsIfEmpty();
 
-  if (challengeMsg) challengeMsg.textContent = `Challenge locked: ${tier.toUpperCase()}`;
+  if (challengeMsg) challengeMsg.textContent = `Challenge started: ${tier.toUpperCase()}`;
 
   refreshChallengeHud();
   closeModal(challengeModal);
