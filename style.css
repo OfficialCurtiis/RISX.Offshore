@@ -2457,6 +2457,19 @@ body.landing .landing-label{
   margin: 0 !important;
 }
 
+/* Challenge tier modal backdrop: dark, clean, no white wash */
+#challengeModal.modal {
+  background: rgba(0, 0, 0, 0.72) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Optional: make the card pop nicer against the dark backdrop */
+#challengeModal .modal-card {
+  background: rgba(12, 14, 18, 0.94) !important;
+  border: 1px solid rgba(255,255,255,0.10) !important;
+}
+
 /* ========================= */
 /* WALLET (COMPACT SUMMARY)  */
 /* ========================= */
