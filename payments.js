@@ -13,6 +13,8 @@
   const checkBtn     = document.getElementById("payCheckBtn");
   const unlockedBox  = document.getElementById("payUnlocked");
 
+  const PENDING_KEY = "risx_pending_payment"; // stores payment_id + tier + amount + address
+
   // close actions
   document.querySelectorAll("[data-pay-close]").forEach(el => {
     el.addEventListener("click", () => closeModal());
@@ -24,25 +26,65 @@
   let pollTimer = null;
 
   // ------- Helpers -------
+
+  function setPendingPayment(payload) {
+    localStorage.setItem(PENDING_KEY, JSON.stringify(payload));
+    }
+
+  function getPendingPayment() {
+    try { return JSON.parse(localStorage.getItem(PENDING_KEY) || "null"); }
+    catch { return null; }
+    }
+
+  function clearPendingPayment() {
+    localStorage.removeItem(PENDING_KEY);
+    }
+
+  function enableLeaveWarning() {
+      window.onbeforeunload = (e) => {
+    e.preventDefault();
+    e.returnValue = "";
+    return "";
+    };
+    }
+
+  function disableLeaveWarning() {
+    window.onbeforeunload = null;
+    }
+
   function openModal(tierKey) {
-    activeTierKey = tierKey;
-    activePaymentId = null;
+  activeTierKey = tierKey;
+  activePaymentId = null;
 
-    tierLabel.textContent = `Tier: ${tierKey}`;
-    step2.style.display = "none";
-    unlockedBox.style.display = "none";
-    statusEl.textContent = "Waiting for payment…";
-    amountEl.textContent = "—";
-    addressEl.textContent = "—";
+  tierLabel.textContent = `Tier: ${tierKey}`;
+  step2.style.display = "none";
+  unlockedBox.style.display = "none";
+  statusEl.textContent = "Waiting for payment…";
+  amountEl.textContent = "—";
+  addressEl.textContent = "—";
 
-    modal.style.display = "block";
-  }
+  modal.style.display = "block";
 
-  function closeModal() {
+  // ✅ Refresh-safe: restore pending payment for this tier if it exists
+  const pending = getPendingPayment();
+  if (pending && pending.tierKey === tierKey && pending.payment_id) {
+    activePaymentId = pending.payment_id;
+
+    step2.style.display = "block";
+    amountEl.textContent = `${pending.pay_amount} ${String(pending.pay_currency).toUpperCase()}`;
+    addressEl.textContent = pending.pay_address;
+
+    statusEl.textContent = "Status: restoring… (checking every 2.5s)";
+    enableLeaveWarning();
+    startPolling(activePaymentId);
+    }
+}
+
+    function closeModal() {
     modal.style.display = "none";
     stopPolling();
-  }
-
+    disableLeaveWarning(); // optional: only warn while modal is open
+    }
   function stopPolling() {
     if (pollTimer) clearTimeout(pollTimer);
     pollTimer = null;
@@ -52,6 +94,8 @@
     localStorage.setItem("risx_unlocked_tier", tierKey);
     unlockedBox.style.display = "block";
     statusEl.textContent = "✅ Confirmed";
+    clearPendingPayment();
+    disableLeaveWarning();
     stopPolling();
   }
 
@@ -116,6 +160,16 @@
       const data = await createPayment(activeTierKey, payCurrency);
 
       activePaymentId = data.payment_id;
+
+      setPendingPayment({
+        tierKey: activeTierKey,
+        payment_id: data.payment_id,
+        pay_amount: data.pay_amount,
+        pay_currency: data.pay_currency || payCurrency,
+        pay_address: data.pay_address,
+        createdAt: Date.now()
+        });
+        enableLeaveWarning();
 
       step2.style.display = "block";
       amountEl.textContent = `${data.pay_amount} ${String(data.pay_currency || payCurrency).toUpperCase()}`;

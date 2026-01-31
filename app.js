@@ -3315,20 +3315,18 @@ challengeStartBtn?.addEventListener("click", () => {
   // =========================
   const unlockedTier = localStorage.getItem("risx_unlocked_tier");
 
+  // must match tier exactly (beginner/intermediate/pro)
   if (unlockedTier !== tier) {
-  if (typeof window.RISX_openPayModalForTier === "function") {
-    // close the tier modal so modals don't stack/fight
-    closeModal(challengeModal);
-
-    window.RISX_openPayModalForTier(tier);
-
-    if (challengeMsg) challengeMsg.textContent = `Tier locked: ${tier.toUpperCase()} — complete payment to unlock.`;
-    return;
-  } else {
-    alert("Payment system not loaded yet. Make sure payments.js is included under app.js in challenge.html.");
-    return;
+    // open the crypto payment modal (from payments.js)
+    if (typeof window.RISX_openPayModalForTier === "function") {
+      window.RISX_openPayModalForTier(tier);
+      if (challengeMsg) challengeMsg.textContent = `Tier locked: ${tier.toUpperCase()} — complete payment to unlock.`;
+      return; // IMPORTANT: stop here so the challenge doesn't start
+    } else {
+      alert("Payment system not loaded yet. Make sure payments.js is included under app.js in challenge.html.");
+      return;
+    }
   }
-}
 
   // =========================
   // ORIGINAL START LOGIC
