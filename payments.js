@@ -27,6 +27,26 @@
 
   // ------- Helpers -------
 
+  function lockBodyScroll() {
+  document.body.dataset.risxScrollY = String(window.scrollY || 0);
+  document.body.style.position = "fixed";
+  document.body.style.top = `-${window.scrollY || 0}px`;
+  document.body.style.left = "0";
+  document.body.style.right = "0";
+  document.body.style.width = "100%";
+}
+
+    function unlockBodyScroll() {
+    const y = Number(document.body.dataset.risxScrollY || "0");
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.left = "";
+    document.body.style.right = "";
+    document.body.style.width = "";
+    delete document.body.dataset.risxScrollY;
+    window.scrollTo(0, y);
+    }
+
   function setPendingPayment(payload) {
     localStorage.setItem(PENDING_KEY, JSON.stringify(payload));
     }
@@ -52,6 +72,34 @@
     window.onbeforeunload = null;
     }
 
+function lockBodyScroll() {
+  // Save current scroll position
+  const y = window.scrollY || 0;
+  document.body.dataset.risxScrollY = String(y);
+
+  // Lock the body in place
+  document.body.style.position = "fixed";
+  document.body.style.top = `-${y}px`;
+  document.body.style.left = "0";
+  document.body.style.right = "0";
+  document.body.style.width = "100%";
+}
+
+function unlockBodyScroll() {
+  const y = Number(document.body.dataset.risxScrollY || "0");
+
+  // Restore body styles
+  document.body.style.position = "";
+  document.body.style.top = "";
+  document.body.style.left = "";
+  document.body.style.right = "";
+  document.body.style.width = "";
+  delete document.body.dataset.risxScrollY;
+
+  // Restore scroll position
+  window.scrollTo(0, y);
+}
+
   function openModal(tierKey) {
   activeTierKey = tierKey;
   activePaymentId = null;
@@ -64,6 +112,7 @@
   addressEl.textContent = "—";
 
   modal.style.display = "block";
+  lockBodyScroll();
 
   // ✅ Refresh-safe: restore pending payment for this tier if it exists
   const pending = getPendingPayment();
@@ -83,7 +132,8 @@
     function closeModal() {
     modal.style.display = "none";
     stopPolling();
-    disableLeaveWarning(); // optional: only warn while modal is open
+    unlockBodyScroll();
+    disableLeaveWarning();
     }
   function stopPolling() {
     if (pollTimer) clearTimeout(pollTimer);
