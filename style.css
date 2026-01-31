@@ -1355,8 +1355,8 @@ select:focus {
   align-items: center;
   justify-content: center;
   overscroll-behavior: contain;
-  padding: 24px;
-  background: rgba(0,0,0,.6);
+  padding: 20px;
+  background: rgba(0,0,0,.70);
   z-index: 2147483647;
 }
 
@@ -1364,10 +1364,12 @@ select:focus {
   display: flex;
 }
 
-.modal .modal-card{
-  width: min(560px, 92vw);
-  max-height: min(82vh, 720px);
+.modal-card {
+  width: min(820px, calc(100% - 24px));
+  max-height: calc(100vh - 40px);
   overflow: auto;
+
+  margin: 0;                 /* IMPORTANT: no top margin pushing it */
 }
 
 .modal-head{
