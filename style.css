@@ -1354,6 +1354,7 @@ select:focus {
   display: none;
   align-items: center;
   justify-content: center;
+  overscroll-behavior: contain;
   padding: 24px;
   background: rgba(0,0,0,.6);
   z-index: 2147483647;

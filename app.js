@@ -2759,23 +2759,50 @@ function renderWithdrawHistory(){
   `).join("");
 }
 
-function openModal(el) {
-  if (!el) return;
-  el.classList.add("open");
-  el.setAttribute("aria-hidden", "false");
+let __risxModalDepth = 0;
+
+function lockBodyScroll() {
+  // Only lock once (first modal)
+  if (__risxModalDepth === 0) {
+    const y = window.scrollY || 0;
+    document.body.dataset.risxScrollY = String(y);
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${y}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+  }
+  __risxModalDepth++;
 }
 
-function closeModal(el) {
-  if (!el) return;
-
-  // ✅ If focus is inside the modal, remove it FIRST
-  const active = document.activeElement;
-  if (active && el.contains(active)) {
-    active.blur();
+function unlockBodyScroll() {
+  __risxModalDepth = Math.max(0, __risxModalDepth - 1);
+  if (__risxModalDepth === 0) {
+    const y = Number(document.body.dataset.risxScrollY || "0");
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.left = "";
+    document.body.style.right = "";
+    document.body.style.width = "";
+    delete document.body.dataset.risxScrollY;
+    window.scrollTo(0, y);
   }
+}
 
-  el.classList.remove("open");
-  el.setAttribute("aria-hidden", "true");
+function openModal(modalEl) {
+  if (!modalEl) return;
+  modalEl.setAttribute("aria-hidden", "false");
+  modalEl.classList.add("open");
+  modalEl.style.display = "block";
+  lockBodyScroll();
+}
+
+function closeModal(modalEl) {
+  if (!modalEl) return;
+  modalEl.setAttribute("aria-hidden", "true");
+  modalEl.classList.remove("open");
+  modalEl.style.display = "none";
+  unlockBodyScroll();
 }
 
 function switchUser() {
