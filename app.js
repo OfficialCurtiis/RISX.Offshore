@@ -31,6 +31,7 @@ let currentMines = 3;
 let gameActive = false;
 let minesSet = new Set();
 let safeClicks = 0;
+let minesResultHideTimer = null;
 
 // PLINKO STATE
 let plinkoRows = 8;
@@ -41,16 +42,19 @@ let lastPlinkoResult = null;
 let serverSeed = "CHANGE_ME_TO_RANDOM_LONG_SECRET"; // secret until reveal
 let clientSeed = "Guest"; // let player edit this
 let plinkoNonce = 0;
-let plinkoBallsInFlight = 0;  // ✅ ADD THIS
+let plinkoBallsInFlight = 0;
 
 // CRASH STATE
 let crashRoundActive = false;
 let crashCrashed = false;
+let crashHasCashedOut = false;
 let crashBet = 10;
 let crashCrashPoint = 0;      // multiplier at which round crashes
 let crashCurrentMult = 1.0;
 let crashStartTime = 0;
 let crashAnimFrameId = null;
+let crashCashedOutMult = 0;   // optional, for history/logic
+let crashCashedOutWin  = 0;   // optional, for toast line
 const crashMaxDisplayMult = 50; // cap visual rocket/curve at 50x
 const crashRounds = []; // { outcome: 'bust'|'cashout', mult: number }
 
@@ -220,6 +224,122 @@ const pfLastRoundEl        = document.getElementById("pfLastRound");
 const openPfBtn            = document.getElementById("openPfBtn");
 const pfOpenBtn            = document.getElementById("pfOpenBtn");
 
+// ================================
+// Bet Settings Lock (Mines/Crash/Plinko)
+// ================================
+function _setDisabled(el, disabled) {
+  if (!el) return;
+  el.disabled = !!disabled;
+  el.classList.toggle("is-disabled", !!disabled);
+}
+
+function lockBetSettings(gameKey, locked) {
+  const lock = !!locked;
+
+  // Helper to grab elements safely
+  const $ = (id) => document.getElementById(id);
+
+  // ---- MINES ----
+  if (gameKey === "mines") {
+    // Bet settings (lock these during an active round)
+    const disable = [
+      $("betAmount"),
+      $("minesHalfBtn"),
+      $("mines2xBtn"),
+      $("minesMaxBtn"),
+
+      $("mineCount"),
+      $("presetLowBtn"),
+      $("presetMedBtn"),
+      $("presetHighBtn"),
+
+      // If you have these, they'll get locked too (safe if null)
+      $("minesMineCount"),
+      $("minesDifficulty"),
+      $("minesRisk"),
+      $("minesStartBtn"),
+      $("minesStart"),
+    ];
+
+    // Buttons that MUST stay usable during an active round
+    const keepEnabled = [
+      $("minesCashoutBtn"),
+      $("minesCashout"),
+      $("cashOutBtn"),
+    ];
+
+    disable.forEach((el) => _setDisabled(el, lock));
+    keepEnabled.forEach((el) => _setDisabled(el, false));
+  }
+
+  // ---- CRASH ----
+  if (gameKey === "crash") {
+    // "settings beside cashout button" = lock anything that changes wager/auto rules mid-round
+    const disable = [
+      $("crashBetAmount"),
+      $("crashHalfBtn"),
+      $("crash2xBtn"),
+      $("crashMaxBtn"),
+
+      // Common Crash settings inputs (safe if you don't have them)
+      $("crashAutoCashout"),
+      $("crashAutoCashoutInput"),
+      $("crashAuto"),
+      $("crashStartBtn"),
+      $("crashStart"),
+    ];
+
+    // MUST remain usable mid-round:
+    const keepEnabled = [
+      $("crashCashoutBtn"),
+      $("crashCashout"),
+    ];
+
+    disable.forEach((el) => _setDisabled(el, lock));
+    keepEnabled.forEach((el) => _setDisabled(el, false));
+  }
+
+  // ---- PLINKO ----
+  if (gameKey === "plinko") {
+    // Lock wager/settings while balls are in-flight
+    // BUT keep the "drop ball" button enabled so they can spam drops.
+    const disable = [
+      $("plinkoBetAmount"),
+      $("plinkoHalfBtn"),
+      $("plinko2xBtn"),
+      $("plinkoMaxBtn"),
+
+      // Common Plinko settings (safe if you don't have them)
+      $("plinkoRows"),
+      $("plinkoPins"),
+      $("plinkoRisk"),
+      $("plinkoRiskSelect"),
+      $("plinkoStartBtn"),
+      $("plinkoStart"),
+    ];
+
+    // MUST remain usable even while locked:
+    const keepEnabled = [
+      $("plinkoDropBtn"),
+      $("plinkoDropBallBtn"),
+      $("plinkoDropBall"),
+    ];
+
+    disable.forEach((el) => _setDisabled(el, lock));
+    keepEnabled.forEach((el) => _setDisabled(el, false));
+  }
+}
+
+function plinkoOnBallDrop_LockIfNeeded() {
+  if (plinkoBallsInFlight === 0) lockBetSettings("plinko", true);
+  plinkoBallsInFlight += 1;
+}
+
+function plinkoOnBallResolved_UnlockIfDone() {
+  plinkoBallsInFlight = Math.max(0, plinkoBallsInFlight - 1);
+  if (plinkoBallsInFlight === 0) lockBetSettings("plinko", false);
+}
+
 // =========================
 // CHALLENGE TIERS (shape must match game code)
 // =========================
@@ -344,6 +464,162 @@ function renderTierSummary() {
 // =========================
 // Small utils / Challenge helpers
 // =========================
+
+function setChallengeGoalUI(value) {
+  const el = document.getElementById("challengeGoal");
+  if (!el) return;
+  const n = Number(value);
+  el.textContent = (Number.isFinite(n) && n > 0) ? formatCredits(n) : "—";
+}
+
+function setChallengeHud({ state = "ready", text = "READY", sub = "", mercyOn = false } = {}) {
+  const hud = document.getElementById("challengeHud");
+  const stateEl = document.getElementById("challengeStateText");
+  const subEl = document.getElementById("challengeHudSub");
+  const mercy = document.getElementById("mercyBadge");
+
+  if (!hud || !stateEl || !mercy) return;
+
+  hud.dataset.state = state;
+  stateEl.textContent = text;
+
+  if (subEl && sub) subEl.textContent = sub;
+
+  mercy.hidden = !mercyOn;
+}
+
+function inMercyNowGlobal() {
+  const t = getTier?.() || {};
+  setChallengeGoalUI(t.goalBalance ?? t.goal ?? t.target ?? t.targetBalance ?? 0);
+  const bal = Math.max(0, Number(getBalance?.() ?? balance ?? 0));
+  const mercyAt = Number(t.mercyAllInAt || 0);
+  return !!(CHALLENGE?.enabled && challengeActive && bal > 0 && mercyAt > 0 && bal <= mercyAt);
+}
+
+function refreshChallengeHud() {
+  const bal = Math.max(0, Number(getBalance?.() ?? balance ?? 0));
+  const t = getTier?.() || {};
+  const mercyAt = Number(t.mercyAllInAt || 0);
+
+  const mercyOn = inMercyNowGlobal();
+  const status = getChallengeStatus?.() || ""; // "active" | "won" | "failed" | ""
+
+  // --- Goal UI ---
+  const goalEl = document.getElementById("challengeGoal");
+  if (goalEl) {
+  const t = getTier?.() || {};
+  const goal =
+    Number(t.goalCredits ?? t.goalBalance ?? t.goal ?? t.target ?? t.targetBalance ?? 0);
+
+  goalEl.textContent = (goal > 0) ? formatCredits(goal) : "—";
+}
+
+  // Not in a live challenge
+  if (!challengeActive || status === "" ) {
+    setChallengeHud({
+      state: "ready",
+      text: "READY",
+      sub: "Demo • Wallet-mode credits across all games",
+      mercyOn: false
+    });
+    return;
+  }
+
+  // Ended states
+  if (status === "won") {
+    setChallengeHud({
+      state: "cleared",
+      text: "CLEARED",
+      sub: "Challenge completed",
+      mercyOn: false
+    });
+    return;
+  }
+
+  if (status === "failed") {
+    setChallengeHud({
+      state: "failed",
+      text: "FAILED",
+      sub: "Run ended",
+      mercyOn: false
+    });
+    return;
+  }
+
+  // Live state
+  // WARNING: close to mercy threshold (you can tune this)
+  const warnAt = mercyAt > 0 ? mercyAt * 1.5 : 0;
+  const nearBoundary = warnAt > 0 && bal <= warnAt;
+
+  if (nearBoundary && !mercyOn) {
+    setChallengeHud({
+      state: "warning",
+      text: "WARNING",
+      sub: "Close to boundary",
+      mercyOn: false
+    });
+    return;
+  }
+
+  setChallengeHud({
+    state: "live",
+    text: "LIVE",
+    sub: mercyOn ? "Mercy active: MAX = all-in" : "Challenge running",
+    mercyOn
+  });
+}
+
+function risxConfirm({ title = "Confirm", body = "", okText = "OK", cancelText = "Cancel" } = {}) {
+  return new Promise((resolve) => {
+    const modal   = document.getElementById("risxModal");
+    const tEl     = document.getElementById("risxModalTitle");
+    const bEl     = document.getElementById("risxModalBody");
+    const okBtn   = document.getElementById("risxModalOk");
+    const canBtn  = document.getElementById("risxModalCancel");
+
+    if (!modal || !tEl || !bEl || !okBtn || !canBtn) {
+      // Fallback if modal isn't on this page
+      resolve(confirm(`${title}\n\n${body}`));
+      return;
+    }
+
+    tEl.textContent = title;
+    bEl.textContent = body;
+    okBtn.textContent = okText;
+    canBtn.textContent = cancelText;
+
+    const close = (val) => {
+      modal.classList.remove("open");
+      modal.setAttribute("aria-hidden", "true");
+      cleanup();
+      resolve(val);
+    };
+
+    const onBackdrop = (e) => {
+      if (e.target?.dataset?.close !== undefined) close(false);
+    };
+
+    const onOk = () => close(true);
+    const onCancel = () => close(false);
+
+    const cleanup = () => {
+      modal.removeEventListener("click", onBackdrop);
+      okBtn.removeEventListener("click", onOk);
+      canBtn.removeEventListener("click", onCancel);
+      document.removeEventListener("keydown", onEsc);
+    };
+
+    const onEsc = (e) => { if (e.key === "Escape") close(false); };
+
+    modal.addEventListener("click", onBackdrop);
+    okBtn.addEventListener("click", onOk);
+    canBtn.addEventListener("click", onCancel);
+    document.addEventListener("keydown", onEsc);
+
+    modal.classList.add("open");
+    modal.setAttribute("aria-hidden", "false");
+  });
+}
 
 function mercyConfirm(msg, onConfirm) {
   let wrap = document.getElementById("mercyConfirm");
@@ -494,6 +770,7 @@ if (!CHALLENGE?.enabled || !challengeActive) return;
     saveChallengeActive?.(false);
     toast?.(`✅ Goal reached: ${goal}!`);
     showChallengeResetIfNeeded?.();
+    refreshChallengeHud();
     return;
   }
 
@@ -526,6 +803,7 @@ function challengeFail(reason) {
   CHALLENGE.active = false;
   saveChallengeActive?.(false);
 
+  refreshChallengeHud();
   openModal?.(challengeModal);
   renderTierSummary?.();
   showChallengeResetIfNeeded?.();
@@ -859,7 +1137,7 @@ function setPlinkoControlsLocked(locked) {
   const root = document.getElementById("game-plinko") || document;
 
   // lock ONLY inputs + selects (bet settings)
-  root.querySelectorAll('#game-plinko input, #game-plinko select').forEach(el => {
+  root.querySelectorAll('input, select').forEach(el => {
     el.disabled = locked;
   });
 
@@ -1279,8 +1557,11 @@ function getBucketIndexFromFinalX(finalXBoardSpace) {
 }
 
 async function dropPlinkoBall() {
-  if (ROUND_ACTIVE) return;
-  ROUND_ACTIVE = true;
+  // allow multiple balls; optionally cap spam
+  const MAX_IN_FLIGHT = 8;
+  if (plinkoBallsInFlight >= MAX_IN_FLIGHT) return;
+
+  let ballEl = null;
 
   try {
     const bet = Number(plinkoBetAmountEl?.value || 0);
@@ -1290,23 +1571,46 @@ async function dropPlinkoBall() {
     if (bet <= 0) { plinkoMessageEl.textContent = "Enter a bet above 0."; return; }
     if (bet > (getBalance?.() ?? balance ?? 0)) { plinkoMessageEl.textContent = "Bet exceeds your balance."; return; }
 
+    if (!plinkoGeom) { renderPlinkoBoard(); renderPlinkoBuckets(); }
+
+    // charge bet immediately
     adjustBalance(-bet, { suppressChallengeChecks: true, suppressMercy: true });
 
-    plinkoBallsInFlight++;
-    setPlinkoControlsLocked(true);
+    plinkoOnBallDrop_LockIfNeeded?.();  // 🔒 locks settings, keeps drop enabled
 
-    // ... your plinko logic ...
+    const rows = PLINKO_DECISION_ROWS;
+
+    // ✅ concurrency-safe nonce (each ball gets unique nonce even when spam-clicked)
+    if (typeof plinkoNonce !== "number") plinkoNonce = 0;
+    const nonce = plinkoNonce++;
+    const out = await provablyFairPlinko({ serverSeed, clientSeed, nonce, rows });
+
+    pfLastPlinko = { serverSeed, clientSeed, nonce, rows, bucketIndex: out.bucketIndex, path: out.path, digestHex: out.digestHex };
+    updatePfUI?.();
+
+    const bucketIndex = out.bucketIndex;
+    const mult = getPlinkoMultiplier(bucketIndex);
+
+    // animate (each call awaits its own ball; doesn’t block other calls anymore)
+    ballEl = spawnPlinkoBall();
+    await animatePlinkoBall(ballEl, rows, out.path, { targetBucketIndex: bucketIndex });
+
+    highlightBucket(bucketIndex);
 
     const payout = bet * mult * 0.98;
     adjustBalance(+payout, { suppressChallengeChecks: true, suppressMercy: true });
+
+    // keep whatever message style you prefer
+    if (plinkoMessageEl) {
+      plinkoMessageEl.textContent = `+${formatCredits(payout)} (${mult}x)`;
+    }
 
   } catch (err) {
     console.error(err);
     if (plinkoMessageEl) plinkoMessageEl.textContent = `Plinko error: ${err?.message || err}`;
   } finally {
-    plinkoBallsInFlight = Math.max(0, plinkoBallsInFlight - 1);
-    if (plinkoBallsInFlight === 0) setPlinkoControlsLocked(false);
-    postRoundChecks(); 
+    plinkoOnBallResolved_UnlockIfDone?.(); // 🔓 unlocks only when last ball resolves
+    postRoundChecks?.();
   }
 }
 
@@ -1615,23 +1919,28 @@ function wireBetMultButtons(gameKey, inputEl, halfBtn, twoXBtn, maxBtn) {
     write(applyCap(next));
   });
 
-  maxBtn?.addEventListener("click", () => {
-    const t = getTier?.() || {};
-    const bal = getBal();
-    const cap = Number(challengeMaxBet?.(gameKey) ?? 0);
+  maxBtn?.addEventListener("click", async () => {
+  const bal = getBal();
+  const cap = Number(challengeMaxBet?.(gameKey) ?? 0);
 
-    if (inMercyNow()) {
-      const ok = confirm(
-        `Mercy Mode is active.\nMAX will bet your FULL balance: ${formatCredits(bal)}.\n\nProceed?`
-      );
-      if (!ok) return;
-      write(bal);                                 // ✅ ACTUAL all-in
-      return;
-    }
+  if (inMercyNow()) {
+    const ok = await risxConfirm({
+      title: "Mercy Mode",
+      body: `Mercy is active.\nMAX will bet your FULL balance: ${formatCredits(bal)}.\n\nProceed?`,
+      okText: "Bet Max",
+      cancelText: "Back"
+    });
+    if (!ok) return;
 
-    toast?.(`MAX = ${formatCredits(cap)} (${Math.round((cap / Math.max(1, bal)) * 100)}%)`);
-    write(cap);
-  });
+    write(bal);
+    refreshChallengeHud?.();
+    return;
+  }
+
+  const pct = bal > 0 ? Math.round((cap / bal) * 100) : 0;
+  toast?.(`MAX = ${formatCredits(cap)} (${pct}% of balance)`);
+  write(cap);
+ });
 }
 
 // Inputs
@@ -1877,14 +2186,13 @@ function startMinesRound() {
   safeClicks = 0;
   minesSet = generateMines(currentMines);
   gameActive = true;
-
+  
+  lockBetSettings?.("mines", true);
   updateBalanceDisplay();
   updateMinesInfoPanel(1.0, safeClicks);
 
   resultMessageEl.textContent = "";
   strategyMessageEl.textContent = "";
-  minesResultCard.classList.add("hidden");
-  minesResultCard.classList.remove("lose");
 
   resetMinesGridVisual();
   setMinesGridEnabled(true);
@@ -1895,6 +2203,7 @@ function startMinesRound() {
 
 function endMinesRound({ outcome, cashedOut, multiplier }) {
   gameActive = false;
+  lockBetSettings?.("mines", false);
   setMinesGridEnabled(false);
   startGameBtn.disabled = false;
   cashOutBtn.disabled = true;
@@ -1907,31 +2216,54 @@ function endMinesRound({ outcome, cashedOut, multiplier }) {
     if (winAmount > 0) {
     adjustBalance(+winAmount, { suppressMercy: true, suppressChallengeChecks: true });
   } else {
-    // still persist if you want (optional)
     persistActiveWalletState?.();
   }
+    showMinesResultCard({
+    outcome,
+    multiplier,
+    winAmount
+  });
 
   // stats
   updateSessionStats?.();
   persistSessionStats?.();
-
-  // ✅ SINGLE source of truth
   postRoundChecks?.();
 }
 
 function resetMinesResultCard() {
   if (!minesResultCard) return;
 
-  // Hide FIRST (prevents any “default green” frame)
   minesResultCard.classList.add("hidden");
+  minesResultCard.classList.remove("lose", "win");
 
-  // Next paint: safely reset visuals/text while hidden
-  requestAnimationFrame(() => {
-    minesResultCard.classList.remove("lose", "win");
-    if (minesResultTitle) minesResultTitle.textContent = "";
-    if (minesResultMult)  minesResultMult.textContent  = "1.00x";
-    if (minesResultWin)   minesResultWin.textContent   = "0";
-  });
+  if (minesResultTitle) minesResultTitle.textContent = "Round";
+  if (minesResultMult)  minesResultMult.textContent  = "1.00x";
+  if (minesResultWin)   minesResultWin.textContent   = "0";
+}
+
+function showMinesResultCard({ outcome, multiplier = 1, winAmount = 0 }) {
+  if (!minesResultCard) return;
+
+  // theme
+  minesResultCard.classList.remove("win", "lose");
+  minesResultCard.classList.add(outcome === "win" ? "win" : "lose");
+
+  // text
+  if (minesResultTitle) {
+    minesResultTitle.textContent = outcome === "win" ? "YOU WON" : "BUSTED";
+  }
+  if (minesResultMult) {
+    minesResultMult.textContent = `${Number(multiplier).toFixed(2)}x`;
+  }
+  if (minesResultWin) {
+    minesResultWin.textContent = outcome === "win" ? Math.floor(winAmount).toString() : "0";
+  }
+
+  // show (force pop animation each time)
+  minesResultCard.classList.remove("hidden");
+  minesResultCard.classList.remove("pop");
+  void minesResultCard.offsetWidth;
+  minesResultCard.classList.add("pop");
 }
 
 function onMinesCellClick(e) {
@@ -2116,10 +2448,15 @@ function syncCrashMultToRocket() {
 
 function handleCrashBust() {
   crashRoundActive = false;
+  lockBetSettings?.("crash", false);
   crashCrashed = true;
 
   crashCashOutBtn.disabled = true;
   crashStartBtn.disabled = false;
+
+  // Keep cashout marker visible through bust if player cashed out (spectator mode)
+  const m = document.getElementById("crashCashoutMarker");
+  if (m && !crashHasCashedOut) m.hidden = true;
 
   sessionRounds++;
   updateSessionStats();
@@ -2195,6 +2532,9 @@ function crashStep(timestamp) {
 function startCrashRound() {
   if (crashRoundActive) return;
 
+  const marker = document.getElementById("crashCashoutMarker");
+  if (marker) marker.hidden = true;
+
   const bet = Number(crashBetAmountEl.value || 0);
   const gate = enforceChallengeBet("crash", bet);
   if (!gate.ok) { crashStatusMessage.textContent = gate.msg; return; }
@@ -2215,8 +2555,20 @@ function startCrashRound() {
   crashCrashPoint = generateCrashPoint();
   crashCurrentMult = 1.0;
   crashCrashed = false;
+
   crashRoundActive = true;
+  lockBetSettings?.("crash", true);
+
   crashStartTime = performance.now();
+  crashHasCashedOut = false;
+  crashCashedOutMult = 0;
+  crashCashedOutWin = 0;
+
+  const m = document.getElementById("crashCashoutMarker");
+  if (m) m.hidden = true;
+
+  // also make sure cashout is enabled when round starts
+  crashCashOutBtn.disabled = false;
 
   crashStatusMessage.textContent = "Round running. Cash out any time.";
   crashBigMultEl.textContent = "1.00x";
@@ -2247,20 +2599,50 @@ function startCrashRound() {
 
 function cashOutCrash() {
   if (!crashRoundActive || crashCrashed) return;
+  if (crashHasCashedOut) return; // ✅ blocks multi-cashout
 
-  const houseEdge = 0.02;
+  crashHasCashedOut = true;
 
-  // ✅ Freeze the multiplier at the moment of cashout
-  const cashedMult = Number(crashCurrentMult.toFixed(2));
+  // Freeze multiplier at cashout moment
+  const cashedMult = Number((crashCurrentMult ?? 1).toFixed(2));
+  crashCashedOutMult = cashedMult;
 
-  const payout = crashBet * cashedMult * (1 - houseEdge);
+  // Compute win (use YOUR existing payout math / house edge if you have it)
+  const payout = crashBet * cashedMult;     // or your net payout formula
+  crashCashedOutWin = payout;
 
-  adjustBalance(+payout, { suppressMercy: true, suppressChallengeChecks: true });
+  // Pay once
+  adjustBalance(payout);
 
-  updateSessionStats?.();
-  persistSessionStats?.();
+  // Spectator mode: disable cashout, BUT DO NOT stop the round/rocket
+  crashCashOutBtn.disabled = true;
 
-  // ✅ SINGLE source of truth
+  // ✅ Place cashout marker at current rocket position (DOM-based)
+const rocket = document.getElementById("crashRocket");
+const wrap = document.querySelector("#game-crash .crash-graph-inner");
+const marker = document.getElementById("crashCashoutMarker");
+
+if (rocket && wrap && marker) {
+  const r = rocket.getBoundingClientRect();
+  const w = wrap.getBoundingClientRect();
+
+  // Center of rocket
+  const xCenter = (r.left + r.width / 2) - w.left;
+  const yCenter = (r.top + r.height / 2) - w.top;
+
+  // ✅ offset behind rocket (tweak this)
+  const behind = Math.max(10, r.width * 0.35);  // ~35% of rocket width
+  const x = xCenter - behind;
+  const y = yCenter;
+
+  marker.hidden = false;
+  marker.style.left = `${x}px`;
+  marker.style.top = `${y}px`;
+}
+
+  // Toast (same fading card, just adds winnings line)
+  showCrashToast(`Cashed out at ${cashedMult}x\n+${formatCredits(payout)} credits`);
+
   postRoundChecks?.();
 }
 
@@ -2727,9 +3109,7 @@ function init() {
   init._didBind = true;
 
   // ---- restore challenge state FIRST ----
-  loadChallengeState(); // sets challengeActive + CHALLENGE.active from localStorage
-
-  console.log("Challenge active?", challengeActive);
+  loadChallengeState(); 
 
   const status = getChallengeStatus();
 
@@ -2958,6 +3338,7 @@ function init() {
 
   if (challengeMsg) challengeMsg.textContent = `Challenge locked: ${tier.toUpperCase()}`;
 
+  refreshChallengeHud();
   closeModal(challengeModal);
   lockAppUI(false);
 });
@@ -2984,6 +3365,9 @@ if (challengeResetBtn && !challengeResetBtn._bound) {
   crashCashOutBtn?.addEventListener("click", () => withLock("crashCashout", cashOutCrash));
 
   initPlinko?.();
+
+  refreshChallengeHud();
+
 
   document.documentElement.classList.remove("booting");
 }

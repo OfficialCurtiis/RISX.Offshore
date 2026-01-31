@@ -70,7 +70,7 @@ body {
   justify-content: space-between;
   max-width: var(--container);
   width: 100%;
-  margin: 0 auto 16px auto;
+  margin: 0 auto 10px auto;
   gap: 16px;
 }
 
@@ -117,6 +117,7 @@ body {
   border: 1px solid rgba(255,255,255,0.06);
   box-shadow: 0 30px 90px rgba(0,0,0,0.65);
   backdrop-filter: blur(10px);
+  overflow: hidden;
 }
 
 .app-title {
@@ -220,7 +221,7 @@ body {
 .game-tabs {
   display: flex;
   gap: 8px;
-  margin: 0 0 12px 0;
+  margin: 0;
 }
 
 .game-tab {
@@ -244,7 +245,18 @@ body {
   cursor: default;
 }
 
-/* Only show active game section */
+/* Tabs row: keep inside padding and allow scroll if needed */
+.game-tabs, .tabs, .tab-row {
+  max-width: 100%;
+  box-sizing: border-box;
+  padding-left: 6px;
+  padding-right: 6px;
+  overflow-x: auto;
+}
+
+.game-tabs button, .tabs button, .tab-row button {
+  flex: 0 0 auto;
+}
 
 .game-section {
   display: none;
@@ -426,6 +438,11 @@ select:focus {
   opacity: 0.45;
   cursor: not-allowed;
   box-shadow: none;
+}
+
+.is-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* ========================= */
@@ -638,60 +655,180 @@ select:focus {
 
 /* Floating result card centered over grid */
 
-.mines-result-card {
+/* --- RISX Mines Result Card --- */
+#game-mines #minesResultCard.mines-result-card{
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  min-width: 210px;
-  padding: 12px 16px;
-  border-radius: 14px;
+  min-width: 260px;
+  padding: 16px 18px;
+  border-radius: 18px;
   text-align: center;
-  background: linear-gradient(135deg, var(--accent-green), var(--accent-green-soft));
-  color: #020617;
-  box-shadow: 0 18px 50px rgba(29, 242, 127, 0.45);
+
+  /* Glass base */
+  background: radial-gradient(120% 140% at 20% 0%,
+      rgba(255,255,255,0.10) 0%,
+      rgba(255,255,255,0.05) 28%,
+      rgba(0,0,0,0.22) 68%,
+      rgba(0,0,0,0.28) 100%),
+    linear-gradient(180deg, rgba(2, 6, 23, 0.55), rgba(2, 6, 23, 0.35));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow:
+    0 24px 70px rgba(0,0,0,0.55),
+    inset 0 1px 0 rgba(255,255,255,0.10);
+
+  color: rgba(255,255,255,0.92);
+  letter-spacing: 0.02em;
+
+  --neon: rgba(29, 242, 127, 0.95);
+  --neonGlow: rgba(29, 242, 127, 0.55);
+
+  outline: 1px solid rgba(29, 242, 127, 0.25);
+
   opacity: 1;
-  pointer-events: auto;
-  transition:
-    opacity 0.14s ease,
-    transform 0.14s ease;
-  z-index: 50;
+  pointer-events: none;
+  z-index: 9999;
 }
 
-.mines-result-card.hidden {
+/* hidden state */
+#game-mines #minesResultCard.mines-result-card.hidden{
   opacity: 0;
-  pointer-events: none;
-  transform: translate(-50%, -50%) scale(0.9);
+  transform: translate(-50%, -50%) scale(0.92);
   visibility: hidden;
   box-shadow: none;
 }
 
-.mines-result-title {
-  font-size: 12px;
-  font-weight: 600;
+/* Typography */
+#game-mines .mines-result-title{
+  font-size: 11px;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  opacity: 0.9;
-  margin-bottom: 4px;
+  letter-spacing: 0.18em;
+  opacity: 0.95;
+  margin-bottom: 8px;
 }
 
-.mines-result-mult {
-  font-size: 22px;
-  font-weight: 700;
-  margin-bottom: 2px;
+#game-mines .mines-result-mult{
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1.0;
+  margin-bottom: 6px;
 }
 
-.mines-result-win {
+#game-mines .mines-result-win{
   font-size: 13px;
-  font-weight: 600;
-  opacity: 0.9;
+  font-weight: 700;
+  opacity: 0.92;
 }
 
-/* Lose theme */
-.mines-result-card.lose {
-  background: linear-gradient(135deg, #f97373, var(--accent-red));
-  box-shadow: 0 18px 50px rgba(248, 113, 113, 0.55);
-  color: #020617;
+/* Neon border & glow layers */
+/* Neon rim (no mask) */
+#game-mines #minesResultCard.mines-result-card::before{
+  content:"";
+  position:absolute;
+  inset:-2px;
+  border-radius: 20px;
+  pointer-events:none;
+
+  /* This draws the neon ring */
+  border: 2px solid rgba(255,255,255,0.06);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.08),
+    0 0 18px var(--neonGlow),
+    0 0 42px var(--neonGlow);
+  opacity: 1;
+}
+
+/* Shimmer + subtle scanline texture (RISX vibe) */
+#game-mines #minesResultCard.mines-result-card::after{
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  background:
+    linear-gradient(120deg,
+      rgba(255,255,255,0.00) 0%,
+      rgba(255,255,255,0.12) 30%,
+      rgba(255,255,255,0.00) 60%),
+    repeating-linear-gradient(
+      180deg,
+      rgba(255,255,255,0.03) 0px,
+      rgba(255,255,255,0.03) 1px,
+      rgba(0,0,0,0.00) 3px,
+      rgba(0,0,0,0.00) 6px
+    );
+  opacity: 0.12;
+  mix-blend-mode: screen;
+  transform: translateX(-35%);
+  pointer-events: none;
+}
+
+/* Pop animation */
+#game-mines #minesResultCard.mines-result-card.pop{
+  animation: risxPop 200ms ease-out;
+}
+@keyframes risxPop{
+  from { transform: translate(-50%, -50%) scale(0.90); filter: saturate(0.9); }
+  to   { transform: translate(-50%, -50%) scale(1.00); filter: saturate(1.1); }
+}
+
+/* WIN theme: RISX neon green edge + pulse */
+#game-mines #minesResultCard.mines-result-card.win{
+  box-shadow:
+    0 24px 80px rgba(0,0,0,0.55),
+    0 0 0 1px rgba(29, 242, 127, 0.22),
+    0 0 34px rgba(29, 242, 127, 0.35),
+    inset 0 0 0 1px rgba(29, 242, 127, 0.10),
+    inset 0 1px 0 rgba(255,255,255,0.12);
+}
+#game-mines #minesResultCard.mines-result-card.win::after{
+  opacity: 0.28;
+  animation: risxShimmer 1.15s ease-out both;
+}
+@keyframes risxShimmer{
+  from { transform: translateX(-45%); }
+  to   { transform: translateX(45%); }
+}
+
+/* LOSE theme: red edge + tiny “impact” */
+#game-mines #minesResultCard.mines-result-card.win{
+  --neon: rgba(29, 242, 127, 0.95);
+  --neonGlow: rgba(29, 242, 127, 0.80);
+
+  outline: 1px solid rgba(29, 242, 127, 0.42);
+
+  box-shadow:
+    0 24px 80px rgba(0,0,0,0.55),
+    0 0 0 1px rgba(29, 242, 127, 0.35),
+    0 0 55px rgba(29, 242, 127, 0.70),
+    0 0 120px rgba(29, 242, 127, 0.25),
+    inset 0 0 0 1px rgba(29, 242, 127, 0.12),
+    inset 0 1px 0 rgba(255,255,255,0.12);
+}
+
+#game-mines #minesResultCard.mines-result-card.lose{
+  --neon: rgba(248, 113, 113, 0.95);
+  --neonGlow: rgba(248, 113, 113, 0.78);
+
+  outline: 1px solid rgba(248, 113, 113, 0.42);
+
+  box-shadow:
+    0 24px 80px rgba(0,0,0,0.60),
+    0 0 0 1px rgba(248, 113, 113, 0.35),
+    0 0 55px rgba(248, 113, 113, 0.70),
+    0 0 120px rgba(248, 113, 113, 0.25),
+    inset 0 0 0 1px rgba(248, 113, 113, 0.12),
+    inset 0 1px 0 rgba(255,255,255,0.12);
+}
+@keyframes risxShake{
+  0%   { transform: translate(-50%, -50%) scale(0.98); }
+  25%  { transform: translate(calc(-50% - 3px), calc(-50% + 1px)) scale(1.00); }
+  55%  { transform: translate(calc(-50% + 3px), calc(-50% - 1px)) scale(1.00); }
+  100% { transform: translate(-50%, -50%) scale(1.00); }
 }
 
 .bet-mults--mines{
@@ -987,6 +1124,32 @@ select:focus {
   animation: multiplierFlash 0.35s ease-out;
 }
 
+.crash-cashout-marker{
+  position: absolute;
+  left: 0;                 /* set by JS */
+  top: 0;                  /* set by JS */
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(29,242,127,0.75);
+  box-shadow: 0 0 14px rgba(29,242,127,0.18);
+  transform: translate(-50%, -50%); /* centers on the point */
+  pointer-events: none;
+  z-index: 9;
+}
+
+.crash-cashout-marker::after{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(29,242,127,0.9);
+  transform: translate(-50%,-50%);
+}
+
 /* Crash toast: centered under the big multiplier */
 .crash-toast{
   position: absolute;
@@ -1003,12 +1166,13 @@ select:focus {
 
   font-size: 12px;
   line-height: 1.2;
-  white-space: nowrap;
+  white-space: pre-line;
 
   opacity: 0;
   transition: opacity 180ms ease, transform 180ms ease;
   pointer-events: none;
   z-index: 10;
+  text-align: center;
 }
 
 .crash-toast.show{
@@ -1019,6 +1183,10 @@ select:focus {
 /* =========================
    CRASH: new layout (no size changes)
 ========================= */
+
+#game-crash .crash-graph-inner {
+  position: relative;
+}
 
 #game-crash .crash-layout{
   display: grid;
@@ -1069,6 +1237,11 @@ select:focus {
   gap: 16px;
 }
 
+#game-crash .crash-graph{
+  position: relative;   /* fine either way */
+  overflow: hidden;
+}
+
 /* =========================
    CRASH: overlay layout (keeps graph BIG)
 ========================= */
@@ -1097,11 +1270,6 @@ select:focus {
   overflow: hidden;
 }
 
-/* make sure the graph inner is the positioning context */
-.crash-graph-inner{
-  position: relative;
-}
-
 /* multiplier that follows rocket */
 .crash-big-mult{
   position: absolute;
@@ -1120,6 +1288,10 @@ select:focus {
 /* optional: fade slightly while running */
 .crash-running .crash-big-mult{
   opacity: .70;
+}
+
+#game-crash .crash-graph-inner{
+  position: relative;
 }
 
 /*///////////* PLINKO //////////*/
@@ -1817,9 +1989,6 @@ html.booting .modal {
    Keeps the multiplier centered and the toast under it.
 ========================= */
 
-/* Ensure overlays position relative to the graph */
-.crash-graph-inner { position: relative; }
-
 /* Big multiplier stays centered in the arena */
 .crash-big-mult{
   left: 50% !important;
@@ -1889,6 +2058,18 @@ html.booting .modal {
   #game-crash .crash-graph{
     min-height:320px;
     height:320px;
+  }
+}
+
+/* Mobile stack */
+@media (max-width: 720px){
+  .site-header--challenge{
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .wallet-block{
+    width: 100%;
   }
 }
 
@@ -2102,6 +2283,64 @@ body.landing .landing-label{
   margin-top: 0;
 }
 
+/* ========================= */
+/* RISX MODAL (CONFIRM)      */
+/* ========================= */
+
+.risx-modal{
+  display:none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+}
+
+.risx-modal.open{ display:block; }
+
+.risx-modal__backdrop{
+  position:absolute;
+  inset:0;
+  background: rgba(0,0,0,0.60);
+  backdrop-filter: blur(6px);
+}
+
+.risx-modal__panel{
+  position: absolute;
+  left: 50%;
+  top: 20%;
+  transform: translateX(-50%);
+
+  width: min(520px, calc(100vw - 32px));
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.10);
+
+  background: radial-gradient(circle at top, #111827 0, #020617 55%, #000 100%);
+  box-shadow: 0 28px 90px rgba(0,0,0,0.75);
+  padding: 14px;
+}
+
+.risx-modal__title{
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 12px;
+  color: rgba(255,255,255,0.85);
+  margin-bottom: 8px;
+}
+
+.risx-modal__body{
+  font-size: 13px;
+  color: rgba(255,255,255,0.72);
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
+.risx-modal__actions{
+  margin-top: 12px;
+  display:flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 /* =========================
    CHALLENGE MODAL LAYOUT FIX
 ========================= */
@@ -2186,3 +2425,228 @@ body.landing .landing-label{
   z-index: 9999;
 }
 .toast.show{ opacity: 1; transform: translateX(-50%) translateY(-6px); }
+
+/* ========================= */
+/* WALLET (COMPACT SUMMARY)  */
+/* ========================= */
+
+.wallet-compact{
+  padding: 12px 14px;
+  min-width: 280px;
+}
+
+.wallet-compact .wallet-mode,
+.wallet-compact .wallet-user-row,
+.wallet-compact #walletActions,
+.wallet-compact #challengeToast{
+  display: none !important;
+}
+
+/* Move the big number visually “up” by tightening spacing */
+.wallet-compact .wallet-balance{
+  margin: 0;
+  gap: 8px;
+}
+
+.wallet-compact #balance{
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+/* If you want: replace USDT line with Goal visually */
+.wallet-compact #walletCurrencyLabel{
+  display: none;
+}
+
+.wallet-compact .wallet-subrow{
+  margin-top: 2px;
+}
+
+.wallet-compact .wallet-goal{
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.65);
+}
+
+.wallet-goal #challengeGoal{
+  color: rgba(255,255,255,0.92);
+  font-weight: 800;
+}
+
+/* ========================= */
+/* CHALLENGE HEADER (CLEAN)  */
+/* ========================= */
+
+.site-header--challenge{
+  display: grid;
+  grid-template-columns: 260px 1fr 280px;  /* brand | center | wallet */
+  align-items: start !important;
+  gap: 14px;
+  margin: 0 auto 12px auto;
+  max-width: var(--container);
+  width: 100%;
+}
+
+/* Brand (left) */
+.site-header--challenge .logo-text{
+  font-size: 48px;
+  line-height: 0.95;
+}
+.site-header--challenge .logo-tagline{
+  font-size: 15px;
+  margin-top: 6px;
+}
+
+/* Center stack stretches */
+.header-center{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;                 /* critical so it can shrink without overflow */
+}
+
+/* Tabs should NOT add extra padding/margins */
+.header-tabs{
+  margin: 0;
+  padding: 0;
+  justify-content: flex-start;
+}
+
+/* Tabs row stays inside center column */
+.header-tabs.game-tabs{
+  max-width: 100%;
+  overflow-x: auto;
+}
+.header-tabs .game-tab{
+  flex: 0 0 auto;
+}
+
+/* Challenge bar fills the available center width */
+#challengeHud.challenge-pill{
+  width: 100%;
+  margin: 0;                     /* kill weird nudges */
+}
+
+/* ========================= */
+/* CHALLENGE BAR (PILL)      */
+/* ========================= */
+
+.challenge-pill{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  padding: 12px 16px;
+  border-radius: 16px;
+
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(0,0,0,0.26);
+  backdrop-filter: blur(10px);
+}
+
+/* CHALLENGE label should not feel smaller than LIVE */
+.challenge-pill .k{
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  opacity: .85;
+}
+
+.challenge-pill .s{
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+
+/* State colors */
+.challenge-pill[data-state="live"]    .s{ color: rgba(29,242,127,0.95); }
+.challenge-pill[data-state="warning"] .s{ color: rgba(255,255,255,0.92); }
+.challenge-pill[data-state="failed"]  .s{ color: rgba(255,31,75,0.95); }
+.challenge-pill[data-state="cleared"] .s{ color: rgba(29,242,127,0.98); }
+
+/* Mercy tag */
+.challenge-pill .m{
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255,255,255,0.14);
+  opacity: .9;
+}
+
+/* LIVE dot only (NO pulsing ring) */
+.live-dot{
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(29,242,127,0.85);
+  box-shadow: 0 0 8px rgba(29,242,127,0.25);
+  opacity: 0.9;
+}
+
+@keyframes liveBlink{
+  0%, 100%{ opacity: .35; transform: scale(0.95); }
+  50%{ opacity: 1; transform: scale(1.10); }
+}
+
+#challengeHud[data-state="live"] .live-dot{
+  animation: liveBlink 1.6s ease-in-out infinite;
+}
+
+#challengeHud:not([data-state="live"]) .live-dot{
+  display: none;
+}
+
+/* Optional: hide sub text forever */
+#challengeHudSub{ display: none !important; }
+
+/* Mobile */
+@media (max-width: 900px){
+  .site-header--challenge{
+    grid-template-columns: 1fr;
+  }
+}
+
+.site-header--challenge .header-wallet{
+  padding: 12px 14px;   /* tighter */
+}
+
+.site-header--challenge .wallet-balance{
+  margin-bottom: 0;     /* kills extra air */
+}
+
+.site-header--challenge .wallet-subrow{
+  margin-top: 6px;      /* controlled spacing */
+}
+
+/* Kill sneaky vertical offsets */
+.site-header--challenge .header-center{
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+}
+
+.site-header--challenge .header-wallet{
+  margin-top: 0 !important;
+}
+
+.site-header--challenge #walletStatus{
+  display: none !important;
+}
+
+.site-header--challenge .logo-block,
+.site-header--challenge .header-center,
+.site-header--challenge .header-wallet{
+  align-self: start !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+.site-header--challenge .header-wallet{
+  padding-top: 10px;   /* was 12 */
+}

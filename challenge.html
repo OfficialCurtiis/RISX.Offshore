@@ -9,67 +9,81 @@
 
 <body>
   <div class="page">
-<header class="site-header">
-    <div class="logo-block">
-      <div class="logo-text">RISX</div>
-      <div class="logo-tagline">Where risk becomes reward.</div>
-      <div class="header-pill">Demo • Wallet-mode credits across all games</div>
+<header class="site-header site-header--challenge">
+  <!-- LEFT -->
+  <div class="logo-block">
+    <div class="logo-text">RISX</div>
+    <div class="logo-tagline">Where risk becomes reward.</div>
+  </div>
+
+  <!-- CENTER -->
+  <div class="header-center">
+    <div class="game-tabs header-tabs">
+      <button class="game-tab active" data-target="mines" type="button">Mines</button>
+      <button class="game-tab" data-target="crash" type="button">Crash</button>
+      <button class="game-tab" data-target="plinko" type="button">Plinko</button>
+      <button class="game-tab disabled" type="button">Towers (coming soon)</button>
+    </div>
+       <div class="challenge-pill" id="challengeHud" data-state="ready">
+      <span class="k">Challenge</span>
+      <span class="live-dot" aria-hidden="true"></span>
+      <span class="s" id="challengeStateText">READY</span>
+      <span class="m" id="mercyBadge" hidden>MERCY</span>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="wallet-block header-wallet wallet-compact">
+    <div class="wallet-label">Wallet</div>
+
+    <div class="wallet-balance single">
+      <div class="wallet-row">
+        <span class="wallet-row-label" id="walletCurrencyLabel">USDT</span>
+        <span id="balance">0.00</span>
+      </div>
+
+       <div class="wallet-goal">
+        Goal: <span id="challengeGoal">—</span>
+      </div>
+
+      <div class="wallet-subrow">
+        <span class="hint small" id="walletStatus">Not connected</span>
+      </div>
+
+      <div id="challengeToast" class="hint small" style="margin-top:10px;"></div>
     </div>
 
-    <div class="wallet-block header-wallet">
-      <div class="wallet-label">Wallet</div>
-
-      <div class="wallet-balance single">
-        <div class="wallet-row">
-          <span class="wallet-row-label" id="walletCurrencyLabel">USDT</span>
-          <span id="balance">0.00</span>
-        </div>
-        <div class="wallet-subrow">
-          <span class="hint small" id="walletStatus">Not connected</span>
-        </div>
-        <div id="challengeToast" class="hint small" style="margin-top:10px;"></div>
+    <!-- Keep the rest of your wallet DOM below (currency select/user/actions)
+         It can stay, but compact CSS will hide it so JS won't break -->
+    <div class="wallet-mode">
+      <div class="wallet-label">Currency</div>
+      <select id="currencySelect" class="select small">
+        <option value="USDT" selected>USDT</option>
+        <option value="USDC">USDC</option>
+        <option value="BTC">BTC</option>
+        <option value="ETH">ETH</option>
+        <option value="SOL">SOL</option>
+        <option value="LTC">LTC</option>
+      </select>
+      <div class="hint small" id="currencyNote">
+        Demo mode: balances are simulated and stored locally per wallet.
       </div>
+    </div>
 
-      <div class="wallet-mode">
-        <div class="wallet-label">Currency</div>
-        <select id="currencySelect" class="select small">
-          <option value="USDT" selected>USDT</option>
-          <option value="USDC">USDC</option>
-          <option value="BTC">BTC</option>
-          <option value="ETH">ETH</option>
-          <option value="SOL">SOL</option>
-          <option value="LTC">LTC</option>
-        </select>
-        <div class="hint small" id="currencyNote">
-          Demo mode: balances are simulated and stored locally per wallet.
-        </div>
-      </div>
+    <div class="wallet-user-row">
+      <div class="wallet-user-name">Wallet: <span id="currentWallet">—</span></div>
+      <button id="connectWalletBtn" class="btn secondary small" type="button">Connect</button>
+    </div>
 
-      <div class="wallet-user-row">
-        <div class="wallet-user-name">Wallet: <span id="currentWallet">—</span></div>
-        <button id="connectWalletBtn" class="btn secondary small" type="button">Connect</button>
-      </div>
-
-     <div class="wallet-actions" id="walletActions">
+    <div class="wallet-actions" id="walletActions">
       <button id="depositBtn" class="btn primary small" type="button">Deposit</button>
       <button id="withdrawBtn" class="btn secondary small" type="button">Withdraw</button>
       <button id="adminBtn" class="btn secondary small" type="button">Admin</button>
     </div>
-    </div>
-  </header>
+  </div>
+</header>
 
-    <!-- =========================
-         TABS
-    ========================== -->
-    <div class="game-tabs">
-        <button class="game-tab active" data-target="mines" type="button">Mines Arena</button>
-        <button class="game-tab" data-target="crash" type="button">Crash</button>
-        <button class="game-tab" data-target="plinko" type="button">Plinko</button>
-        <button class="game-tab disabled" type="button">Towers (coming soon)</button>
-      </div>
-    
-
-    <main class="app">
+   <main class="app">
 
       <!-- =========================
            MINES
@@ -188,6 +202,8 @@
 
         <div class="crash-graph">
           <div class="crash-graph-inner">
+
+          <div class="crash-cashout-marker" id="crashCashoutMarker" hidden></div>
 
             <!-- BIG MULTIPLIER -->
             <div id="crashBigMult" class="crash-big-mult">1.00x</div>
@@ -593,6 +609,20 @@
     </div>
   </div>
   <div id="toast" class="toast"></div>
+
+  <div class="risx-modal" id="risxModal" aria-hidden="true">
+  <div class="risx-modal__backdrop" data-close></div>
+
+  <div class="risx-modal__panel" role="dialog" aria-modal="true" aria-labelledby="risxModalTitle">
+    <div class="risx-modal__title" id="risxModalTitle">Confirm</div>
+    <div class="risx-modal__body" id="risxModalBody"></div>
+
+    <div class="risx-modal__actions">
+      <button class="btn secondary" id="risxModalCancel" type="button">Cancel</button>
+      <button class="btn primary" id="risxModalOk" type="button">Proceed</button>
+    </div>
+  </div>
+</div>
 
   <script src="app.js"></script>
 </body>
