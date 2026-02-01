@@ -266,21 +266,3 @@ function unlockBodyScroll() {
     openModal(tierKey);
   };
 })();
-
-(() => {
-  const isLocal =
-    location.hostname === "localhost" ||
-    location.hostname === "127.0.0.1";
-
-  if (!isLocal) return;
-
-  const btn = document.createElement("button");
-  btn.textContent = "DEV UNLOCK (PRO)";
-  btn.style.cssText = "position:fixed;bottom:14px;left:14px;z-index:999999;padding:10px 12px;border-radius:12px;";
-  btn.addEventListener("click", () => {
-    localStorage.setItem("risx_unlocked_tier", "pro");
-    alert("✅ DEV unlocked: pro");
-  });
-
-  document.body.appendChild(btn);
-})();
