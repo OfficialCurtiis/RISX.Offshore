@@ -2762,15 +2762,10 @@ function renderWithdrawHistory(){
 let __risxModalDepth = 0;
 
 function lockBodyScroll() {
-  // Only lock once (first modal)
   if (__risxModalDepth === 0) {
-    const y = window.scrollY || 0;
-    document.body.dataset.risxScrollY = String(y);
-    document.body.style.position = "fixed";
-    document.body.style.top = `-${y}px`;
-    document.body.style.left = "0";
-    document.body.style.right = "0";
-    document.body.style.width = "100%";
+    const sbw = window.innerWidth - document.documentElement.clientWidth; // scrollbar width
+    document.documentElement.style.overflow = "hidden";
+    if (sbw > 0) document.body.style.paddingRight = `${sbw}px`;
   }
   __risxModalDepth++;
 }
@@ -2778,14 +2773,8 @@ function lockBodyScroll() {
 function unlockBodyScroll() {
   __risxModalDepth = Math.max(0, __risxModalDepth - 1);
   if (__risxModalDepth === 0) {
-    const y = Number(document.body.dataset.risxScrollY || "0");
-    document.body.style.position = "";
-    document.body.style.top = "";
-    document.body.style.left = "";
-    document.body.style.right = "";
-    document.body.style.width = "";
-    delete document.body.dataset.risxScrollY;
-    window.scrollTo(0, y);
+    document.documentElement.style.overflow = "";
+    document.body.style.paddingRight = "";
   }
 }
 
