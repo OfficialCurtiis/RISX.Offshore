@@ -171,8 +171,10 @@ function closeModal() {
   }
 
   function isUnlocked(tierKey) {
-    return localStorage.getItem("risx_unlocked_tier") === tierKey;
-  }
+  const token = localStorage.getItem("risx_unlock_token");
+  const tokenTier = localStorage.getItem("risx_unlock_tier");
+  return !!(token && tokenTier === tierKey);
+}
 
   async function createPayment(tierKey, payCurrency) {
     const r = await fetch("/api/create-payment", {
