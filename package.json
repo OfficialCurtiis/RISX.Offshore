@@ -1,0 +1,30 @@
+{
+  "name": "risx.offshore",
+  "version": "1.0.0",
+  "description": "",
+  "main": "app.js",
+ "scripts": {
+  "build": "rm -rf dist && mkdir -p dist && cp *.html style.css dist/ && npx terser app.js -c -m -o dist/app.min.js && npx terser payments.js -c -m -o dist/payments.min.js && perl -pi -e 's/src=\"app\\.js\"/src=\"app.min.js\"/g; s/src=\"payments\\.js\"/src=\"payments.min.js\"/g' dist/*.html"
+},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/curtwilkin/RISX.Offshore.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/curtwilkin/RISX.Offshore/issues"
+  },
+  "homepage": "https://github.com/curtwilkin/RISX.Offshore#readme",
+  "devDependencies": {
+    "terser": "^5.46.0"
+  },
+  "dependencies": {
+    "acorn": "^8.15.0",
+    "buffer-from": "^1.1.2",
+    "commander": "^2.20.3",
+    "source-map": "^0.6.1",
+    "source-map-support": "^0.5.21"
+  }
+}
