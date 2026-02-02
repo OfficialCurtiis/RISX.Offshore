@@ -162,7 +162,6 @@ function closeModal() {
   }
 
   function setUnlocked(tierKey) {
-    localStorage.setItem("risx_unlocked_tier", tierKey);
     unlockedBox.style.display = "block";
     statusEl.textContent = "✅ Confirmed";
     clearPendingPayment();
@@ -170,7 +169,7 @@ function closeModal() {
     stopPolling();
   }
 
-  function isUnlocked(tierKey) {
+function isUnlocked(tierKey) {
   const token = localStorage.getItem("risx_unlock_token");
   const tokenTier = localStorage.getItem("risx_unlock_tier");
   return !!(token && tokenTier === tierKey);
