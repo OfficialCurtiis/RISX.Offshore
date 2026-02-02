@@ -37,6 +37,11 @@
 
   // ------- Helpers -------
 
+  function setCreateButtonLabel(hasInvoice) {
+  if (!createBtn) return;
+  createBtn.textContent = hasInvoice ? "Generate New Payment" : "Create Payment";
+}
+
   function lockBodyScroll() {
   document.body.dataset.risxScrollY = String(window.scrollY || 0);
   document.body.style.position = "fixed";
@@ -123,12 +128,15 @@ function openModal(tierKey) {
   if (payIdEl) payIdEl.textContent = "—";
   if (manualMsgEl) manualMsgEl.textContent = "";
 
+  setCreateButtonLabel(false);
+
   modal.style.display = "block";
 
   // ✅ Restore pending payment for this tier after refresh
   const pending = getPendingPayment();
   if (pending && pending.tierKey === tierKey && pending.payment_id) {
     activePaymentId = pending.payment_id;
+    setCreateButtonLabel(true);
 
     step2.style.display = "block";
     amountEl.textContent = `${pending.pay_amount} ${String(pending.pay_currency).toUpperCase()}`;
@@ -234,6 +242,8 @@ function startPolling(paymentId) {
 
       activePaymentId = data.payment_id;
       if (payIdEl) payIdEl.textContent = data.payment_id;
+      setCreateButtonLabel(true);
+    
 
       setPendingPayment({
         tierKey: activeTierKey,
@@ -253,9 +263,9 @@ function startPolling(paymentId) {
       startPolling(activePaymentId);
     } catch (e) {
       alert(e.message || String(e));
-    } finally {
+      } finally {
       createBtn.disabled = false;
-      createBtn.textContent = "Create Payment";
+      setCreateButtonLabel(!!activePaymentId);
     }
   });
 
