@@ -3379,9 +3379,15 @@ function startChallengeNow(tier) {
   lockAppUI(false);
 }
 
-// ✅ Called by payments.js after payment confirms
-window.RISX_startChallengeFromPayment = (tier) => {
+window.RISX_startChallengeFromPayment = async (tier) => {
   closeModal(challengeModal);
+
+  const ok = await hasValidUnlockForTier(tier);
+  if (!ok) {
+    window.RISX_openPayModalForTier?.(tier);
+    return;
+  }
+
   startChallengeNow(tier);
 };
 
