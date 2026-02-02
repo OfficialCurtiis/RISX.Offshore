@@ -3318,6 +3318,24 @@ function init() {
 // GAME WIRING
 // =============================
 
+async function hasValidUnlockForTier(tier) {
+  const token = localStorage.getItem("risx_unlock_token");
+  const tokenTier = localStorage.getItem("risx_unlock_tier");
+  if (!token || tokenTier !== tier) return false;
+
+  try {
+    const r = await fetch("/api/verify-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, tierKey: tier }),
+    });
+    const j = await r.json().catch(() => ({}));
+    return !!(r.ok && j.valid);
+  } catch {
+    return false;
+  }
+}
+
 challengeTier?.addEventListener("change", () => {
   challengeTierSelected = challengeTier.value;
   renderTierSummary();
@@ -3367,21 +3385,18 @@ window.RISX_startChallengeFromPayment = (tier) => {
   startChallengeNow(tier);
 };
 
-challengeStartBtn?.addEventListener("click", () => {
+challengeStartBtn?.addEventListener("click", async () => {
   const tier = challengeTier?.value || "beginner";
-  const unlockedTier = localStorage.getItem("risx_unlocked_tier");
 
-  if (unlockedTier !== tier) {
-    // close the tier modal so it doesn't sit behind the pay modal
+  const ok = await hasValidUnlockForTier(tier);
+  if (!ok) {
     closeModal(challengeModal);
-
-    // open pay modal for selected tier
     window.RISX_openPayModalForTier?.(tier);
 
     if (challengeMsg) {
       challengeMsg.textContent = `Tier locked: ${tier.toUpperCase()} — complete payment to unlock.`;
     }
-    return; // stop here so the challenge doesn't start
+    return;
   }
 
   startChallengeNow(tier);

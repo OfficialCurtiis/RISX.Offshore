@@ -194,11 +194,18 @@ function closeModal() {
     return j;
   }
 
-  function handleConfirmed() {
-  setUnlocked(activeTierKey);   // this clears pending + disables leave warning in your code
-  closeModal();                 // closes pay modal + stops polling
+function handleConfirmed(resp) {
+  // store signed token + tier
+  if (resp?.unlock_token) {
+    localStorage.setItem("risx_unlock_token", resp.unlock_token);
+    localStorage.setItem("risx_unlock_tier", activeTierKey);
+  }
 
-  // ✅ auto-start the challenge
+  // keep your existing UI behavior if you like
+  setUnlocked(activeTierKey);
+  closeModal();
+
+  // auto-start
   if (typeof window.RISX_startChallengeFromPayment === "function") {
     window.RISX_startChallengeFromPayment(activeTierKey);
   }
@@ -216,7 +223,7 @@ function startPolling(paymentId) {
         statusEl.textContent = `Status: ${status || "waiting"} (auto-checking)`;
 
        if (status === "confirmed" || status === "finished") {
-        handleConfirmed();
+        handleConfirmed(s);
         return;
         }
       } catch (e) {
@@ -296,7 +303,7 @@ checkBtn?.addEventListener("click", async () => {
     statusEl.textContent = `Status: ${status || "unknown"}`;
 
     if (status === "confirmed" || status === "finished") {
-      handleConfirmed();
+      handleConfirmed(s);
       return;
     }
 
@@ -346,7 +353,7 @@ checkBtn?.addEventListener("click", async () => {
         createdAt: Date.now()
       });
 
-      handleConfirmed();
+      handleConfirmed(s);
     }
   } catch (e) {
     if (manualMsgEl) manualMsgEl.textContent = "Could not verify that payment_id. Double-check and try again.";
