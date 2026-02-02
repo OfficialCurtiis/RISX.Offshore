@@ -651,26 +651,58 @@
     </button>
 
     <div id="payStep2" style="display:none; margin-top:14px;">
-      <div style="opacity:.85; margin-bottom:8px;">Send exactly:</div>
+  <div style="opacity:.85; margin-bottom:8px;">Send exactly:</div>
 
-      <div style="padding:12px; border-radius:12px; background: rgba(255,255,255,.06);">
-        <div><strong>Amount:</strong> <span id="payAmount">—</span></div>
-        <div style="margin-top:6px;"><strong>To Address:</strong></div>
-        <div style="display:flex; gap:8px; align-items:center; margin-top:6px;">
-          <code id="payAddress" style="word-break:break-all; flex:1;">—</code>
-          <button id="payCopyBtn" style="padding:8px 10px; border-radius:10px;">Copy</button>
-        </div>
-      </div>
+  <div style="padding:12px; border-radius:12px; background: rgba(255,255,255,.06);">
+    <div><strong>Amount:</strong> <span id="payAmount">—</span></div>
 
-      <div id="payStatus" style="margin-top:10px; opacity:.85;">Waiting for payment…</div>
-      <div id="payWarning" style="margin-top:8px; opacity:.8; font-size:12px;">
-        Once payment confirms on chain, your tier will unlock. If page is refreshed or closed, don't sweat it — clicking start challenge will return you here.
-      </div>
-
-      <button id="payCheckBtn" style="margin-top:12px; width:100%; padding:12px; border-radius:12px;">
-        I Paid — Check Status
-      </button>
+    <div style="margin-top:6px;"><strong>To Address:</strong></div>
+    <div style="display:flex; gap:8px; align-items:center; margin-top:6px;">
+      <code id="payAddress" style="word-break:break-all; flex:1;">—</code>
+      <button id="payCopyBtn" style="padding:8px 10px; border-radius:10px;">Copy</button>
     </div>
+
+    <!-- Payment ID (support / resume) -->
+    <div style="margin-top:12px;">
+      <div style="opacity:.85; margin-bottom:6px;">Payment ID:</div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <code id="payPaymentId" style="word-break:break-all; flex:1;">—</code>
+        <button id="payPaymentIdCopyBtn" style="padding:8px 10px; border-radius:10px;">Copy</button>
+      </div>
+    </div>
+
+    <button id="payResumeBtn" style="margin-top:10px; width:100%; padding:12px; border-radius:12px;">
+      Resume Checking
+    </button>
+
+    <div style="margin-top:8px; opacity:.75; font-size:12px;">
+      Refresh is okay — reopen this tier and it will resume checking automatically.
+    </div>
+  </div>
+
+  <div id="payStatus" style="margin-top:10px; opacity:.85;">Waiting for payment…</div>
+  <div id="payWarning" style="margin-top:8px; opacity:.8; font-size:12px;">
+    Once payment confirms on chain, your tier will unlock. If you refresh or close, click Start Challenge to resume here.
+  </div>
+
+  <button id="payCheckBtn" style="margin-top:12px; width:100%; padding:12px; border-radius:12px;">
+    I Paid — Check Status
+  </button>
+</div>
+
+<div id="paySupportBox" style="margin-top:14px; padding-top:12px; border-top:1px solid rgba(255,255,255,.10);">
+  <div style="opacity:.85; margin-bottom:8px;">Paid but not unlocked?</div>
+
+  <input id="payManualId"
+         placeholder="Paste Payment ID (payment_id)"
+         style="width:100%; padding:10px; border-radius:10px; margin-bottom:10px;" />
+
+  <button id="payManualCheckBtn" style="width:100%; padding:12px; border-radius:12px;">
+    Verify Payment
+  </button>
+
+  <div id="payManualMsg" style="margin-top:10px; opacity:.85;"></div>
+</div>
 
     <div id="payUnlocked" style="display:none; margin-top:14px;">
       <div style="padding:12px; border-radius:12px; background: rgba(29,242,127,.12); border: 1px solid rgba(29,242,127,.35);">

@@ -3314,31 +3314,16 @@ function init() {
     btn.addEventListener("click", () => closeModal?.(adminModal))
   );
 
-  // =============================
-  // GAME WIRING
-  // =============================
+// =============================
+// GAME WIRING
+// =============================
 
-  challengeTier?.addEventListener("change", () => {
+challengeTier?.addEventListener("change", () => {
   challengeTierSelected = challengeTier.value;
   renderTierSummary();
 });
 
-challengeStartBtn?.addEventListener("click", () => {
-  const tier = challengeTier?.value || "beginner";
-  const unlockedTier = localStorage.getItem("risx_unlocked_tier");
-if (unlockedTier !== tier) {
-  // close the tier modal so it doesn't sit behind the pay modal
-  closeModal(challengeModal);
-
-  // open pay modal for selected tier
-  window.RISX_openPayModalForTier?.(tier);
-
-  if (challengeMsg) {
-    challengeMsg.textContent = `Tier locked: ${tier.toUpperCase()} — complete payment to unlock.`;
-  }
-  return; // IMPORTANT: stop here so the challenge doesn't start
-}
-
+function startChallengeNow(tier) {
   // =========================
   // ORIGINAL START LOGIC
   // =========================
@@ -3374,12 +3359,38 @@ if (unlockedTier !== tier) {
   refreshChallengeHud();
   closeModal(challengeModal);
   lockAppUI(false);
+}
+
+// ✅ Called by payments.js after payment confirms
+window.RISX_startChallengeFromPayment = (tier) => {
+  closeModal(challengeModal);
+  startChallengeNow(tier);
+};
+
+challengeStartBtn?.addEventListener("click", () => {
+  const tier = challengeTier?.value || "beginner";
+  const unlockedTier = localStorage.getItem("risx_unlocked_tier");
+
+  if (unlockedTier !== tier) {
+    // close the tier modal so it doesn't sit behind the pay modal
+    closeModal(challengeModal);
+
+    // open pay modal for selected tier
+    window.RISX_openPayModalForTier?.(tier);
+
+    if (challengeMsg) {
+      challengeMsg.textContent = `Tier locked: ${tier.toUpperCase()} — complete payment to unlock.`;
+    }
+    return; // stop here so the challenge doesn't start
+  }
+
+  startChallengeNow(tier);
 });
 
 if (challengeResetBtn && !challengeResetBtn._bound) {
   challengeResetBtn._bound = true;
   challengeResetBtn.addEventListener("click", () => {
-    resetChallengeRun();      // your existing logic
+    resetChallengeRun(); // your existing logic
     _mercyOn = false;
   });
 }

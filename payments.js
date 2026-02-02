@@ -15,6 +15,16 @@
 
   const PENDING_KEY = "risx_pending_payment"; // stores payment_id + tier + amount + address
 
+      // NEW: Payment ID + Resume
+  const payIdEl       = document.getElementById("payPaymentId");
+  const payIdCopyBtn  = document.getElementById("payPaymentIdCopyBtn");
+  const resumeBtn     = document.getElementById("payResumeBtn");
+
+  // NEW: Paid-but-not-unlocked support box
+  const manualIdInput  = document.getElementById("payManualId");
+  const manualCheckBtn = document.getElementById("payManualCheckBtn");
+  const manualMsgEl    = document.getElementById("payManualMsg");
+
   // close actions
   document.querySelectorAll("[data-pay-close]").forEach(el => {
     el.addEventListener("click", () => closeModal());
@@ -100,7 +110,7 @@ function unlockBodyScroll() {
   window.scrollTo(0, y);
 }
 
-  function openModal(tierKey) {
+function openModal(tierKey) {
   activeTierKey = tierKey;
   activePaymentId = null;
 
@@ -110,11 +120,12 @@ function unlockBodyScroll() {
   statusEl.textContent = "Waiting for payment…";
   amountEl.textContent = "—";
   addressEl.textContent = "—";
+  if (payIdEl) payIdEl.textContent = "—";
+  if (manualMsgEl) manualMsgEl.textContent = "";
 
   modal.style.display = "block";
-  lockBodyScroll();
 
-  // ✅ Refresh-safe: restore pending payment for this tier if it exists
+  // ✅ Restore pending payment for this tier after refresh
   const pending = getPendingPayment();
   if (pending && pending.tierKey === tierKey && pending.payment_id) {
     activePaymentId = pending.payment_id;
@@ -122,19 +133,21 @@ function unlockBodyScroll() {
     step2.style.display = "block";
     amountEl.textContent = `${pending.pay_amount} ${String(pending.pay_currency).toUpperCase()}`;
     addressEl.textContent = pending.pay_address;
+    if (payIdEl) payIdEl.textContent = pending.payment_id;
 
     statusEl.textContent = "Status: restoring… (checking every 2.5s)";
     enableLeaveWarning();
     startPolling(activePaymentId);
-    }
+  }
 }
 
-    function closeModal() {
+function closeModal() {
     modal.style.display = "none";
     stopPolling();
     unlockBodyScroll();
     disableLeaveWarning();
-    }
+}
+
   function stopPolling() {
     if (pollTimer) clearTimeout(pollTimer);
     pollTimer = null;
@@ -173,7 +186,17 @@ function unlockBodyScroll() {
     return j;
   }
 
-  function startPolling(paymentId) {
+  function handleConfirmed() {
+  setUnlocked(activeTierKey);   // this clears pending + disables leave warning in your code
+  closeModal();                 // closes pay modal + stops polling
+
+  // ✅ auto-start the challenge
+  if (typeof window.RISX_startChallengeFromPayment === "function") {
+    window.RISX_startChallengeFromPayment(activeTierKey);
+  }
+}
+
+function startPolling(paymentId) {
     stopPolling();
 
     const tick = async () => {
@@ -184,9 +207,9 @@ function unlockBodyScroll() {
         const status = (s.payment_status || "").toLowerCase();
         statusEl.textContent = `Status: ${status || "unknown"}`;
 
-        if (status === "confirmed" || status === "finished") {
-          setUnlocked(activeTierKey);
-          return;
+       if (status === "confirmed" || status === "finished") {
+        handleConfirmed();
+        return;
         }
       } catch (e) {
         statusEl.textContent = `Status check error (try again)`;
@@ -210,6 +233,7 @@ function unlockBodyScroll() {
       const data = await createPayment(activeTierKey, payCurrency);
 
       activePaymentId = data.payment_id;
+      if (payIdEl) payIdEl.textContent = data.payment_id;
 
       setPendingPayment({
         tierKey: activeTierKey,
@@ -250,12 +274,66 @@ function unlockBodyScroll() {
       const status = (s.payment_status || "").toLowerCase();
       statusEl.textContent = `Status: ${status || "unknown"}`;
       if (status === "confirmed" || status === "finished") {
-        setUnlocked(activeTierKey);
-      }
+    handleConfirmed();
+ }
     } catch (e) {
       alert(e.message || String(e));
     }
   });
+
+    resumeBtn?.addEventListener("click", () => {
+    if (!activePaymentId) return;
+    statusEl.textContent = "Status: resuming…";
+    startPolling(activePaymentId);
+    });
+
+    payIdCopyBtn?.addEventListener("click", async () => {
+    const text = (payIdEl?.textContent || "").trim();
+    if (!text || text === "—") return;
+    await navigator.clipboard.writeText(text);
+    payIdCopyBtn.textContent = "Copied";
+    setTimeout(() => (payIdCopyBtn.textContent = "Copy"), 900);
+    });
+
+    manualCheckBtn?.addEventListener("click", async () => {
+  const pid = (manualIdInput?.value || "").trim();
+  if (!pid) {
+    if (manualMsgEl) manualMsgEl.textContent = "Paste a payment_id first.";
+    return;
+  }
+
+  manualCheckBtn.disabled = true;
+  manualCheckBtn.textContent = "Checking…";
+  if (manualMsgEl) manualMsgEl.textContent = "";
+
+  try {
+    const s = await verifyPayment(pid);
+    const status = (s.payment_status || "").toLowerCase();
+    if (manualMsgEl) manualMsgEl.textContent = `Status: ${status || "unknown"}`;
+
+    if (status === "confirmed" || status === "finished") {
+      // Treat it as the active payment for this tier and persist it for refresh-resume
+      activePaymentId = pid;
+      if (payIdEl) payIdEl.textContent = pid;
+
+      setPendingPayment({
+        tierKey: activeTierKey,
+        payment_id: pid,
+        pay_amount: s.pay_amount || "—",
+        pay_currency: s.pay_currency || "—",
+        pay_address: s.pay_address || "—",
+        createdAt: Date.now()
+      });
+
+      handleConfirmed();
+    }
+  } catch (e) {
+    if (manualMsgEl) manualMsgEl.textContent = "Could not verify that payment_id. Double-check and try again.";
+  } finally {
+    manualCheckBtn.disabled = false;
+    manualCheckBtn.textContent = "Verify Payment";
+  }
+});
 
   // ------- Expose ONE function for your tier buttons -------
   window.RISX_openPayModalForTier = (tierKey) => {
