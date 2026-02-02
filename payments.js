@@ -213,7 +213,7 @@ function startPolling(paymentId) {
 
         // statuses vary; we treat confirmed/finished as paid
         const status = (s.payment_status || "").toLowerCase();
-        statusEl.textContent = `Status: ${status || "unknown"}`;
+        statusEl.textContent = `Status: ${status || "waiting"} (auto-checking)`;
 
        if (status === "confirmed" || status === "finished") {
         handleConfirmed();
@@ -277,25 +277,36 @@ function startPolling(paymentId) {
     setTimeout(() => (copyBtn.textContent = "Copy"), 900);
   });
 
-  checkBtn?.addEventListener("click", async () => {
-    if (!activePaymentId) return;
-    try {
-      const s = await verifyPayment(activePaymentId);
-      const status = (s.payment_status || "").toLowerCase();
-      statusEl.textContent = `Status: ${status || "unknown"}`;
-      if (status === "confirmed" || status === "finished") {
-    handleConfirmed();
- }
-    } catch (e) {
-      alert(e.message || String(e));
-    }
-  });
+checkBtn?.addEventListener("click", async () => {
+  // Pull from active id, or pending storage (refresh-safe)
+  const pending = getPendingPayment();
+  const pid = activePaymentId || pending?.payment_id;
 
-    resumeBtn?.addEventListener("click", () => {
-    if (!activePaymentId) return;
-    statusEl.textContent = "Status: resuming…";
-    startPolling(activePaymentId);
-    });
+  if (!pid) {
+    alert("Create a payment first.");
+    return;
+  }
+
+  statusEl.textContent = "Status: checking…";
+
+  try {
+    const s = await verifyPayment(pid);
+    const status = (s.payment_status || "").toLowerCase();
+
+    statusEl.textContent = `Status: ${status || "unknown"}`;
+
+    if (status === "confirmed" || status === "finished") {
+      handleConfirmed();
+      return;
+    }
+
+    // If not confirmed yet, keep auto-checking running
+    activePaymentId = pid;
+    startPolling(pid);
+  } catch (e) {
+    statusEl.textContent = "Status check error (try again)";
+  }
+});
 
     payIdCopyBtn?.addEventListener("click", async () => {
     const text = (payIdEl?.textContent || "").trim();
