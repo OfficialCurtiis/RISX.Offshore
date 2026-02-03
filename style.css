@@ -2752,3 +2752,146 @@ body.landing .landing-label{
     width: 96vw !important;
   }
 }
+
+/* =========================================================
+   MOBILE LAYOUT FIX (game first, controls second)
+   Paste at VERY BOTTOM of style.css
+========================================================= */
+@media (max-width: 720px) {
+
+  /* Let the page use the phone width (no tiny centered column) */
+  html, body { overflow-x: hidden; }
+  .app, main.app, .container {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  /* Header stack */
+  .site-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .header-tabs { flex-wrap: wrap; }
+
+  /* Wallet: full width */
+  .wallet-block { width: 100% !important; }
+
+  /* Buttons: less huge but still tappable */
+  button, .btn {
+    min-height: 40px;                 /* slightly smaller than 44 */
+    padding: 10px 12px;
+    font-size: 14px;
+    border-radius: 12px;
+  }
+
+  /* Inputs/selects: prevent iOS zoom */
+  input, select {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  /* =========================================================
+     MINES: board first, bet panel second
+  ========================================================= */
+  #game-mines .panel-row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  /* Board area first */
+  #game-mines .mines-main-panel,
+  #game-mines .mines-grid-wrapper {
+    order: 1 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Controls second */
+  #game-mines .control-panel {
+    order: 2 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Make the grid actually visible and centered */
+  #game-mines .mines-grid {
+    width: min(92vw, 380px) !important;
+    aspect-ratio: 1 / 1;
+    margin: 0 auto !important;
+    padding: 10px !important;
+    gap: 6px !important;
+  }
+
+  /* =========================================================
+     CRASH: graph first, bet panel second
+  ========================================================= */
+  #game-crash .crash-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  #game-crash .crash-graph {
+    order: 1 !important;
+    width: 100% !important;
+    height: 300px !important;
+    min-height: 300px !important;
+  }
+
+  #game-crash .crash-controls,
+  #game-crash .control-panel {
+    order: 2 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* =========================================================
+     PLINKO: board first, bet panel second + stop overflow
+     (this addresses your "buckets over the board" issue)
+  ========================================================= */
+  #game-plinko .plinko-layout,
+  #game-plinko .panel-row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  #game-plinko .plinko-board,
+  #game-plinko .plinko-stage,
+  #game-plinko canvas {
+    order: 1 !important;
+    display: block;
+    width: min(92vw, 380px) !important;
+    height: auto !important;
+    margin: 0 auto !important;
+  }
+
+  /* If the payouts/buckets strip is a separate row, force it to fit */
+  #game-plinko .plinko-payouts,
+  #game-plinko .buckets {
+    max-width: min(92vw, 380px) !important;
+    margin: 8px auto 0 !important;
+    overflow: hidden !important;
+  }
+
+  #game-plinko .control-panel,
+  #game-plinko .plinko-controls {
+    order: 2 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Modals: always fit on phones */
+  .modal { padding: 14px !important; }
+  .modal .modal-card {
+    width: min(560px, 94vw) !important;
+    max-height: 86vh !important;
+    overflow: auto !important;
+    border-radius: 16px !important;
+  }
+}
