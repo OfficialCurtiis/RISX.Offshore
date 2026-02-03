@@ -31,7 +31,7 @@ export default async function handler(req, res) {
     }
 
     // short expiry so a leaked token dies fast
-    const exp = Date.now() + 1000 * 60 * 10; // 10 minutes
+    const exp = Date.now() + 1000 * 60 * 60; // 10 minutes
     const token = signUnlockToken({
       tierKey,
       paymentId: `admin_${Date.now()}`,
