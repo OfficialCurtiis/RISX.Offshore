@@ -169,10 +169,8 @@ function closeModal() {
     stopPolling();
   }
 
-function isUnlocked(tierKey) {
-  const token = localStorage.getItem("risx_unlock_token");
-  const tokenTier = localStorage.getItem("risx_unlock_tier");
-  return !!(token && tokenTier === tierKey);
+function isUnlocked() {
+  return !!localStorage.getItem("risx_unlock_token");
 }
 
   async function createPayment(tierKey, payCurrency) {
@@ -196,19 +194,15 @@ function isUnlocked(tierKey) {
   }
 
 function handleConfirmed(resp) {
-  // store signed token + tier
   if (resp?.unlock_token) {
     localStorage.setItem("risx_unlock_token", resp.unlock_token);
-    localStorage.setItem("risx_unlock_tier", activeTierKey);
-  }
 
-  // keep your existing UI behavior if you like
-  setUnlocked(activeTierKey);
-  closeModal();
-
-  // auto-start
-  if (typeof window.RISX_startChallengeFromPayment === "function") {
-    window.RISX_startChallengeFromPayment(activeTierKey);
+    // IMPORTANT: store tier returned by server, not activeTierKey
+    if (resp.tierKey) {
+      localStorage.setItem("risx_unlock_tier", resp.tierKey);
+    } else if (resp.unlock_tier) {
+      localStorage.setItem("risx_unlock_tier", resp.unlock_tier);
+    }
   }
 }
 

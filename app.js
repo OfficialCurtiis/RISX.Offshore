@@ -3326,9 +3326,8 @@ async function hasValidUnlockForTier(tier) {
     const r = await fetch("/api/verify-token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ token }), // don't send tierKey
     });
-
     const j = await r.json().catch(() => ({}));
     return !!(r.ok && j.valid && j.tierKey === tier);
   } catch {
