@@ -78,10 +78,17 @@ const withdrawBtn = document.getElementById("withdrawBtn");
 const adminBtn = document.getElementById("adminBtn");
 const currencySelect = document.getElementById("currencySelect"); 
 const walletCurrencyLabel = document.getElementById("walletCurrencyLabel"); 
+
+// ============  Life Cycle ========== //
 const RISX_SAVE_KEY = "risx_demo_wallet_v2";
 const WALLET_KEY = `${RISX_SAVE_KEY}::activeWallet`;
 const walletStoreKey = (wallet) => `${RISX_SAVE_KEY}::wallet::${wallet}`;
 const CHALLENGE_WALLET_ID = "__RISX_CHALLENGE__";
+const RUN_ID_KEY      = "risx_run_id";
+const RUN_TIER_KEY    = "risx_run_tier";
+const RUN_STATUS_KEY  = "risx_run_status";
+const RUN_START_KEY   = "risx_run_started_at";
+const RUN_END_KEY     = "risx_run_ended_at";
 
 function debounce(fn, delay = 150) {
   let t;
@@ -766,7 +773,10 @@ if (!CHALLENGE?.enabled || !challengeActive) return;
     challengeCompleted = true;
     challengeActive = false;
     CHALLENGE.active = false;
+
     setChallengeStatus?.("won");
+    endRun("won");
+
     saveChallengeActive?.(false);
     toast?.(`✅ Goal reached: ${goal}!`);
     showChallengeResetIfNeeded?.();
@@ -797,6 +807,8 @@ function challengeFail(reason) {
   challengeFailed = true;
 
   setChallengeStatus?.("failed");
+  endRun("failed");
+
   toast?.(`Challenge failed — ${reason}`);
 
   challengeActive = false;
@@ -856,54 +868,26 @@ function wipeChallengeWalletOnly() {
   } catch {}
 }
 
-function resolveChallengeAfterRound() {
-  if (!CHALLENGE?.enabled || !challengeActive || challengeCompleted) return;
-
-  const goal = Number(getTier?.()?.goalCredits ?? CHALLENGE?.target ?? 0);
-
-  // WIN
-  if (goal > 0 && balance >= goal) {
-    challengeCompleted = true;
-    challengeActive = false;
-    CHALLENGE.active = false;
-    setChallengeStatus?.("won");
-    saveChallengeActive?.(false);
-    toast?.(`✅ Goal reached: ${goal}!`);
-    openModal?.(challengeModal);
-    renderTierSummary?.();
-    showChallengeResetIfNeeded?.();
-    return;
-  }
-
-  // FAIL
-  if (balance <= 0) {
-    challengeFail?.("Balance hit 0");
-    return;
-  }
-}
-
 function resetChallengeRun() {
   // wipe run status
   challengeCompleted = false;
   challengeFailed = false;
 
+  endRun("reset");         // ✅ NEW
+  clearRun();              // ✅ NEW (fresh start)
+
   clearChallengeStatus?.();
   saveChallengeCompleted?.(false);
 
-  // wipe challenge wallet ONLY
   wipeChallengeWalletOnly();
 
-  // reset flags
   challengeActive = false;
   CHALLENGE.active = false;
   saveChallengeActive(false);
-  setChallengeStatus?.("won");
 
-  // reset balance to 0 until tier chosen again
   balance = 0;
   updateBalanceDisplay?.();
 
-  // reopen tier selection
   openModal?.(challengeModal);
   renderTierSummary?.();
   showChallengeResetIfNeeded?.();
@@ -955,8 +939,49 @@ function setActiveWallet(w) {
   persistActiveWalletState();
 }
 
+// =============================
+// RUN LIFECYCLE (local only for now)
+// =============================
+
+function makeRunId() {
+  return `run_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function getRun() {
+  return {
+    id: localStorage.getItem(RUN_ID_KEY),
+    tier: localStorage.getItem(RUN_TIER_KEY),
+    status: localStorage.getItem(RUN_STATUS_KEY),
+    startedAt: Number(localStorage.getItem(RUN_START_KEY) || 0),
+    endedAt: Number(localStorage.getItem(RUN_END_KEY) || 0),
+  };
+}
+
+function startRun(tier) {
+  const id = makeRunId();
+  localStorage.setItem(RUN_ID_KEY, id);
+  localStorage.setItem(RUN_TIER_KEY, tier);
+  localStorage.setItem(RUN_STATUS_KEY, "active");
+  localStorage.setItem(RUN_START_KEY, String(Date.now()));
+  localStorage.removeItem(RUN_END_KEY);
+  return id;
+}
+
+function endRun(status /* "won" | "failed" | "reset" */) {
+  localStorage.setItem(RUN_STATUS_KEY, status);
+  localStorage.setItem(RUN_END_KEY, String(Date.now()));
+}
+
+function clearRun() {
+  localStorage.removeItem(RUN_ID_KEY);
+  localStorage.removeItem(RUN_TIER_KEY);
+  localStorage.removeItem(RUN_STATUS_KEY);
+  localStorage.removeItem(RUN_START_KEY);
+  localStorage.removeItem(RUN_END_KEY);
+}
+
 /*===============================
-     Challenge setup 
+     Challenge UI locking
 //============================== */ 
 
 function lockAppUI(locked) {
@@ -3343,9 +3368,8 @@ challengeTier?.addEventListener("change", () => {
 });
 
 function startChallengeNow(tier) {
-  // =========================
-  // ORIGINAL START LOGIC
-  // =========================
+startRun(tier);
+
   challengeTierSelected = tier;
   CHALLENGE.tier = tier;
   saveChallengeState?.();
