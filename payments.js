@@ -194,16 +194,20 @@ function isUnlocked() {
   }
 
 function handleConfirmed(resp) {
-  if (resp?.unlock_token) {
-    localStorage.setItem("risx_unlock_token", resp.unlock_token);
-
-    // IMPORTANT: store tier returned by server, not activeTierKey
-    if (resp.tierKey) {
-      localStorage.setItem("risx_unlock_tier", resp.tierKey);
-    } else if (resp.unlock_tier) {
-      localStorage.setItem("risx_unlock_tier", resp.unlock_tier);
-    }
+  if (!(resp?.unlock_token && resp?.tierKey)) {
+    statusEl.textContent = "Confirmed, but missing unlock token. Contact support.";
+    return;
   }
+
+  localStorage.setItem("risx_unlock_token", resp.unlock_token);
+  localStorage.setItem("risx_unlock_tier", resp.tierKey);
+
+  activeTierKey = resp.tierKey;
+
+  setUnlocked(activeTierKey);
+  closeModal();
+
+  window.RISX_startChallengeFromPayment?.(activeTierKey);
 }
 
 function startPolling(paymentId) {

@@ -28,16 +28,11 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
   try {
-    const { token, tierKey } = req.body || {};
+    const { token } = req.body || {};
     if (!token) return res.status(400).json({ error: "Missing token" });
-    if (!tierKey) return res.status(400).json({ error: "Missing tierKey" });
 
     const v = verifyToken(token);
     if (!v.ok) return res.status(401).json({ valid: false, expired: !!v.expired });
-
-    if (String(v.payload.tierKey) !== String(tierKey)) {
-      return res.status(401).json({ valid: false, reason: "tier_mismatch" });
-    }
 
     return res.status(200).json({
       valid: true,
