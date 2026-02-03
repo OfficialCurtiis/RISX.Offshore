@@ -3320,17 +3320,17 @@ function init() {
 
 async function hasValidUnlockForTier(tier) {
   const token = localStorage.getItem("risx_unlock_token");
-  const tokenTier = localStorage.getItem("risx_unlock_tier");
-  if (!token || tokenTier !== tier) return false;
+  if (!token) return false;
 
   try {
     const r = await fetch("/api/verify-token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, tierKey: tier }),
+      body: JSON.stringify({ token }),
     });
+
     const j = await r.json().catch(() => ({}));
-    return !!(r.ok && j.valid);
+    return !!(r.ok && j.valid && j.tierKey === tier);
   } catch {
     return false;
   }
