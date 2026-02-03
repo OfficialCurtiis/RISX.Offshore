@@ -231,9 +231,12 @@ const pfLastRoundEl        = document.getElementById("pfLastRound");
 const openPfBtn            = document.getElementById("openPfBtn");
 const pfOpenBtn            = document.getElementById("pfOpenBtn");
 
+
 // ================================
 // Bet Settings Lock (Mines/Crash/Plinko)
 // ================================
+
+
 function _setDisabled(el, disabled) {
   if (!el) return;
   el.disabled = !!disabled;

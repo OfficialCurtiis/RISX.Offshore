@@ -1221,7 +1221,7 @@ select:focus {
 
 #game-crash .crash-wrap .crash-graph{
   aspect-ratio: 16 / 9;
-  height: auto;        /* important: don't let mobile set a fixed height */
+  height: auto;    
   min-height: 0;
 }
 
@@ -2013,67 +2013,6 @@ html.booting .modal {
   transform: translate(-50%, 6px) !important;
 }
 
-  /* ========================= */
-/* RESPONSIVE (MOBILE)       */
-/* ========================= */
-@media (max-width: 720px){
-
-  .site-header{
-    flex-direction:column;
-    align-items:flex-start;
-    gap:6px;
-  }
-
-  /* MINES mobile */
-  #game-mines .panel-row{
-    display:flex;
-    flex-direction:column;
-    gap:14px;
-  }
-
-  #game-mines .mines-main-panel{ order:1; }
-  #game-mines .control-panel{ order:2; max-width:100%; }
-
-  .mines-grid{
-    width:100%;
-    max-width:360px;
-    aspect-ratio:1/1;
-    padding:12px;
-    gap:6px;
-  }
-
-  /* CRASH mobile */
-  #game-crash.active{
-    display:flex;
-    flex-direction:column;
-    gap:14px;
-  }
-
-  #game-crash .crash-layout{
-    display:flex;
-    flex-direction:column;
-    gap:8px;
-  }
-
-  #game-crash .crash-graph{
-    min-height:320px;
-    height:320px;
-  }
-}
-
-/* Mobile stack */
-@media (max-width: 720px){
-  .site-header--challenge{
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .wallet-block{
-    width: 100%;
-  }
-}
-
-
 /* =========================
    Wallet-mode additions
 ========================= */
@@ -2650,13 +2589,6 @@ body.landing .landing-label{
 /* Optional: hide sub text forever */
 #challengeHudSub{ display: none !important; }
 
-/* Mobile */
-@media (max-width: 900px){
-  .site-header--challenge{
-    grid-template-columns: 1fr;
-  }
-}
-
 .site-header--challenge .header-wallet{
   padding: 12px 14px;   /* tighter */
 }
@@ -2693,4 +2625,130 @@ body.landing .landing-label{
 
 .site-header--challenge .header-wallet{
   padding-top: 10px;   /* was 12 */
+}
+
+/* ========================= */
+/* RESPONSIVE (MOBILE)       */
+/* ========================= */
+
+/* Tablet-ish / small laptop */
+@media (max-width: 900px){
+  .site-header--challenge{
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Phone / small tablet */
+@media (max-width: 768px) {
+
+  /* Prevent weird horizontal scroll */
+  html, body {
+    overflow-x: hidden;
+  }
+
+  /* Main container breathing room */
+  .app, .container, main {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  /* Modals: always centered, full overlay, no off-screen cards */
+  .modal {
+    padding: 14px !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .modal .modal-card {
+    width: min(560px, 94vw) !important;
+    max-height: 86vh !important;
+    overflow: auto !important;
+    border-radius: 16px !important;
+  }
+
+  /* Finger-friendly controls */
+  button, .btn {
+    min-height: 44px;
+  }
+
+  input, select {
+    min-height: 44px;
+    font-size: 16px; /* prevents iOS zoom */
+  }
+
+  /* Stack header */
+  .site-header{
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .site-header--challenge{
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .wallet-block{
+    width: 100%;
+  }
+
+  /* MINES mobile */
+  #game-mines .panel-row{
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  #game-mines .mines-main-panel{ order: 1; }
+  #game-mines .control-panel{ order: 2; max-width: 100%; }
+
+  .mines-grid{
+    width: 100%;
+    max-width: 360px;
+    aspect-ratio: 1 / 1;
+    padding: 12px;
+    gap: 6px;
+    touch-action: manipulation;
+  }
+
+  .mines-cell, .cell, .tile {
+    min-width: 34px;
+    min-height: 34px;
+  }
+
+  /* CRASH mobile */
+  #game-crash.active{
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  #game-crash .crash-layout{
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #game-crash .crash-graph{
+    min-height: 320px;
+    height: 320px;
+  }
+
+  /* Generic "split layout" stacker (safe-ish) */
+  .row, .cols, .two-col, .layout, .grid-2, .split {
+    flex-direction: column !important;
+  }
+}
+
+/* Ultra-small phones */
+@media (max-width: 420px) {
+  .mines-grid{
+    max-width: 320px;
+    padding: 10px;
+    gap: 5px;
+  }
+
+  .modal .modal-card{
+    width: 96vw !important;
+  }
 }
