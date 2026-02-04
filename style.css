@@ -3386,3 +3386,142 @@ body.landing .landing-label{
     padding-bottom: calc(12px + env(safe-area-inset-bottom)) !important;
   }
 }
+
+/* =========================================================
+   iOS / MOBILE HOTFIX OVERRIDES (paste at VERY BOTTOM)
+   Fixes:
+   - Tier modal scroll + Safari toolbar safe areas
+   - White halo background
+   - Plinko buckets overflowing into bet panel
+========================================================= */
+
+/* Kill the white/gray halo behind everything */
+html, body {
+  background: #05060a !important;
+  background-color: #05060a !important;
+  overflow-x: hidden !important;
+}
+
+/* Make sure your main wrapper never shows a bright background */
+.page, main, .app, .container {
+  background: transparent !important;
+}
+
+/* iOS Safari viewport correctness */
+:root {
+  /* helps when you use these in calc() */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (max-width: 768px) {
+
+  /* =========================================
+     MODALS (Tier prompt) — FIX SCROLL + TOOLBAR
+     ========================================= */
+
+  .modal {
+    position: fixed !important;
+    inset: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    /* safe-area padding so content doesn't hide behind notch / toolbar */
+    padding-top: calc(14px + var(--safe-top)) !important;
+    padding-bottom: calc(14px + var(--safe-bottom)) !important;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+
+    /* iOS smooth scroll inside modal */
+    overflow: hidden !important;
+  }
+
+  .modal .modal-card {
+    width: min(560px, 94vw) !important;
+
+    /* THE KEY: card height respects iOS dynamic viewport */
+    max-height: calc(100dvh - (28px + var(--safe-top) + var(--safe-bottom))) !important;
+
+    overflow: hidden !important;
+    border-radius: 16px !important;
+  }
+
+  /* Body becomes the scroll container */
+  .modal .modal-body,
+  .modal .modal-content,
+  .modal .modal-inner {
+    max-height: calc(100dvh - (120px + var(--safe-top) + var(--safe-bottom))) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* Make sure the tier modal button row is always reachable */
+  .modal .modal-footer,
+  .modal .actions,
+  .modal .btn-row {
+    position: sticky !important;
+    bottom: 0 !important;
+    padding-bottom: calc(10px + var(--safe-bottom)) !important;
+    background: rgba(6, 8, 14, 0.92) !important;
+    backdrop-filter: blur(10px);
+    z-index: 5 !important;
+  }
+
+  /* =========================================
+     PLINKO — CONTAIN BUCKETS + STOP OVERFLOW
+     ========================================= */
+
+  /* The board container MUST be the containing block */
+  #game-plinko .plinko-board-wrap,
+  #game-plinko .plinko-panel,
+  #game-plinko #plinkoBoard.plinko-board {
+    position: relative !important;
+    width: 100% !important;
+    max-width: 380px !important;
+    margin: 0 auto !important;
+    overflow: hidden !important;   /* this stops buckets from leaking */
+  }
+
+  /* If your buckets are absolutely positioned, force them back into layout */
+  #game-plinko .plinko-bucket,
+  #game-plinko .plinko-buckets,
+  #game-plinko .bucket-row,
+  #game-plinko .plinko-multipliers {
+    position: relative !important;
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: auto !important;
+    transform: none !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  /* Ensure the drawing area scales and doesn’t exceed the container */
+  #game-plinko canvas,
+  #game-plinko .plinko-stage,
+  #game-plinko .plinko-canvas {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    max-width: 100% !important;
+  }
+
+  /* Give the board extra bottom room so buckets never overlap the next panel */
+  #game-plinko #plinkoBoard.plinko-board {
+    padding-bottom: 34px !important;
+  }
+
+  /* If the bucket row is flex, keep it tight on phones */
+  #game-plinko .plinko-multipliers,
+  #game-plinko .bucket-row {
+    display: flex !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    flex-wrap: nowrap !important;
+    font-size: 11px !important;
+    line-height: 1.1 !important;
+    padding: 6px 8px 10px !important;
+  }
+}
