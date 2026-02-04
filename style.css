@@ -2846,3 +2846,44 @@ body.landing .landing-label{
     width: 96vw !important;
   }
 }
+
+/* =========================
+   CRASH: force bet panel back on-screen (mobile)
+========================= */
+@media (max-width: 768px){
+
+  /* Kill any desktop grid that might be pushing columns sideways */
+  #game-crash .panel-row,
+  #game-crash .crash-layout{
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  /* This is the one you confirmed */
+  #game-crash .panel.control-panel{
+    position: static !important;
+    float: none !important;
+    right: auto !important;
+    left: auto !important;
+    transform: none !important;
+
+    width: 100% !important;
+    max-width: 100% !important;
+
+    margin: 0 !important;
+    justify-self: stretch !important;
+    align-self: stretch !important;
+
+    display: block !important;
+    order: 2 !important;
+  }
+
+  /* Make sure the crash "game" section itself can't be wider than the phone */
+  #game-crash,
+  #game-crash.active{
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+}
