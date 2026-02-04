@@ -1399,6 +1399,13 @@ html.booting .modal {
   display: none !important;
 }
 
+html.modal-open,
+body.modal-open {
+  overflow: hidden;
+  height: 100%;
+  touch-action: none; /* prevents background scroll bleed */
+}
+
 .buy-packs{
   display:flex;
   flex-direction:column;

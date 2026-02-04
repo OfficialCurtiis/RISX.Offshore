@@ -475,6 +475,24 @@ function renderTierSummary() {
 // Small utils / Challenge helpers
 // =========================
 
+function openChallengeTierModal() {
+  const modal = document.getElementById("challengeTierModal");
+  if (!modal) return;
+
+  document.documentElement.classList.add("modal-open");
+  document.body.classList.add("modal-open");
+
+  modal.classList.add("open");
+
+  // Ensure scroll container resets (pick the one you set overflow-y on)
+  const scroller =
+    modal.querySelector(".modal-content") ||
+    modal.querySelector(".tier-modal__content") ||
+    modal;
+
+  scroller.scrollTop = 0;
+}
+
 function setChallengeGoalUI(value) {
   const el = document.getElementById("challengeGoal");
   if (!el) return;
