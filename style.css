@@ -2852,3 +2852,221 @@ body.landing .landing-label{
     border-radius: 16px !important;
   }
 }
+
+/* =========================================================
+   FINAL MOBILE OVERRIDES (paste at VERY BOTTOM of style.css)
+   Goal:
+   - header: wallet top-right
+   - games: game first, bet settings second
+   - crash/plinko: no overflow, no overlapping
+========================================================= */
+@media (max-width: 768px) {
+
+  /* Prevent sideways scroll */
+  html, body { overflow-x: hidden; }
+
+  /* Let the app actually use the phone width */
+  .app, main.app, .container, .page {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  /* -------------------------
+     HEADER: wallet top-right
+  -------------------------- */
+  .site-header--challenge{
+    display: grid !important;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "logo wallet"
+      "tabs tabs"
+      "status status";
+    gap: 10px;
+    align-items: center;
+  }
+
+  .logo-block{ grid-area: logo; }
+  .wallet-block{
+    grid-area: wallet;
+    justify-self: end;
+    width: auto !important;
+    max-width: 55vw;
+  }
+  .header-tabs, .header-tabs-wrap, .tabs{ grid-area: tabs; }
+  .challenge-ready, .challenge-status, .challenge-pill, .challenge-banner{ grid-area: status; }
+
+  /* Tabs less chunky */
+  .header-pill, .tab-pill, .header-tab{
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+  }
+
+  /* Buttons slightly smaller but still tappable */
+  button, .btn{
+    min-height: 40px;
+    padding: 10px 12px;
+    font-size: 14px;
+    border-radius: 12px;
+  }
+
+  /* Inputs prevent iOS zoom */
+  input, select{
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  /* -------------------------
+     MINES: board first
+  -------------------------- */
+  #game-mines .panel-row{
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  #game-mines .mines-main-panel,
+  #game-mines .mines-grid-wrapper{
+    order: 1 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  #game-mines .control-panel{
+    order: 2 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  #game-mines .mines-grid{
+    width: min(92vw, 380px) !important;
+    margin: 0 auto !important;
+    aspect-ratio: 1 / 1;
+    padding: 10px !important;
+    gap: 6px !important;
+    touch-action: manipulation;
+  }
+
+  /* -------------------------
+     CRASH: STOP overflow
+     (this is what’s pushing off-screen)
+  -------------------------- */
+
+  /* Override desktop fixed columns */
+  #game-crash .panel-row,
+  #game-crash .crash-layout{
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  /* Remove desktop aspect-ratio locks on mobile */
+  #game-crash .game-arena--crash,
+  #game-crash .crash-wrap .crash-graph{
+    aspect-ratio: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  /* Graph must fit the phone */
+  #game-crash .crash-graph,
+  #game-crash .crash-graph-inner{
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  #game-crash canvas,
+  #game-crash .crash-canvas{
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    display: block;
+  }
+
+  /* If you’re using the overlay layout on desktop,
+     force it to behave like normal stacked blocks on mobile */
+  .crash-overlay{
+    position: static !important;
+    width: auto !important;
+    left: auto !important;
+    top: auto !important;
+    pointer-events: auto !important;
+  }
+
+  /* Make sure controls/bet panel is visible and full width */
+  #game-crash .control-panel,
+  #game-crash .crash-controls,
+  #game-crash .bet-settings,
+  #game-crash .panel--bet{
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    order: 2 !important;
+  }
+
+  /* History last */
+  #game-crash .crash-history,
+  #game-crash .history-panel,
+  #game-crash .crash-last{
+    width: 100% !important;
+    max-width: 100% !important;
+    order: 3 !important;
+  }
+
+  /* -------------------------
+     PLINKO: buckets overlapping fix
+  -------------------------- */
+  #game-plinko .plinko-layout,
+  #game-plinko .panel-row{
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  #game-plinko .plinko-board,
+  #game-plinko .plinko-stage,
+  #game-plinko canvas{
+    width: min(92vw, 380px) !important;
+    max-width: 100% !important;
+    height: auto !important;
+    margin: 0 auto !important;
+    display: block;
+    order: 1 !important;
+  }
+
+  /* The “buckets/multipliers row” — make it wrap and shrink */
+  #game-plinko .plinko-multipliers,
+  #game-plinko .bucket-row,
+  #game-plinko .mult-row,
+  #game-plinko .buckets{
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    padding: 6px 0 !important;
+    max-width: min(92vw, 380px) !important;
+    margin: 0 auto !important;
+    overflow: hidden !important;
+    font-size: 11px !important;
+    line-height: 1.1 !important;
+  }
+
+  #game-plinko .plinko-multipliers > *,
+  #game-plinko .bucket-row > *,
+  #game-plinko .mult-row > *,
+  #game-plinko .buckets > *{
+    padding: 4px 6px !important;
+    border-radius: 10px !important;
+    white-space: nowrap !important;
+  }
+
+  #game-plinko .control-panel,
+  #game-plinko .plinko-controls{
+    order: 2 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
