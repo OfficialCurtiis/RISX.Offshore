@@ -3251,27 +3251,6 @@ body.landing .landing-label{
     max-width: 100% !important;
   }
 
-  /* ---------------- Modals / tier screen: scroll + tappable ---------------- */
-  .modal {
-    padding: 14px !important;
-    align-items: center !important;
-    justify-content: center !important;
-    background: rgba(0,0,0,.75) !important;
-  }
-
-  .modal .modal-card {
-    width: min(560px, 94vw) !important;
-    max-height: calc(100vh - 28px) !important;
-    overflow: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    border-radius: 16px !important;
-  }
-
-  .modal .modal-body {
-    overflow: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-  }
-
   /* ---------------- CRASH: stop off-screen / force fit ---------------- */
   #game-crash .crash-layout,
   #game-crash .panel-row {
