@@ -3251,6 +3251,27 @@ body.landing .landing-label{
     max-width: 100% !important;
   }
 
+  /* ---------------- Modals / tier screen: scroll + tappable ---------------- */
+  .modal {
+    padding: 14px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: rgba(0,0,0,.75) !important;
+  }
+
+  .modal .modal-card {
+    width: min(560px, 94vw) !important;
+    max-height: calc(100vh - 28px) !important;
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    border-radius: 16px !important;
+  }
+
+  .modal .modal-body {
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
   /* ---------------- CRASH: stop off-screen / force fit ---------------- */
   #game-crash .crash-layout,
   #game-crash .panel-row {
@@ -3395,51 +3416,5 @@ body.landing .landing-label{
     gap: 6px !important;
     padding: 0 8px !important;
     box-sizing: border-box !important;
-  }
-}
-
-/* ===== iOS SAFARI MODAL: TOOLBAR / SAFE-AREA FIX ===== */
-@media (max-width: 768px){
-
-  .modal{
-    position: fixed !important;
-    inset: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-
-    /* use dynamic viewport + safe areas */
-    padding-top: calc(14px + env(safe-area-inset-top)) !important;
-    padding-bottom: calc(14px + env(safe-area-inset-bottom)) !important;
-    padding-left: 14px !important;
-    padding-right: 14px !important;
-
-    overflow: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-  }
-
-  .modal .modal-card{
-    width: min(560px, 94vw) !important;
-
-    /* THIS is the core fix */
-    max-height: calc(100dvh - 28px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
-
-    overflow: hidden !important;
-  }
-
-  /* Make the inner body the scroll area */
-  .modal .modal-body{
-    max-height: calc(100dvh - 160px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
-    overflow: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-  }
-
-  /* Make sure action buttons aren't trapped */
-  .modal-actions{
-    position: sticky !important;
-    bottom: 0 !important;
-    background: rgba(12,14,18,.96) !important;
-    padding-bottom: calc(12px + env(safe-area-inset-bottom)) !important;
-    z-index: 2;
   }
 }
