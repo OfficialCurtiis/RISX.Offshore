@@ -3366,3 +3366,23 @@ body.landing .landing-label{
     white-space: nowrap !important;
   }
 }
+
+/* ===== iPhone Safari toolbar fix (minimal, safe) ===== */
+@media (max-width: 768px){
+  /* Make the challenge tier card fit the visible viewport */
+  #challengeModal .modal-card{
+    max-height: calc(100dvh - 28px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+  }
+
+  /* Make the body the scroll container */
+  #challengeModal .modal-body{
+    max-height: calc(100dvh - 180px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* Give the action buttons breathing room above the iPhone bottom bar */
+  #challengeModal .modal-actions{
+    padding-bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+  }
+}
