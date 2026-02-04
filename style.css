@@ -3366,3 +3366,101 @@ body.landing .landing-label{
     white-space: nowrap !important;
   }
 }
+
+/* ===== PLINKO MOBILE HARD CLAMP ===== */
+@media (max-width: 768px){
+
+  /* Reduce side padding variable on phones */
+  #plinkoBoard.plinko-board{
+    --plinko-side-pad: 8px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    position: relative !important;
+  }
+
+  /* The wrapper must contain everything and reserve bucket space */
+  .plinko-board-wrap{
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    position: relative !important;
+    padding-bottom: 68px !important; /* reserve space so buckets can't spill into bet settings */
+    box-sizing: border-box !important;
+  }
+
+  /* If buckets are positioned weird, anchor them inside the wrap */
+  .plinko-bucket{
+    position: relative !important;
+    z-index: 5 !important;
+    font-size: 11px !important;
+    line-height: 1 !important;
+    padding: 4px 6px !important;
+    border-radius: 10px !important;
+    white-space: nowrap !important;
+  }
+
+  /* If there's a bucket row container, force it to wrap and stay inside */
+  .plinko-buckets,
+  .plinko-multipliers,
+  .bucket-row,
+  .mult-row{
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 10px !important;
+    display: flex !important;
+    justify-content: center !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    padding: 0 8px !important;
+    box-sizing: border-box !important;
+  }
+}
+
+/* ===== iOS SAFARI MODAL: TOOLBAR / SAFE-AREA FIX ===== */
+@media (max-width: 768px){
+
+  .modal{
+    position: fixed !important;
+    inset: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    /* use dynamic viewport + safe areas */
+    padding-top: calc(14px + env(safe-area-inset-top)) !important;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom)) !important;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .modal .modal-card{
+    width: min(560px, 94vw) !important;
+
+    /* THIS is the core fix */
+    max-height: calc(100dvh - 28px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+
+    overflow: hidden !important;
+  }
+
+  /* Make the inner body the scroll area */
+  .modal .modal-body{
+    max-height: calc(100dvh - 160px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* Make sure action buttons aren't trapped */
+  .modal-actions{
+    position: sticky !important;
+    bottom: 0 !important;
+    background: rgba(12,14,18,.96) !important;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+    z-index: 2;
+  }
+}
