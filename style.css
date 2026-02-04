@@ -3070,3 +3070,124 @@ body.landing .landing-label{
     max-width: 100% !important;
   }
 }
+
+/* =========================================================
+   iPHONE HARD FIXES (wins over "keep it big" rules)
+   Paste at VERY BOTTOM of style.css
+========================================================= */
+@media (max-width: 480px) {
+
+  /* -------------------------
+     CRASH: stop overflow
+  ------------------------- */
+
+  /* Kill desktop grids on phone */
+  #game-crash .panel-row,
+  #game-crash .crash-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  /* The big offender: force the graph container to never exceed viewport */
+  #game-crash .crash-graph,
+  #game-crash .game-arena--crash,
+  #game-crash .game-arena.game-arena--crash,
+  #game-crash .crash-wrap .crash-graph {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    aspect-ratio: auto !important;   /* overrides 16/9 lock */
+    height: 260px !important;        /* phone-friendly height */
+    min-height: 260px !important;
+  }
+
+  /* If your canvas is the thing spilling out */
+  #game-crash canvas,
+  #crashCanvas {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    display: block !important;
+  }
+
+  /* Your overlay width is likely pushing the whole card wide */
+  .crash-overlay {
+    left: 10px !important;
+    right: 10px !important;
+    width: auto !important;              /* overrides width:340px */
+    max-width: calc(100% - 20px) !important;
+  }
+
+  /* Big multiplier text can push layout too */
+  .crash-big-mult {
+    font-size: 44px !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  /* -------------------------
+     PLINKO: stop buckets overlap
+  ------------------------- */
+
+  /* Force layout to stack and keep everything within width */
+  #game-plinko .panel-row,
+  #game-plinko .plinko-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  /* Ensure the board area doesn't allow overlays to bleed */
+  #game-plinko .plinko-board,
+  #game-plinko .plinko-stage,
+  #game-plinko .plinko-wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    position: relative !important;
+  }
+
+  /* Canvas must obey container */
+  #game-plinko canvas {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    display: block !important;
+  }
+
+  /* THIS is the key: if buckets/multipliers are positioned/overlayed,
+     force them into normal flow + wrap + shrink */
+  #game-plinko .buckets,
+  #game-plinko .plinko-payouts,
+  #game-plinko .plinko-multipliers,
+  #game-plinko .bucket-row,
+  #game-plinko .mult-row {
+    position: static !important;         /* overrides absolute overlays */
+    transform: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 8px auto 0 !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    padding: 0 6px !important;
+    font-size: 11px !important;
+    line-height: 1.1 !important;
+    overflow: hidden !important;
+  }
+
+  #game-plinko .buckets > *,
+  #game-plinko .plinko-payouts > *,
+  #game-plinko .plinko-multipliers > *,
+  #game-plinko .bucket-row > *,
+  #game-plinko .mult-row > * {
+    padding: 4px 6px !important;
+    border-radius: 10px !important;
+    white-space: nowrap !important;
+  }
+}
