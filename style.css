@@ -2627,23 +2627,17 @@ body.landing .landing-label{
   padding-top: 10px;   /* was 12 */
 }
 
-/* ========================= */
-/* RESPONSIVE (MOBILE)       */
-/* ========================= */
-
-/* Tablet-ish / small laptop */
-@media (max-width: 900px){
-  .site-header--challenge{
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Phone / small tablet */
+/* =========================================================
+   RISX — MOBILE FIX PACK (single source of truth)
+   Put this at the VERY BOTTOM of style.css
+========================================================= */
 @media (max-width: 768px){
 
-  /* Let the page use the phone width (no tiny centered column) */
+  /* No sideways scroll */
   html, body { overflow-x: hidden; }
-  .app, main.app, .container {
+
+  /* Let layout actually use the phone width */
+  .app, main.app, .container, .page {
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
@@ -2651,22 +2645,7 @@ body.landing .landing-label{
     padding-right: 12px !important;
   }
 
-  /* Finger-friendly but not chunky */
-  button, .btn {
-    min-height: 40px;
-    padding: 10px 12px;
-    font-size: 14px;
-    border-radius: 12px;
-  }
-
-  input, select {
-    min-height: 44px;
-    font-size: 16px; /* prevents iOS zoom */
-  }
-
-  /* =========================
-     HEADER: logo left, wallet right, tabs full width
-  ========================= */
+  /* ---------- HEADER: wallet top-right ---------- */
   .site-header--challenge{
     display: grid !important;
     grid-template-columns: 1fr auto;
@@ -2677,13 +2656,12 @@ body.landing .landing-label{
     gap: 10px;
     align-items: center;
   }
-
   .logo-block{ grid-area: logo; }
   .wallet-block{
     grid-area: wallet;
     justify-self: end;
     width: auto !important;
-    min-width: 150px;
+    min-width: 160px;
   }
   .header-tabs, .header-tabs-wrap, .tabs{ grid-area: tabs; }
   .challenge-ready, .challenge-status, .challenge-pill, .challenge-banner{ grid-area: status; }
@@ -2694,41 +2672,43 @@ body.landing .landing-label{
     font-size: 12px !important;
   }
 
-  /* =========================
-     MODALS: always fit on phones
-  ========================= */
-  .modal { padding: 14px !important; align-items: center !important; justify-content: center !important; }
-  .modal .modal-card{
-    width: min(560px, 94vw) !important;
-    max-height: 86vh !important;
-    overflow: auto !important;
-    border-radius: 16px !important;
+  /* ---------- Controls feel normal on phones ---------- */
+  button, .btn{
+    min-height: 40px;
+    padding: 10px 12px;
+    font-size: 14px;
+    border-radius: 12px;
+  }
+  input, select{
+    min-height: 44px;
+    font-size: 16px; /* prevents iOS zoom */
   }
 
-  /* =========================
-     MINES: board first, controls second
-  ========================= */
-  #game-mines .panel-row{
+  /* ---------- Generic: stack any 2-col layouts ---------- */
+  .panel-row,
+  .row, .cols, .two-col, .layout, .grid-2, .split {
     display: flex !important;
     flex-direction: column !important;
     gap: 12px !important;
   }
 
+  /* =========================================================
+     MINES: board first, bet settings second
+  ========================================================= */
   #game-mines .mines-main-panel,
-  #game-mines .mines-grid-wrapper{
+  #game-mines .mines-grid-wrapper {
     order: 1 !important;
     width: 100% !important;
     max-width: 100% !important;
   }
-
   #game-mines .control-panel{
     order: 2 !important;
     width: 100% !important;
     max-width: 100% !important;
   }
-
   #game-mines .mines-grid{
     width: min(92vw, 380px) !important;
+    max-width: 92vw !important;
     aspect-ratio: 1 / 1;
     margin: 0 auto !important;
     padding: 10px !important;
@@ -2736,40 +2716,52 @@ body.landing .landing-label{
     touch-action: manipulation;
   }
 
-  .mines-cell, .cell, .tile {
-    min-width: 34px;
-    min-height: 34px;
-  }
-
-  /* =========================
-     CRASH: graph first, bet settings second, history last
-  ========================= */
-  #game-crash.active,
+  /* =========================================================
+     CRASH: stop the right-side overflow + keep controls visible
+  ========================================================= */
+  #game-crash.active { width: 100% !important; max-width: 100% !important; }
   #game-crash .crash-layout{
     display: flex !important;
     flex-direction: column !important;
     gap: 12px !important;
-  }
-
-  #game-crash .crash-graph,
-  #game-crash .crash-stage,
-  #game-crash .crash-canvas{
-    order: 1 !important;
-    width: 100% !important;
-    height: 280px !important;
-    min-height: 280px !important;
-  }
-
-  #game-crash .control-panel,
-  #game-crash .crash-controls,
-  #game-crash .bet-settings,
-  #game-crash .panel--bet{
-    display: block !important;
-    order: 2 !important;
     width: 100% !important;
     max-width: 100% !important;
   }
 
+  /* Graph container MUST clip content */
+  #game-crash .crash-graph,
+  #game-crash .crash-stage{
+    order: 1 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 280px !important;
+    min-height: 280px !important;
+    overflow: hidden !important; /* <-- this is the big fix */
+    position: relative;
+  }
+
+  /* Any crash canvas/svg/image inside must not exceed container */
+  #game-crash canvas,
+  #game-crash svg,
+  #game-crash img{
+    display: block !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  /* Controls always show under the graph */
+  #game-crash .control-panel,
+  #game-crash .crash-controls,
+  #game-crash .bet-settings,
+  #game-crash .panel--bet{
+    order: 2 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    display: block !important;
+  }
+
+  /* History last */
   #game-crash .crash-history,
   #game-crash .history-panel,
   #game-crash .crash-last{
@@ -2778,54 +2770,68 @@ body.landing .landing-label{
     max-width: 100% !important;
   }
 
-  /* =========================
-     PLINKO: board first, controls second, buckets wrap (no overlap)
-  ========================= */
+  /* =========================================================
+     PLINKO: stop “buckets over board”
+     (Usually caused by absolute-positioned bucket row)
+  ========================================================= */
   #game-plinko .plinko-layout,
   #game-plinko .panel-row{
     display: flex !important;
     flex-direction: column !important;
     gap: 12px !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
-  #game-plinko .plinko-board,
+  /* Board stage should be its own block and not allow overlays */
   #game-plinko .plinko-stage,
-  #game-plinko canvas{
+  #game-plinko .plinko-board,
+  #game-plinko .plinko-wrap{
     order: 1 !important;
-    display: block;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    position: relative !important;
+  }
+
+  #game-plinko canvas{
+    display: block !important;
     width: min(92vw, 380px) !important;
+    max-width: 92vw !important;
     height: auto !important;
     margin: 0 auto !important;
   }
 
-  #game-plinko .plinko-stage,
-  #game-plinko .plinko-wrap{
-    padding-bottom: 10px !important;
-  }
-
+  /* Force bucket/payout row to be NORMAL FLOW (not absolute) */
+  #game-plinko .buckets,
+  #game-plinko .plinko-payouts,
   #game-plinko .plinko-multipliers,
   #game-plinko .bucket-row,
-  #game-plinko .mult-row,
-  #game-plinko .buckets{
+  #game-plinko .mult-row{
+    position: static !important;
+    margin: 8px auto 0 !important;
+    width: min(92vw, 380px) !important;
+    max-width: 92vw !important;
     display: flex !important;
     flex-wrap: wrap !important;
-    gap: 6px !important;
     justify-content: center !important;
+    gap: 6px !important;
+    overflow: hidden !important;
     font-size: 11px !important;
     line-height: 1.1 !important;
-    max-width: min(92vw, 380px) !important;
-    margin: 8px auto 0 !important;
   }
 
+  #game-plinko .buckets > *,
+  #game-plinko .plinko-payouts > *,
   #game-plinko .plinko-multipliers > *,
   #game-plinko .bucket-row > *,
-  #game-plinko .mult-row > *,
-  #game-plinko .buckets > *{
+  #game-plinko .mult-row > *{
     padding: 4px 6px !important;
     border-radius: 10px !important;
     white-space: nowrap !important;
   }
 
+  /* Bet settings come AFTER board */
   #game-plinko .control-panel,
   #game-plinko .plinko-controls{
     order: 2 !important;
@@ -2833,152 +2839,16 @@ body.landing .landing-label{
     max-width: 100% !important;
   }
 
-}
-
-/* Ultra-small phones */
-@media (max-width: 420px){
-  #game-mines .mines-grid,
-  #game-plinko canvas{
-    width: min(94vw, 340px) !important;
-  }
-
-  .modal .modal-card{
-    width: 96vw !important;
-  }
-}
-
-/* =========================
-   CRASH: force bet panel back on-screen (mobile)
-========================= */
-@media (max-width: 768px){
-
-  /* Kill any desktop grid that might be pushing columns sideways */
-  #game-crash .panel-row,
-  #game-crash .crash-layout{
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: stretch !important;
-  }
-
-  /* This is the one you confirmed */
-  #game-crash .panel.control-panel{
-    position: static !important;
-    float: none !important;
-    right: auto !important;
-    left: auto !important;
-    transform: none !important;
-
-    width: 100% !important;
-    max-width: 100% !important;
-
-    margin: 0 !important;
-    justify-self: stretch !important;
-    align-self: stretch !important;
-
-    display: block !important;
-    order: 2 !important;
-  }
-
-  /* Make sure the crash "game" section itself can't be wider than the phone */
-  #game-crash,
-  #game-crash.active{
-    width: 100% !important;
-    max-width: 100% !important;
-    overflow-x: hidden !important;
-  }
-}
-
-/* =========================
-   MOBILE OVERFLOW KILL-SWITCH
-   (keeps games from spilling off the right edge)
-========================= */
-@media (max-width: 768px){
-
-  /* Make all sizing predictable */
-  *, *::before, *::after { box-sizing: border-box; }
-
-  html, body { overflow-x: hidden !important; }
-
-  /* Force the crash view to never exceed the viewport */
-  #game-crash,
-  #game-crash.active,
-  #game-crash .crash-layout,
-  #game-crash .crash-graph,
-  #game-crash .crash-stage,
-  #game-crash .panel-row{
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-  }
-
-  /* If your graph is a canvas/svg inside a wrapper, force it to fit */
-  #game-crash canvas,
-  #game-crash svg{
-    width: 100% !important;
-    max-width: 100% !important;
-    height: auto !important;
-    display: block !important;
-  }
-
-  /* If there is a “fixed” width wrapper, kill that too */
-  #game-crash .crash-graph *{
-    min-width: 0 !important;
-    max-width: 100% !important;
-  }
-}
-
-/* =========================
-   PLINKO MOBILE: stop bucket/multiplier overlap
-========================= */
-@media (max-width: 768px){
-
-  /* Stage fits phone */
-  #game-plinko,
-  #game-plinko .plinko-stage,
-  #game-plinko .plinko-board,
-  #game-plinko canvas{
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-    height: auto !important;
-    display: block !important;
-    margin: 0 auto !important;
-  }
-
-  /* This targets the bucket/multiplier strip no matter what you named it */
-  #game-plinko .buckets,
-  #game-plinko .bucket-row,
-  #game-plinko .plinko-payouts,
-  #game-plinko .plinko-multipliers,
-  #game-plinko .mult-row{
-    position: static !important;     /* kills absolute overlay */
-    width: 100% !important;
-    max-width: 100% !important;
-    overflow: hidden !important;
-    margin: 8px auto 0 !important;
-
-    display: flex !important;
-    flex-wrap: wrap !important;
+  /* ---------- Modals fit phones ---------- */
+  .modal{
+    padding: 14px !important;
+    align-items: center !important;
     justify-content: center !important;
-    gap: 6px !important;
   }
-
-  /* Make each bucket label smaller so it can’t collide */
-  #game-plinko .buckets > *,
-  #game-plinko .bucket-row > *,
-  #game-plinko .plinko-payouts > *,
-  #game-plinko .plinko-multipliers > *,
-  #game-plinko .mult-row > *{
-    font-size: 11px !important;
-    line-height: 1.1 !important;
-    padding: 4px 6px !important;
-    border-radius: 10px !important;
-    white-space: nowrap !important;
-  }
-
-  /* If the bucket strip is drawn on/near the canvas, add breathing room */
-  #game-plinko .plinko-stage,
-  #game-plinko .plinko-wrap{
-    padding-bottom: 14px !important;
+  .modal .modal-card{
+    width: min(560px, 94vw) !important;
+    max-height: 86vh !important;
+    overflow: auto !important;
+    border-radius: 16px !important;
   }
 }
