@@ -52,10 +52,6 @@ body {
   --gutter: 18px;
 }
 
-.page, .app, main.app, .container {
-  background: transparent;
-}
-
 .page {
   min-height: 100vh;
   display: flex;
@@ -63,17 +59,7 @@ body {
   padding: var(--gutter);
 }
 
-html, body {
-  background: #05070d; /* or your exact RISX bg token */
-  margin: 0;
-  padding: 0;
-}
 
-/* prevents that iOS “white behind” when you overscroll */
-body {
-  min-height: 100dvh;
-  overscroll-behavior-y: none;
-}
 /* ========================= */
 /* Casino HEADER / LOBBY            */
 /* ========================= */
