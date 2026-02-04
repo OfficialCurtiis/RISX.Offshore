@@ -2887,3 +2887,98 @@ body.landing .landing-label{
     overflow-x: hidden !important;
   }
 }
+
+/* =========================
+   MOBILE OVERFLOW KILL-SWITCH
+   (keeps games from spilling off the right edge)
+========================= */
+@media (max-width: 768px){
+
+  /* Make all sizing predictable */
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body { overflow-x: hidden !important; }
+
+  /* Force the crash view to never exceed the viewport */
+  #game-crash,
+  #game-crash.active,
+  #game-crash .crash-layout,
+  #game-crash .crash-graph,
+  #game-crash .crash-stage,
+  #game-crash .panel-row{
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* If your graph is a canvas/svg inside a wrapper, force it to fit */
+  #game-crash canvas,
+  #game-crash svg{
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    display: block !important;
+  }
+
+  /* If there is a “fixed” width wrapper, kill that too */
+  #game-crash .crash-graph *{
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+}
+
+/* =========================
+   PLINKO MOBILE: stop bucket/multiplier overlap
+========================= */
+@media (max-width: 768px){
+
+  /* Stage fits phone */
+  #game-plinko,
+  #game-plinko .plinko-stage,
+  #game-plinko .plinko-board,
+  #game-plinko canvas{
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    display: block !important;
+    margin: 0 auto !important;
+  }
+
+  /* This targets the bucket/multiplier strip no matter what you named it */
+  #game-plinko .buckets,
+  #game-plinko .bucket-row,
+  #game-plinko .plinko-payouts,
+  #game-plinko .plinko-multipliers,
+  #game-plinko .mult-row{
+    position: static !important;     /* kills absolute overlay */
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    margin: 8px auto 0 !important;
+
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    gap: 6px !important;
+  }
+
+  /* Make each bucket label smaller so it can’t collide */
+  #game-plinko .buckets > *,
+  #game-plinko .bucket-row > *,
+  #game-plinko .plinko-payouts > *,
+  #game-plinko .plinko-multipliers > *,
+  #game-plinko .mult-row > *{
+    font-size: 11px !important;
+    line-height: 1.1 !important;
+    padding: 4px 6px !important;
+    border-radius: 10px !important;
+    white-space: nowrap !important;
+  }
+
+  /* If the bucket strip is drawn on/near the canvas, add breathing room */
+  #game-plinko .plinko-stage,
+  #game-plinko .plinko-wrap{
+    padding-bottom: 14px !important;
+  }
+}
