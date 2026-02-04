@@ -52,6 +52,10 @@ body {
   --gutter: 18px;
 }
 
+.page, .app, main.app, .container {
+  background: transparent;
+}
+
 .page {
   min-height: 100vh;
   display: flex;
@@ -59,6 +63,17 @@ body {
   padding: var(--gutter);
 }
 
+html, body {
+  background: #05070d; /* or your exact RISX bg token */
+  margin: 0;
+  padding: 0;
+}
+
+/* prevents that iOS “white behind” when you overscroll */
+body {
+  min-height: 100dvh;
+  overscroll-behavior-y: none;
+}
 /* ========================= */
 /* Casino HEADER / LOBBY            */
 /* ========================= */
@@ -2626,96 +2641,237 @@ body.landing .landing-label{
   padding-top: 10px;   /* was 12 */
 }
 
-/* =========================================================
-   FINAL MOBILE OVERRIDES (paste LAST in style.css)
-   Fixes:
-   - iPhone white halo / glow (html background)
-   - Tabs disappearing / not reachable
-   - Crash canvas going off the right edge
-   - Plinko buckets overlapping bet settings
-   - Modal / tier screen scroll & tap issues
-========================================================= */
-@media (max-width: 768px) {
+/* ==========================
+   iOS SAFARI MOBILE PACK 
+============================ */
 
-  /* ---- Kill the iOS white halo + overscroll glow ---- */
-  html, body {
-    background: #05070d !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow-x: hidden !important;
-    overscroll-behavior: none;
+/* 1) Kill the iOS "white halo" + bounce background bleed */
+html, body {
+  background: #05070b !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden !important;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh; /* modern mobile */
+  overscroll-behavior-y: none; /* reduces bounce glow */
+  -webkit-text-size-adjust: 100%;
+}
+
+/* If you have a page/app wrapper, ensure it fills screen */
+.page, .app, main.app, .container {
+  background: transparent !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* Safe-area padding so content doesn't hide under the iPhone bars */
+@supports (padding: env(safe-area-inset-top)) {
+  .page, .app, main.app {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
   }
+}
 
-  /* Give Safari safe-area padding so you don't see light bands */
-  body {
-    padding-top: env(safe-area-inset-top) !important;
-    padding-bottom: env(safe-area-inset-bottom) !important;
-  }
+/* 2) Make the tier modal scrollable + tappable on iPhone */
+.modal {
+  position: fixed !important;
+  inset: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 
-  /* Make the main app actually use phone width (no centered column) */
-  .app, main.app, .container, .page {
+  padding: 14px !important;
+  padding-top: calc(14px + env(safe-area-inset-top)) !important;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom)) !important;
+
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+.modal .modal-card {
+  width: min(560px, 94vw) !important;
+  max-height: calc(100dvh - 28px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+  overflow: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* Make buttons/inputs still mobile friendly (but not huge) */
+button, .btn {
+  min-height: 40px;
+  padding: 10px 12px;
+  font-size: 14px;
+  border-radius: 12px;
+}
+
+input, select {
+  min-height: 44px;
+  font-size: 16px; /* prevents iOS zoom */
+}
+
+/* 3) Hard stop: game areas can NEVER exceed phone width */
+#game-mines, #game-crash, #game-plinko {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+/* 4) CRASH specifically: keep arena from going off-screen on iPhone */
+@media (max-width: 768px){
+  #game-crash .game-arena,
+  #game-crash .game-arena--crash,
+  #game-crash .crash-graph,
+  #game-crash canvas {
     width: 100% !important;
     max-width: 100% !important;
-    margin: 0 !important;
-    padding-left: 12px !important;
-    padding-right: 12px !important;
   }
 
-  /* ---------------- Header + tabs (fix missing Plinko tab) ---------------- */
-  .site-header--challenge,
-  .site-header {
-    width: 100% !important;
-    max-width: 100% !important;
+  #game-crash .crash-graph {
+    height: 280px !important;
+    min-height: 280px !important;
   }
+}
 
-  .header-tabs,
-  .header-tabs-wrap,
-  .tabs {
-    display: flex !important;
-    flex-wrap: wrap !important;        /* lets Plinko wrap instead of disappear */
-    gap: 8px !important;
-    overflow: visible !important;
-  }
+/* 5) PLINKO: prevent board + buckets from overlapping controls */
+@media (max-width: 768px){
 
-  /* Wallet should not cover taps */
-  .wallet-block {
-    position: relative !important;
-    z-index: 2;
-    width: auto !important;
-    max-width: 100% !important;
-  }
-
-  /* ---------------- Modals / tier screen: scroll + tappable ---------------- */
-  .modal {
-    padding: 14px !important;
-    align-items: center !important;
-    justify-content: center !important;
-    background: rgba(0,0,0,.75) !important;
-  }
-
-  .modal .modal-card {
-    width: min(560px, 94vw) !important;
-    max-height: calc(100vh - 28px) !important;
-    overflow: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    border-radius: 16px !important;
-  }
-
-  .modal .modal-body {
-    overflow: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-  }
-
-  /* ---------------- CRASH: stop off-screen / force fit ---------------- */
-  #game-crash .crash-layout,
-  #game-crash .panel-row {
+  /* Force plinko layout to stack cleanly */
+  #game-plinko .plinko-layout,
+  #game-plinko .panel-row {
     display: flex !important;
     flex-direction: column !important;
     gap: 12px !important;
   }
 
-  /* If you still have overlay mode on desktop, disable it on phone */
-  .crash-overlay {
+  /* Board/stage must be contained */
+  #game-plinko .plinko-board,
+  #game-plinko .plinko-stage {
+    width: min(92vw, 380px) !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    overflow: hidden !important;
+    position: relative !important;
+  }
+
+  /* Canvas must scale down, never spill */
+  #game-plinko canvas {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  /* If the buckets/multipliers are DOM elements (not drawn on canvas),
+     force them BELOW the board and allow wrapping */
+  #game-plinko .plinko-multipliers,
+  #game-plinko .bucket-row,
+  #game-plinko .buckets,
+  #game-plinko .mult-row {
+    position: static !important;
+    transform: none !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    margin-top: 10px !important;
+    font-size: 11px !important;
+    line-height: 1.1 !important;
+    max-width: min(92vw, 380px) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  #game-plinko .plinko-multipliers > *,
+  #game-plinko .bucket-row > *,
+  #game-plinko .buckets > *,
+  #game-plinko .mult-row > * {
+    padding: 4px 6px !important;
+    border-radius: 10px !important;
+    white-space: nowrap !important;
+  }
+
+  /* Controls panel always comes AFTER board */
+  #game-plinko .control-panel,
+  #game-plinko .plinko-controls {
+    order: 2 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+/* =========================================================
+   MOBILE OVERRIDES (FINAL BOSS) — paste at VERY BOTTOM
+========================================================= */
+@media (max-width: 768px){
+
+  /* -----------------------------------------
+     1) KILL THE WHITE HALO (iOS Safari overscroll / safe area)
+  ----------------------------------------- */
+  :root, html, body {
+    background: #05070c !important; /* pick your RISX dark */
+    background-color: #05070c !important;
+  }
+
+  /* If you have any wrappers with translucent bg, force a dark base */
+  .page, .app, main, .container {
+    background: transparent !important;
+  }
+
+  /* Helps iOS “rubber band” not reveal white */
+  body {
+    overscroll-behavior-y: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* -----------------------------------------
+     2) MOBILE HEADER: wallet top-right
+  ----------------------------------------- */
+  .site-header--challenge{
+    display: grid !important;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "logo wallet"
+      "tabs tabs"
+      "status status";
+    gap: 10px !important;
+    align-items: center !important;
+  }
+
+  .logo-block{ grid-area: logo; }
+  .wallet-block{
+    grid-area: wallet;
+    justify-self: end;
+    width: auto !important;
+    min-width: 140px;
+  }
+  .header-tabs, .header-tabs-wrap, .tabs{ grid-area: tabs; }
+  .challenge-ready, .challenge-status, .challenge-pill, .challenge-banner{ grid-area: status; }
+
+  /* Tabs less chunky */
+  .header-pill, .tab-pill, .header-tab{
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+    border-radius: 999px !important;
+  }
+
+  /* -----------------------------------------
+     3) CRASH OFF-SCREEN FIX
+     Your crash area is being forced wide by desktop rules (fixed widths / grids / aspect locks).
+     On mobile: EVERYTHING must be 100% width, no fixed columns.
+  ----------------------------------------- */
+  #game-crash .panel-row,
+  #game-crash .crash-layout{
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  /* Remove any desktop “fixed left column” effect */
+  #game-crash .crash-overlay{
     position: static !important;
     width: 100% !important;
     left: auto !important;
@@ -2723,80 +2879,115 @@ body.landing .landing-label{
     pointer-events: auto !important;
   }
 
-  /* Hard clamp everything to phone width */
+  /* The actual arena/graph must not exceed viewport */
   #game-crash .game-arena,
   #game-crash .game-arena--crash,
-  #game-crash .crash-panel,
   #game-crash .crash-graph,
-  #game-crash .crash-graph-inner {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-    overflow: hidden !important;
-  }
-
-  /* Canvas MUST obey container */
   #game-crash canvas,
   #crashCanvas {
-    display: block !important;
     width: 100% !important;
     max-width: 100% !important;
+  }
+
+  /* Make canvas scale instead of overflowing */
+  #game-crash canvas,
+  #crashCanvas{
+    display: block !important;
     height: auto !important;
   }
 
-  /* Give crash a reasonable phone height */
-  #game-crash .crash-graph {
+  /* Give crash a sane mobile height */
+  #game-crash .crash-graph{
     height: 280px !important;
     min-height: 280px !important;
+    overflow: hidden !important;
   }
 
-  /* ---------------- PLINKO: stop buckets overlapping bet settings ---------------- */
-  #game-plinko .plinko-panel,
-  #game-plinko .plinko-board-wrap,
-  #game-plinko #plinkoBoard.plinko-board {
+  /* Controls and history should always be visible and full width */
+  #game-crash .control-panel,
+  #game-crash .crash-controls,
+  #game-crash .bet-settings,
+  #game-crash .panel--bet,
+  #game-crash .crash-history,
+  #game-crash .history-panel{
     width: 100% !important;
     max-width: 100% !important;
-    min-width: 0 !important;
+    display: block !important;
   }
 
-  /* This is the key: reserve space for the buckets row INSIDE the board area */
-  #game-plinko .plinko-board-wrap {
-    position: relative !important;
-    overflow: hidden !important;
-    padding-bottom: 58px !important; /* space for buckets so they don't cover the next panel */
-  }
-
-  /* Clamp the board and reduce side padding on small screens */
-  #game-plinko #plinkoBoard.plinko-board {
-    --plinko-side-pad: 10px !important;
-    overflow: hidden !important;
-  }
-
-  /* Buckets must live above the board, not over the bet settings */
-  #game-plinko .plinko-bucket {
-    position: relative !important;
-    z-index: 3 !important;
-  }
-
-  /* If your bucket row is absolutely positioned in your build, force it to bottom of wrap */
-  #game-plinko .plinko-buckets,
-  #game-plinko .bucket-row,
-  #game-plinko .plinko-multipliers {
-    position: absolute !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 8px !important;
+  /* -----------------------------------------
+     4) PLINKO: STOP BUCKETS OVER PEGS + STOP BOARD OVERFLOW
+     Your overflow culprit is: #plinkoBoard.plinko-board getting too wide / not reserving space.
+  ----------------------------------------- */
+  #game-plinko .panel-row,
+  #game-plinko .plinko-layout{
     display: flex !important;
-    justify-content: center !important;
-    gap: 6px !important;
-    flex-wrap: nowrap !important;
-    pointer-events: none; /* prevent weird taps */
+    flex-direction: column !important;
+    gap: 12px !important;
   }
 
-  #game-plinko .plinko-buckets > *,
-  #game-plinko .bucket-row > *,
-  #game-plinko .plinko-multipliers > * {
-    pointer-events: auto;
+  /* Force plinko board to fit the phone */
+  #plinkoBoard.plinko-board,
+  #game-plinko .plinko-board,
+  #game-plinko .plinko-board-wrap{
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  /* This reserves space so “bucket row” can’t sit on top of pegs */
+  #plinkoBoard.plinko-board{
+    padding-bottom: 56px !important; /* tweak 48–64 if needed */
+    box-sizing: border-box !important;
+  }
+
+  /* If buckets are absolutely positioned, push them into the reserved space */
+  #plinkoBoard .plinko-bucket,
+  #game-plinko .plinko-bucket{
+    transform: translateY(0) !important;
+  }
+
+  /* If your bucket row wraps, make it smaller + not collide */
+  #plinkoBoard .plinko-bucket,
+  #game-plinko .plinko-bucket{
+    font-size: 11px !important;
+    line-height: 1 !important;
+    padding: 4px 6px !important;
+    border-radius: 10px !important;
     white-space: nowrap !important;
+  }
+
+  /* -----------------------------------------
+     5) MODAL / TIER PICKER “STUCK” ON iPhone
+     Usually caused by overlay sizing + scroll/touch issues.
+  ----------------------------------------- */
+  .modal{
+    position: fixed !important;
+    inset: 0 !important;
+    padding: 14px !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .modal .modal-card{
+    width: min(560px, 94vw) !important;
+    max-height: 86vh !important;
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    border-radius: 16px !important;
+  }
+
+  /* Make buttons slightly smaller (still tappable) */
+  button, .btn{
+    min-height: 40px !important;
+    padding: 10px 12px !important;
+    font-size: 14px !important;
+    border-radius: 12px !important;
+  }
+
+  /* iOS zoom prevention + tap usability */
+  input, select{
+    min-height: 44px !important;
+    font-size: 16px !important;
   }
 }
