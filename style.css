@@ -1800,6 +1800,12 @@ html.booting .modal {
   min-width: 0;
 }
 
+@media (max-width: 980px){
+  #game-plinko .panel-row{
+    grid-template-columns: 1fr;
+  }
+}
+
 /* =========================
    MASTER GAME ARENA CLAMP
    ========================= */
