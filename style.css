@@ -2639,125 +2639,7 @@ body.landing .landing-label{
 }
 
 /* Phone / small tablet */
-@media (max-width: 768px) {
-
-  /* Prevent weird horizontal scroll */
-  html, body {
-    overflow-x: hidden;
-  }
-
-  /* Main container breathing room */
-  .app, .container, main {
-    padding-left: 12px;
-    padding-right: 12px;
-  }
-
-  /* Modals: always centered, full overlay, no off-screen cards */
-  .modal {
-    padding: 14px !important;
-    align-items: center !important;
-    justify-content: center !important;
-  }
-
-  .modal .modal-card {
-    width: min(560px, 94vw) !important;
-    max-height: 86vh !important;
-    overflow: auto !important;
-    border-radius: 16px !important;
-  }
-
-  /* Finger-friendly controls */
-  button, .btn {
-    min-height: 44px;
-  }
-
-  input, select {
-    min-height: 44px;
-    font-size: 16px; /* prevents iOS zoom */
-  }
-
-  /* Stack header */
-  .site-header{
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-  }
-
-  .site-header--challenge{
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .wallet-block{
-    width: 100%;
-  }
-
-  /* MINES mobile */
-  #game-mines .panel-row{
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-
-  #game-mines .mines-main-panel{ order: 1; }
-  #game-mines .control-panel{ order: 2; max-width: 100%; }
-
-  .mines-grid{
-    width: 100%;
-    max-width: 360px;
-    aspect-ratio: 1 / 1;
-    padding: 12px;
-    gap: 6px;
-    touch-action: manipulation;
-  }
-
-  .mines-cell, .cell, .tile {
-    min-width: 34px;
-    min-height: 34px;
-  }
-
-  /* CRASH mobile */
-  #game-crash.active{
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-
-  #game-crash .crash-layout{
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  #game-crash .crash-graph{
-    min-height: 320px;
-    height: 320px;
-  }
-
-  /* Generic "split layout" stacker (safe-ish) */
-  .row, .cols, .two-col, .layout, .grid-2, .split {
-    flex-direction: column !important;
-  }
-}
-
-/* Ultra-small phones */
-@media (max-width: 420px) {
-  .mines-grid{
-    max-width: 320px;
-    padding: 10px;
-    gap: 5px;
-  }
-
-  .modal .modal-card{
-    width: 96vw !important;
-  }
-}
-
-/* =========================================================
-   MOBILE LAYOUT FIX (game first, controls second)
-   Paste at VERY BOTTOM of style.css
-========================================================= */
-@media (max-width: 720px) {
+@media (max-width: 768px){
 
   /* Let the page use the phone width (no tiny centered column) */
   html, body { overflow-x: hidden; }
@@ -2769,93 +2651,138 @@ body.landing .landing-label{
     padding-right: 12px !important;
   }
 
-  /* Header stack */
-  .site-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-  }
-  .header-tabs { flex-wrap: wrap; }
-
-  /* Wallet: full width */
-  .wallet-block { width: 100% !important; }
-
-  /* Buttons: less huge but still tappable */
+  /* Finger-friendly but not chunky */
   button, .btn {
-    min-height: 40px;                 /* slightly smaller than 44 */
+    min-height: 40px;
     padding: 10px 12px;
     font-size: 14px;
     border-radius: 12px;
   }
 
-  /* Inputs/selects: prevent iOS zoom */
   input, select {
     min-height: 44px;
-    font-size: 16px;
+    font-size: 16px; /* prevents iOS zoom */
   }
 
-  /* =========================================================
-     MINES: board first, bet panel second
-  ========================================================= */
-  #game-mines .panel-row {
+  /* =========================
+     HEADER: logo left, wallet right, tabs full width
+  ========================= */
+  .site-header--challenge{
+    display: grid !important;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "logo wallet"
+      "tabs tabs"
+      "status status";
+    gap: 10px;
+    align-items: center;
+  }
+
+  .logo-block{ grid-area: logo; }
+  .wallet-block{
+    grid-area: wallet;
+    justify-self: end;
+    width: auto !important;
+    min-width: 150px;
+  }
+  .header-tabs, .header-tabs-wrap, .tabs{ grid-area: tabs; }
+  .challenge-ready, .challenge-status, .challenge-pill, .challenge-banner{ grid-area: status; }
+
+  .header-tabs { flex-wrap: wrap; }
+  .header-pill, .tab-pill, .header-tab{
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+  }
+
+  /* =========================
+     MODALS: always fit on phones
+  ========================= */
+  .modal { padding: 14px !important; align-items: center !important; justify-content: center !important; }
+  .modal .modal-card{
+    width: min(560px, 94vw) !important;
+    max-height: 86vh !important;
+    overflow: auto !important;
+    border-radius: 16px !important;
+  }
+
+  /* =========================
+     MINES: board first, controls second
+  ========================= */
+  #game-mines .panel-row{
     display: flex !important;
     flex-direction: column !important;
     gap: 12px !important;
   }
 
-  /* Board area first */
   #game-mines .mines-main-panel,
-  #game-mines .mines-grid-wrapper {
+  #game-mines .mines-grid-wrapper{
     order: 1 !important;
     width: 100% !important;
     max-width: 100% !important;
   }
 
-  /* Controls second */
-  #game-mines .control-panel {
+  #game-mines .control-panel{
     order: 2 !important;
     width: 100% !important;
     max-width: 100% !important;
   }
 
-  /* Make the grid actually visible and centered */
-  #game-mines .mines-grid {
+  #game-mines .mines-grid{
     width: min(92vw, 380px) !important;
     aspect-ratio: 1 / 1;
     margin: 0 auto !important;
     padding: 10px !important;
     gap: 6px !important;
+    touch-action: manipulation;
   }
 
-  /* =========================================================
-     CRASH: graph first, bet panel second
-  ========================================================= */
-  #game-crash .crash-layout {
+  .mines-cell, .cell, .tile {
+    min-width: 34px;
+    min-height: 34px;
+  }
+
+  /* =========================
+     CRASH: graph first, bet settings second, history last
+  ========================= */
+  #game-crash.active,
+  #game-crash .crash-layout{
     display: flex !important;
     flex-direction: column !important;
     gap: 12px !important;
   }
 
-  #game-crash .crash-graph {
+  #game-crash .crash-graph,
+  #game-crash .crash-stage,
+  #game-crash .crash-canvas{
     order: 1 !important;
     width: 100% !important;
-    height: 300px !important;
-    min-height: 300px !important;
+    height: 280px !important;
+    min-height: 280px !important;
   }
 
+  #game-crash .control-panel,
   #game-crash .crash-controls,
-  #game-crash .control-panel {
+  #game-crash .bet-settings,
+  #game-crash .panel--bet{
+    display: block !important;
     order: 2 !important;
     width: 100% !important;
     max-width: 100% !important;
   }
 
-  /* =========================================================
-     PLINKO: board first, bet panel second + stop overflow
-     (this addresses your "buckets over the board" issue)
-  ========================================================= */
+  #game-crash .crash-history,
+  #game-crash .history-panel,
+  #game-crash .crash-last{
+    order: 3 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* =========================
+     PLINKO: board first, controls second, buckets wrap (no overlap)
+  ========================= */
   #game-plinko .plinko-layout,
-  #game-plinko .panel-row {
+  #game-plinko .panel-row{
     display: flex !important;
     flex-direction: column !important;
     gap: 12px !important;
@@ -2863,7 +2790,7 @@ body.landing .landing-label{
 
   #game-plinko .plinko-board,
   #game-plinko .plinko-stage,
-  #game-plinko canvas {
+  #game-plinko canvas{
     order: 1 !important;
     display: block;
     width: min(92vw, 380px) !important;
@@ -2871,27 +2798,51 @@ body.landing .landing-label{
     margin: 0 auto !important;
   }
 
-  /* If the payouts/buckets strip is a separate row, force it to fit */
-  #game-plinko .plinko-payouts,
-  #game-plinko .buckets {
+  #game-plinko .plinko-stage,
+  #game-plinko .plinko-wrap{
+    padding-bottom: 10px !important;
+  }
+
+  #game-plinko .plinko-multipliers,
+  #game-plinko .bucket-row,
+  #game-plinko .mult-row,
+  #game-plinko .buckets{
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    justify-content: center !important;
+    font-size: 11px !important;
+    line-height: 1.1 !important;
     max-width: min(92vw, 380px) !important;
     margin: 8px auto 0 !important;
-    overflow: hidden !important;
+  }
+
+  #game-plinko .plinko-multipliers > *,
+  #game-plinko .bucket-row > *,
+  #game-plinko .mult-row > *,
+  #game-plinko .buckets > *{
+    padding: 4px 6px !important;
+    border-radius: 10px !important;
+    white-space: nowrap !important;
   }
 
   #game-plinko .control-panel,
-  #game-plinko .plinko-controls {
+  #game-plinko .plinko-controls{
     order: 2 !important;
     width: 100% !important;
     max-width: 100% !important;
   }
 
-  /* Modals: always fit on phones */
-  .modal { padding: 14px !important; }
-  .modal .modal-card {
-    width: min(560px, 94vw) !important;
-    max-height: 86vh !important;
-    overflow: auto !important;
-    border-radius: 16px !important;
+}
+
+/* Ultra-small phones */
+@media (max-width: 420px){
+  #game-mines .mines-grid,
+  #game-plinko canvas{
+    width: min(94vw, 340px) !important;
+  }
+
+  .modal .modal-card{
+    width: 96vw !important;
   }
 }
