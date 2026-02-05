@@ -3487,11 +3487,11 @@ body.landing .landing-label{
     width: min(560px, calc(100vw - 20px));
 
     /* key: card height respects top+bottom padding now */
-    max-height: calc(100svh - (10px + env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+    max-height: calc(100svh - (8px + env(safe-area-inset-top) + env(safe-area-inset-bottom)));
   }
 
   /* scroller: keep extra room so last element clears Safari toolbar */
   #challengeModal .modal-body {
-    padding-bottom: calc(26px + env(safe-area-inset-bottom));
+    padding-bottom: calc(90px + env(safe-area-inset-bottom));
   }
 }
