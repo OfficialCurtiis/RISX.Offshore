@@ -3465,3 +3465,33 @@ body.landing .landing-label{
   /* give it breathing room above iPhone home bar */
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+/* =========================
+   iPhone / Mobile: lift the whole modal up
+========================== */
+@media (max-width: 520px) {
+  /* overlay: stop centering */
+  #challengeModal.modal.open,
+  #challengeModal.modal[aria-hidden="false"] {
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+
+    /* give the overlay its own padding so card sits higher */
+    padding-top: calc(4px + env(safe-area-inset-top));
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+
+  /* card: remove any auto centering margin and fit viewport */
+  #challengeModal .modal-card {
+    margin: 0 auto !important;
+    width: min(560px, calc(100vw - 20px));
+
+    /* key: card height respects top+bottom padding now */
+    max-height: calc(100svh - (20px + env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+  }
+
+  /* scroller: keep extra room so last element clears Safari toolbar */
+  #challengeModal .modal-body {
+    padding-bottom: calc(26px + env(safe-area-inset-bottom));
+  }
+}
