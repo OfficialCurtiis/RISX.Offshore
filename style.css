@@ -3450,14 +3450,14 @@ body.landing .landing-label{
   touch-action: pan-y;
 
   /* Make room for your bottom toolbar + iPhone home indicator */
-  padding-bottom: calc(110px + env(safe-area-inset-bottom));
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
 }
 
 /* Keep the buttons visible while scrolling (optional but feels 🔥) */
 #challengeModal .modal-actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
+  position: static !important;
+  bottom: auto !important;
+  z-index: auto !important;
 
   /* background so text doesn't show through behind buttons */
   background: inherit;
