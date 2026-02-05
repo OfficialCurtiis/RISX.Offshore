@@ -476,21 +476,29 @@ function renderTierSummary() {
 // =========================
 
 function openChallengeTierModal() {
-  const modal = document.getElementById("challengeTierModal");
+  const modal = document.getElementById("challengeModal"); // <-- YOUR ID
   if (!modal) return;
 
   document.documentElement.classList.add("modal-open");
   document.body.classList.add("modal-open");
 
   modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
 
-  // Ensure scroll container resets (pick the one you set overflow-y on)
-  const scroller =
-    modal.querySelector(".modal-content") ||
-    modal.querySelector(".tier-modal__content") ||
-    modal;
-
+  // YOUR scroller is .modal-body
+  const scroller = modal.querySelector(".modal-body") || modal;
   scroller.scrollTop = 0;
+}
+
+function closeChallengeTierModal() {
+  const modal = document.getElementById("challengeModal");
+  if (!modal) return;
+
+  modal.classList.remove("open");
+  modal.setAttribute("aria-hidden", "true");
+
+  document.documentElement.classList.remove("modal-open");
+  document.body.classList.remove("modal-open");
 }
 
 function setChallengeGoalUI(value) {

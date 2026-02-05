@@ -3394,63 +3394,74 @@ body.landing .landing-label{
   }
 }
 
-/* ===== Mobile Tier Modal: proper scroll + sticky toolbar ===== */
+/* =========================
+   CHALLENGE MODAL — Mobile scroll fix
+========================== */
 
-/* Overlay / modal root */
-#challengeTierModal,
-.tier-modal,
-.modal--tier {
+/* Fullscreen overlay */
+#challengeModal.modal {
   position: fixed;
   inset: 0;
-  z-index: 9999;
-  display: flex;
-  flex-direction: column;
+  z-index: 99999; /* must be above your bottom toolbar */
+  display: none;  /* your JS likely toggles this / or .open */
+  align-items: center;
+  justify-content: center;
 
-  /* iOS / mobile stability */
-  height: 100svh;              /* modern mobile viewport */
-  max-height: 100svh;
+  /* if you use a backdrop */
+  /* background: rgba(0,0,0,0.6); */
+
+  /* prevent weird scroll chaining */
   overscroll-behavior: contain;
 }
 
-/* The scrollable content area (the prompt + tier options) */
-#challengeTierModal .modal-content,
-#challengeTierModal .tier-modal__content,
-.tier-modal .modal-content,
-.modal--tier .modal-content {
-  flex: 1;
+/* If you use a class to open modals, support it */
+#challengeModal.modal.open,
+#challengeModal.modal[aria-hidden="false"] {
+  display: flex;
+}
+
+/* The card becomes a flex column that can shrink properly */
+#challengeModal .modal-card {
+  width: min(560px, calc(100vw - 24px));
+
+  /* KEY: keep the card inside the viewport on mobile */
+  max-height: calc(100svh - 24px);
+  display: flex;
+  flex-direction: column;
+
+  /* KEY: allow the body to become the scroller */
+  min-height: 0;
+
+  /* optional: prevent accidental body scroll */
+  overscroll-behavior: contain;
+}
+
+/* Header stays fixed at top of card */
+#challengeModal .modal-head {
+  flex: 0 0 auto;
+}
+
+/* THIS is the only scroll container */
+#challengeModal .modal-body {
+  flex: 1 1 auto;
+  min-height: 0; /* iOS flexbox scroll fix */
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
 
-  /* IMPORTANT: make room for the toolbar + iPhone home indicator */
-  padding-bottom: calc(88px + env(safe-area-inset-bottom));
+  /* Make room for your bottom toolbar + iPhone home indicator */
+  padding-bottom: calc(110px + env(safe-area-inset-bottom));
 }
 
-/* If you have an inner "prompt" wrapper that should scroll, use this instead:
-   (ONLY one element should be the scroller — pick either modal-content OR prompt wrapper) */
-#challengeTierModal .tier-prompt,
-.tier-modal .tier-prompt,
-.modal--tier .tier-prompt {
-  /* Uncomment these ONLY if tier-prompt is the scroll container instead of modal-content */
-  /* flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; */
-}
-
-/* Toolbar: switch from fixed -> sticky so it doesn't trap the scroll */
-#challengeTierModal .challenge-toolbar,
-#challengeTierModal .tier-toolbar,
-.tier-modal .challenge-toolbar,
-.modal--tier .challenge-toolbar {
+/* Keep the buttons visible while scrolling (optional but feels 🔥) */
+#challengeModal .modal-actions {
   position: sticky;
   bottom: 0;
   z-index: 2;
 
-  /* match your vibe */
-  padding-bottom: env(safe-area-inset-bottom);
-}
+  /* background so text doesn't show through behind buttons */
+  background: inherit;
 
-/* If your toolbar is currently fixed, this will override it */
-#challengeTierModal .challenge-toolbar,
-#challengeTierModal .tier-toolbar {
-  left: auto !important;
-  right: auto !important;
+  /* give it breathing room above iPhone home bar */
+  padding-bottom: env(safe-area-inset-bottom);
 }
