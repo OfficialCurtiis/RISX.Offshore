@@ -3478,7 +3478,7 @@ body.landing .landing-label{
 
     /* give the overlay its own padding so card sits higher */
     padding-top: calc(4px + env(safe-area-inset-top));
-    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    padding-bottom: calc(4px + env(safe-area-inset-bottom));
   }
 
   /* card: remove any auto centering margin and fit viewport */
