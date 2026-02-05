@@ -59,6 +59,230 @@ body {
   padding: var(--gutter);
 }
 
+/* =========================
+   RISX LANDING — OFFSHORE SPLIT
+========================== */
+
+body.landing{
+  margin: 0;
+  min-height: 100svh;
+  color: rgba(240,248,255,.92);
+  background:
+    radial-gradient(1200px 700px at 20% 10%, rgba(120, 90, 255, .10), transparent 60%),
+    radial-gradient(900px 650px at 85% 35%, rgba(40, 120, 255, .08), transparent 58%),
+    radial-gradient(900px 650px at 45% 85%, rgba(29, 242, 127, .05), transparent 60%),
+    linear-gradient(180deg, #05070c, #04050a);
+}
+
+/* Split container */
+.landing-split{
+  min-height: 100svh;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 14px;
+  box-sizing: border-box;
+}
+
+/* Panels */
+.landing-panel{
+  position: relative;
+  border-radius: 22px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.10);
+  text-decoration: none;
+  color: inherit;
+
+  display: flex;
+  align-items: stretch;
+
+  background: rgba(0,0,0,.18);
+  box-shadow: 0 22px 70px rgba(0,0,0,.62);
+  transition: transform .12s ease, border-color .12s ease;
+}
+
+.landing-panel::before{
+  content:"";
+  position:absolute;
+  inset:-2px;
+  background:
+    radial-gradient(900px 520px at 50% 0%, rgba(255,255,255,.035), transparent 60%),
+    radial-gradient(800px 520px at 25% 18%, rgba(120, 90, 255, .09), transparent 62%),
+    linear-gradient(180deg, rgba(10,12,18,.90), rgba(5,6,10,.94));
+  pointer-events: none;
+}
+
+.landing-panel.casino::before{
+  background:
+    radial-gradient(900px 520px at 50% 0%, rgba(255,255,255,.03), transparent 60%),
+    radial-gradient(800px 520px at 75% 18%, rgba(40, 120, 255, .08), transparent 62%),
+    linear-gradient(180deg, rgba(10,12,18,.90), rgba(5,6,10,.94));
+}
+
+.landing-panel::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:
+    radial-gradient(900px 520px at 50% 0%, rgba(255,255,255,.02), transparent 62%);
+  opacity: .55;
+  pointer-events:none;
+}
+
+.landing-panel:hover{
+  border-color: rgba(255,255,255,.16);
+  transform: translateY(-1px);
+}
+
+/* Content */
+.landing-content{
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  padding: 26px 22px;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+
+  min-height: 620px;
+  box-sizing: border-box;
+}
+
+/* Brand */
+.landing-title{
+  font-weight: 900;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  line-height: 1;
+  font-size: 48px;
+  color: rgba(240,248,255,.92);
+  text-shadow: 0 10px 28px rgba(0,0,0,.45);
+  margin: 0;
+}
+
+.landing-tagline{
+  margin: 10px 0 18px 0;
+  font-size: 13.5px;
+  letter-spacing: .08em;
+  color: rgba(240,248,255,.62);
+}
+
+/* Headline + copy */
+.landing-headline{
+  margin: 0 0 10px 0;
+  font-size: clamp(28px, 3vw, 38px);
+  font-weight: 850;
+  letter-spacing: -0.03em;
+  line-height: 1.06;
+  text-shadow: 0 10px 30px rgba(0,0,0,.35);
+}
+
+.landing-subcopy{
+  margin: 0 auto 16px auto;
+  max-width: 52ch;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: rgba(240,248,255,.78);
+}
+
+/* Trust pills */
+.landing-trust{
+  display:flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 18px 0;
+}
+
+.trust-pill{
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.04);
+  color: rgba(240,248,255,.85);
+  font-size: 11px;
+  backdrop-filter: blur(10px);
+}
+
+/* CTA */
+.landing-cta{
+  display: inline-flex;
+  align-items:center;
+  justify-content:center;
+
+  margin: 4px auto 0 auto;
+  padding: 12px 20px;
+  border-radius: 16px;
+
+  border: 1px solid rgba(29,242,127,.35);
+  background: linear-gradient(90deg, rgba(29,242,127,.92), rgba(29,242,127,.72));
+  color: rgba(3,8,6,.92);
+
+  font-weight: 850;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+
+  width: fit-content;
+  box-shadow: 0 14px 34px rgba(29,242,127,.18), 0 0 28px rgba(29,242,127,.14);
+}
+
+.landing-cta.disabled{
+  opacity: .60;
+  filter: saturate(.75);
+  pointer-events: none;
+  border-color: rgba(255,255,255,.14);
+  background:
+    radial-gradient(520px 260px at 50% 0%, rgba(64,155,255,.14), transparent 60%),
+    rgba(255,255,255,.06);
+  color: rgba(240,248,255,.78);
+  box-shadow: none;
+}
+
+.landing-cta.disabled::before{
+  content: "🔒";
+  margin-right: 10px;
+  font-size: 14px;
+  opacity: .9;
+}
+
+/* Footer note */
+.landing-footnote{
+  margin-top: auto;
+  padding-top: 26px;
+  padding-bottom: 6px;
+  font-size: 11.5px;
+  color: rgba(240,248,255,.58);
+}
+
+/* Mobile stack */
+@media (max-width: 860px){
+  .landing-split{
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .landing-content{ min-height: 300px; }
+
+  .landing-panel{
+    border-radius: 18px;
+  }
+
+  .landing-content{
+    min-height: 320px;     /*/ 620 on desktop */
+    padding: 20px 16px;
+  }
+
+  .landing-title{ font-size: 38px; }
+  .landing-headline{ font-size: 28px; }
+  .landing-subcopy{ font-size: 14px; max-width: 40ch; }
+
+  /* pills wrap cleaner */
+  .landing-trust{ gap: 6px; }
+  .trust-pill{ padding: 6px 9px; font-size: 11px; }
+}
 
 /* ========================= */
 /* Casino HEADER / LOBBY            */
@@ -2045,190 +2269,6 @@ body.modal-open {
 }
 .hint.muted{ opacity:.6; }
 
-/* =========================
-   RISX LANDING PAGE (FINAL)
-========================= */
-
-body.landing {
-  margin: 0;
-  min-height: 100vh;
-  background: var(--bg-0);
-}
-
-/* Split container */
-.landing-split {
-  display: flex;
-  min-height: 100vh;
-  position: relative;
-}
-
-/* Shared panel styles */
-.landing-panel {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-  color: var(--text-main);
-  position: relative;
-  overflow: hidden;
-  transition: filter 0.3s ease, transform 0.3s ease;
-}
-
-/* OPTION 2 — Cyber Purple */
-.landing-panel.challenge {
-  box-shadow: inset -1px 0 0 rgba(255,255,255,0.08);
-  background:
-    radial-gradient(
-      circle at 20% 20%,
-      rgba(140, 80, 255, 0.45),
-      rgba(90, 50, 180, 0.35) 35%,
-      var(--bg-1) 65%,
-      var(--bg-0)
-    );
-}
-
-.landing-panel.challenge:hover {
-  filter: brightness(1.08);
-}
-
-/* RIGHT — Casino (disabled) */
-.landing-panel.casino {
-  background:
-    radial-gradient(
-      circle at top right,
-      var(--bg-3),
-      var(--bg-0) 65%
-    );
-  opacity: 0.45;
-  pointer-events: none;
-}
-
-.landing-panel.casino::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(
-    circle at 80% 80%,
-    rgba(29,242,127,0.08),
-    transparent 60%
-  );
-  pointer-events: none;
-}
-
-/* Content wrapper */
-body.landing .landing-content{
-  display: grid;
-  grid-template-rows: 72px 34px 52px 64px 22px; /* RISX, subtitle, desc, button, label */
-  align-items: center;
-  justify-items: center;
-  row-gap: 10px;
-  text-align: center;
-  max-width: 520px;
-  padding: 24px;
-}
-
-.landing-content h1 {
-  font-size: 3.2rem;
-  letter-spacing: 1px;
-
-  /* ALIGNMENT FIX */
-  height: 3.8rem;
-  line-height: 3.8rem;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Subtitles */
-.landing-content p {
-  font-size: 1.05rem;
-  color: var(--text-muted);
-  margin-bottom: 1.75rem;
-}
-
-/* CTA button */
-.landing-cta {
-  display: inline-block;
-  padding: 14px 34px;
-  font-weight: 600;
-  letter-spacing: 0.8px;
-  border-radius: 999px;
-  background: linear-gradient(
-    135deg,
-    var(--accent-green),
-    var(--accent-green-soft)
-  );
-  color: #04110a;
-  text-decoration: none;
-  box-shadow: 0 0 24px rgba(29, 242, 127, 0.35);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.landing-cta:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 0 32px rgba(29, 242, 127, 0.55);
-}
-
-/* Disabled CTA */
-.landing-cta.disabled {
-  background: transparent;
-  color: var(--text-muted);
-  border: 1px solid var(--line);
-  box-shadow: none;
-}
-
-/* Small label text */
-.landing-label {
-  margin-top: 12px;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  letter-spacing: 0.6px;
-}
-
-.landing-split::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: 1px;
-  background: rgba(255,255,255,0.08);
-  box-shadow: 0 0 18px rgba(255,255,255,0.05);
-  transform: translateX(-0.5px);
-  pointer-events: none;
-}
-
-/* Add-on: CTA glow pulse on hover */
-.landing-cta:hover {
-  filter: saturate(1.05);
-}
-
-.landing-panel.challenge:hover .landing-cta {
-  box-shadow:
-    0 0 34px rgba(29, 242, 127, 0.60),
-    0 0 90px rgba(29, 242, 127, 0.18);
-}
-
-body.landing .landing-content h1,
-body.landing .landing-content h2,
-body.landing .landing-content p {
-  margin: 0;
-}
-
-body.landing .landing-content h1{
-  line-height: 1;
-}
-
-body.landing .landing-cta.disabled{
-  margin-bottom: 10px;
-}
-
-body.landing .landing-label{
-  margin-top: 0;
-}
-
 /* ========================= */
 /* RISX MODAL (CONFIRM)      */
 /* ========================= */
@@ -3493,5 +3533,192 @@ body.landing .landing-label{
   /* scroller: keep extra room so last element clears Safari toolbar */
   #challengeModal .modal-body {
     padding-bottom: calc(26px + env(safe-area-inset-bottom));
+  }
+}
+
+  /* Pay modal must win ALL stacking contexts */
+  #payModal.risx-modal {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 2147483647 !important; /* max-ish z-index */
+  }
+
+  #payModal .risx-modal__backdrop {
+    position: fixed !important;
+    inset: 0 !important;
+    background: rgba(0,0,0,.70) !important;
+  }
+
+  /* Center on screen no matter what other modals are doing */
+  #payModal .risx-modal__panel {
+    position: fixed !important;
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+
+    width: min(520px, calc(100% - 24px)) !important;
+    max-height: calc(100vh - 24px) !important;
+    overflow: auto !important;
+    overscroll-behavior: contain !important;
+
+    padding: 16px !important;
+    border-radius: 16px !important;
+    background: rgba(12, 14, 18, .96) !important;
+    border: 1px solid rgba(255,255,255,.10) !important;
+    box-shadow: 0 12px 40px rgba(0,0,0,.55) !important;
+  }
+
+  #payModal .risx-modal__close {
+    position: absolute !important;
+    right: 10px !important;
+    top: 10px !important;
+    padding: 6px 10px !important;
+    border-radius: 10px !important;
+  }
+
+  /* =========================
+   RISX Pay Modal — Premium Skin (scoped)
+========================== */
+
+#payModal .risx-modal__panel{
+  background:
+    radial-gradient(900px 500px at 30% 0%, rgba(29,242,127,0.10), transparent 60%),
+    linear-gradient(180deg, rgba(16, 20, 28, .96), rgba(10, 12, 18, .96)) !important;
+  border: 1px solid rgba(255,255,255,.10) !important;
+  box-shadow: 0 18px 60px rgba(0,0,0,.60), 0 0 0 1px rgba(29,242,127,.06) inset !important;
+  backdrop-filter: blur(14px);
+}
+
+/* Typography */
+#payModal h2{
+  letter-spacing: .02em;
+}
+#payModal label{
+  color: rgba(235,245,255,.82);
+}
+#payModal #payTierLabel{
+  color: rgba(235,245,255,.70);
+}
+
+/* Kill default white form controls */
+#payModal select,
+#payModal input{
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  padding: 12px 12px !important;
+  border-radius: 12px !important;
+  background: linear-gradient(180deg, rgba(8,12,18,.90), rgba(6,8,12,.90)) !important;
+  color: rgba(240,248,255,.92) !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.35) inset !important;
+}
+
+/* Placeholder */
+#payModal input::placeholder{
+  color: rgba(240,248,255,.35);
+}
+
+/* Focus glow */
+#payModal select:focus,
+#payModal input:focus{
+  outline: none !important;
+  border-color: rgba(29,242,127,.45) !important;
+  box-shadow:
+    0 0 0 3px rgba(29,242,127,.14),
+    0 0 20px rgba(29,242,127,.10) !important;
+}
+
+/* Buttons: base */
+#payModal button{
+  width: 100%;
+  padding: 12px 14px !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  background: linear-gradient(180deg, rgba(18,22,28,.96), rgba(10,12,18,.96)) !important;
+  color: rgba(240,248,255,.90) !important;
+  box-shadow: 0 10px 26px rgba(0,0,0,.35), 0 0 0 1px rgba(0,0,0,.35) inset !important;
+  cursor: pointer;
+}
+
+#payModal button:active{
+  transform: translateY(1px);
+}
+
+/* Primary actions (Create / Check / Verify) */
+#payModal #payCreateBtn,
+#payModal #payCheckBtn,
+#payModal #payManualCheckBtn{
+  background: linear-gradient(90deg, rgba(29,242,127,.92), rgba(29,242,127,.72)) !important;
+  color: rgba(3,8,6,.92) !important;
+  border-color: rgba(29,242,127,.35) !important;
+  box-shadow: 0 14px 34px rgba(29,242,127,.18), 0 0 28px rgba(29,242,127,.14) !important;
+  font-weight: 700;
+}
+
+/* Copy buttons should NOT look primary */
+#payModal #payCopyBtn,
+#payModal #payPaymentIdCopyBtn{
+  width: auto !important;
+  padding: 8px 10px !important;
+  border-radius: 12px !important;
+  background: rgba(255,255,255,.06) !important;
+  color: rgba(240,248,255,.86) !important;
+  border: 1px solid rgba(255,255,255,.14) !important;
+  box-shadow: none !important;
+}
+
+/* Code blocks (address / payment id) */
+#payModal code{
+  background: rgba(0,0,0,.20) !important;
+  border: 1px solid rgba(255,255,255,.10) !important;
+  padding: 8px 10px !important;
+  border-radius: 12px !important;
+  color: rgba(235,245,255,.88) !important;
+}
+
+/* Step2 “Send exactly” box (your inline background gets overridden) */
+#payModal #payStep2 > div:nth-child(2){
+  background: rgba(0,0,0,.22) !important;
+  border: 1px solid rgba(255,255,255,.10) !important;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.25) inset !important;
+}
+
+/* Support divider */
+#payModal #paySupportBox{
+  border-top: 1px solid rgba(255,255,255,.10) !important;
+}
+
+/* Status text */
+#payModal #payStatus{
+  color: rgba(235,245,255,.85);
+}
+#payModal #payWarning{
+  color: rgba(235,245,255,.62);
+}
+#payModal .pay-trustline{
+  opacity: .72;
+  font-size: 12px;
+  margin: 0 0 10px 0;
+  color: rgba(235,245,255,.78);
+}
+
+/* Close button: make it subtle RISX */
+#payModal .risx-modal__close{
+  width: auto !important;
+  background: rgba(255,255,255,.06) !important;
+  border: 1px solid rgba(255,255,255,.14) !important;
+  color: rgba(240,248,255,.88) !important;
+  box-shadow: none !important;
+}
+
+/* Mobile: avoid Safari toolbar issues + better top feel */
+@media (max-width: 520px){
+  #payModal .risx-modal__panel{
+    top: 12px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important; /* not vertically centered */
+    max-height: calc(100svh - 24px - env(safe-area-inset-bottom)) !important;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom)) !important;
   }
 }
