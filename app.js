@@ -1359,32 +1359,12 @@ function renderPlinkoBuckets() {
 
     plinkoBucketsEl.appendChild(bucket);
   }
-}
-
-function setupProvablyFairDrawer() {
-  if (setupProvablyFairDrawer._bound) return;
-  setupProvablyFairDrawer._bound = true;
-
-  const modal = document.getElementById("pfModal");
-  if (!modal) return;
-
-  const close = () => {
-    modal.classList.remove("open");
-    modal.setAttribute("aria-hidden", "true");
-    document.body.style.overflow = "";
-  };
-
-  const open = () => {
-    modal.classList.add("open");
-    modal.setAttribute("aria-hidden", "false");
-    document.body.style.overflow = "hidden";
-  };
-
-  document.getElementById("openPfBtn")?.addEventListener("click", open);
-  document.getElementById("pfOpenBtn")?.addEventListener("click", open);
-
-  modal.addEventListener("click", (e) => {
-    if (e.target?.matches("[data-pf-close]")) close();
+    // ✅ After buckets are in DOM, measure real height and inform board layout
+  requestAnimationFrame(() => {
+    const h = plinkoBucketsEl.getBoundingClientRect().height || 32;
+    plinkoBoardEl?.style?.setProperty("--bucket-strip-h", `${h}px`);
+    // Now re-render pegs with correct bottomPad so they never overlap buckets
+    renderPlinkoBoard();
   });
 }
 
@@ -1421,6 +1401,7 @@ function attachPlinkoResizeObserver() {
     raf = requestAnimationFrame(() => {
       renderPlinkoBoard();     // re-place pegs + update plinkoGeom
       renderPlinkoBuckets();   // keeps buckets/grid synced after resize
+      attachPlinkoResizeObserver(); 
     });
   });
 
@@ -1737,6 +1718,33 @@ function randomSeed(len = 32) {
   let out = "";
   for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
   return out;
+}
+
+function setupProvablyFairDrawer() {
+  if (setupProvablyFairDrawer._bound) return;
+  setupProvablyFairDrawer._bound = true;
+
+  const modal = document.getElementById("pfModal");
+  if (!modal) return;
+
+  const close = () => {
+    modal.classList.remove("open");
+    modal.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+  };
+
+  const open = () => {
+    modal.classList.add("open");
+    modal.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+  };
+
+  document.getElementById("openPfBtn")?.addEventListener("click", open);
+  document.getElementById("pfOpenBtn")?.addEventListener("click", open);
+
+  modal.addEventListener("click", (e) => {
+    if (e.target?.matches("[data-pf-close]")) close();
+  });
 }
 
 async function updatePfCommitUI() {

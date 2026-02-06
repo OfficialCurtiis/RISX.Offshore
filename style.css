@@ -1540,7 +1540,7 @@ select:focus {
   display:flex;
   justify-content:space-between;
   align-items:center;
-  margin-top: 8px;
+  margin-top: -17px;
   grid-column: 1 / -1;
   
   padding-top: 6px;
@@ -1799,12 +1799,8 @@ body.modal-open {
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-
-.plinko-board-wrap{
+  justify-content: center;
   width: 100%;
-  display: flex;
-  justify-content: center; /* centers the board area */
 }
 
 .plinko-row {
@@ -1986,12 +1982,6 @@ body.modal-open {
   max-width: 100%;
 }
 
-/* Plinko: Controls | Provably Fair | Board */
-#game-plinko .panel-row{
-  display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
-  gap: 16px;
-}
 
 #plinkoBoard::before{
   content:"";
@@ -2015,12 +2005,6 @@ body.modal-open {
 #game-plinko .pf-panel,
 #game-plinko .plinko-panel{
   min-width: 0;
-}
-
-@media (max-width: 980px){
-  #game-plinko .panel-row{
-    grid-template-columns: 1fr;
-  }
 }
 
 /* =========================
@@ -2817,89 +2801,6 @@ body.modal-open {
     max-width: 100% !important;
   }
 
-  /* =========================================================
-     PLINKO: stop “buckets over board”
-     (Usually caused by absolute-positioned bucket row)
-  ========================================================= */
-  #game-plinko .plinko-layout,
-  #game-plinko .panel-row{
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 12px !important;
-    width: 100% !important;
-    max-width: 100% !important;
-  }
-
-  /* Board stage should be its own block and not allow overlays */
-  #game-plinko .plinko-stage,
-  #game-plinko .plinko-board,
-  #game-plinko .plinko-wrap{
-    order: 1 !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    overflow: hidden !important;
-    position: relative !important;
-  }
-
-  #game-plinko canvas{
-    display: block !important;
-    width: min(92vw, 380px) !important;
-    max-width: 92vw !important;
-    height: auto !important;
-    margin: 0 auto !important;
-  }
-
-  /* Force bucket/payout row to be NORMAL FLOW (not absolute) */
-  #game-plinko .buckets,
-  #game-plinko .plinko-payouts,
-  #game-plinko .plinko-multipliers,
-  #game-plinko .bucket-row,
-  #game-plinko .mult-row{
-    position: static !important;
-    margin: 8px auto 0 !important;
-    width: min(92vw, 380px) !important;
-    max-width: 92vw !important;
-    display: flex !important;
-    flex-wrap: wrap !important;
-    justify-content: center !important;
-    gap: 6px !important;
-    overflow: hidden !important;
-    font-size: 11px !important;
-    line-height: 1.1 !important;
-  }
-
-  #game-plinko .buckets > *,
-  #game-plinko .plinko-payouts > *,
-  #game-plinko .plinko-multipliers > *,
-  #game-plinko .bucket-row > *,
-  #game-plinko .mult-row > *{
-    padding: 4px 6px !important;
-    border-radius: 10px !important;
-    white-space: nowrap !important;
-  }
-
-  /* Bet settings come AFTER board */
-  #game-plinko .control-panel,
-  #game-plinko .plinko-controls{
-    order: 2 !important;
-    width: 100% !important;
-    max-width: 100% !important;
-  }
-
-  /* ---------- Modals fit phones ---------- */
-  .modal{
-    padding: 14px !important;
-    align-items: center !important;
-    justify-content: center !important;
-  }
-  .modal .modal-card{
-    width: min(560px, 94vw) !important;
-    max-height: 86vh !important;
-    overflow: auto !important;
-    border-radius: 16px !important;
-  }
-}
-
 /* =========================================================
    FINAL MOBILE OVERRIDES (paste at VERY BOTTOM of style.css)
    Goal:
@@ -3063,53 +2964,6 @@ body.modal-open {
     order: 3 !important;
   }
 
-  /* -------------------------
-     PLINKO: buckets overlapping fix
-  -------------------------- */
-  #game-plinko .plinko-layout,
-  #game-plinko .panel-row{
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 12px !important;
-  }
-
-  #game-plinko .plinko-board,
-  #game-plinko .plinko-stage,
-  #game-plinko canvas{
-    width: min(92vw, 380px) !important;
-    max-width: 100% !important;
-    height: auto !important;
-    margin: 0 auto !important;
-    display: block;
-    order: 1 !important;
-  }
-
-  /* The “buckets/multipliers row” — make it wrap and shrink */
-  #game-plinko .plinko-multipliers,
-  #game-plinko .bucket-row,
-  #game-plinko .mult-row,
-  #game-plinko .buckets{
-    display: flex !important;
-    flex-wrap: wrap !important;
-    justify-content: center !important;
-    gap: 6px !important;
-    padding: 6px 0 !important;
-    max-width: min(92vw, 380px) !important;
-    margin: 0 auto !important;
-    overflow: hidden !important;
-    font-size: 11px !important;
-    line-height: 1.1 !important;
-  }
-
-  #game-plinko .plinko-multipliers > *,
-  #game-plinko .bucket-row > *,
-  #game-plinko .mult-row > *,
-  #game-plinko .buckets > *{
-    padding: 4px 6px !important;
-    border-radius: 10px !important;
-    white-space: nowrap !important;
-  }
-
   #game-plinko .control-panel,
   #game-plinko .plinko-controls{
     order: 2 !important;
@@ -3118,9 +2972,20 @@ body.modal-open {
   }
 }
 
+/* BUCKETS: remove fixed widths that break mobile */
+#plinkoBuckets .plinko-bucket,
+.plinko-bucket {
+  min-width: 0;
+  width: auto;
+  padding: 8px 4px;
+  font-size: clamp(10px, 2.6vw, 14px);
+  line-height: 1;
+  text-align: center;
+}
+}
+
 /* =========================================================
    iPHONE HARD FIXES (wins over "keep it big" rules)
-   Paste at VERY BOTTOM of style.css
 ========================================================= */
 @media (max-width: 480px) {
 
@@ -3175,72 +3040,10 @@ body.modal-open {
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
   }
-
-  /* -------------------------
-     PLINKO: stop buckets overlap
-  ------------------------- */
-
-  /* Force layout to stack and keep everything within width */
-  #game-plinko .panel-row,
-  #game-plinko .plinko-layout {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 12px !important;
-  }
-
-  /* Ensure the board area doesn't allow overlays to bleed */
-  #game-plinko .plinko-board,
-  #game-plinko .plinko-stage,
-  #game-plinko .plinko-wrap {
-    width: 100% !important;
-    max-width: 100% !important;
-    overflow: hidden !important;
-    position: relative !important;
-  }
-
-  /* Canvas must obey container */
-  #game-plinko canvas {
-    width: 100% !important;
-    max-width: 100% !important;
-    height: auto !important;
-    display: block !important;
-  }
-
-  /* THIS is the key: if buckets/multipliers are positioned/overlayed,
-     force them into normal flow + wrap + shrink */
-  #game-plinko .buckets,
-  #game-plinko .plinko-payouts,
-  #game-plinko .plinko-multipliers,
-  #game-plinko .bucket-row,
-  #game-plinko .mult-row {
-    position: static !important;         /* overrides absolute overlays */
-    transform: none !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    margin: 8px auto 0 !important;
-    display: flex !important;
-    flex-wrap: wrap !important;
-    justify-content: center !important;
-    gap: 6px !important;
-    padding: 0 6px !important;
-    font-size: 11px !important;
-    line-height: 1.1 !important;
-    overflow: hidden !important;
-  }
-
-  #game-plinko .buckets > *,
-  #game-plinko .plinko-payouts > *,
-  #game-plinko .plinko-multipliers > *,
-  #game-plinko .bucket-row > *,
-  #game-plinko .mult-row > * {
-    padding: 4px 6px !important;
-    border-radius: 10px !important;
-    white-space: nowrap !important;
-  }
 }
 
 /* =========================================================
-   FINAL MOBILE OVERRIDES (paste LAST in style.css)
+   FINAL MOBILE OVERRIDES 
    Fixes:
    - iPhone white halo / glow (html background)
    - Tabs disappearing / not reachable
@@ -3285,7 +3088,7 @@ body.modal-open {
   .header-tabs-wrap,
   .tabs {
     display: flex !important;
-    flex-wrap: wrap !important;        /* lets Plinko wrap instead of disappear */
+    flex-wrap: wrap !important;       
     gap: 8px !important;
     overflow: visible !important;
   }
@@ -3361,56 +3164,6 @@ body.modal-open {
   #game-crash .crash-graph {
     height: 280px !important;
     min-height: 280px !important;
-  }
-
-  /* ---------------- PLINKO: stop buckets overlapping bet settings ---------------- */
-  #game-plinko .plinko-panel,
-  #game-plinko .plinko-board-wrap,
-  #game-plinko #plinkoBoard.plinko-board {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-  }
-
-  /* This is the key: reserve space for the buckets row INSIDE the board area */
-  #game-plinko .plinko-board-wrap {
-    position: relative !important;
-    overflow: hidden !important;
-    padding-bottom: 58px !important; /* space for buckets so they don't cover the next panel */
-  }
-
-  /* Clamp the board and reduce side padding on small screens */
-  #game-plinko #plinkoBoard.plinko-board {
-    --plinko-side-pad: 10px !important;
-    overflow: hidden !important;
-  }
-
-  /* Buckets must live above the board, not over the bet settings */
-  #game-plinko .plinko-bucket {
-    position: relative !important;
-    z-index: 3 !important;
-  }
-
-  /* If your bucket row is absolutely positioned in your build, force it to bottom of wrap */
-  #game-plinko .plinko-buckets,
-  #game-plinko .bucket-row,
-  #game-plinko .plinko-multipliers {
-    position: absolute !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 8px !important;
-    display: flex !important;
-    justify-content: center !important;
-    gap: 6px !important;
-    flex-wrap: nowrap !important;
-    pointer-events: none; /* prevent weird taps */
-  }
-
-  #game-plinko .plinko-buckets > *,
-  #game-plinko .bucket-row > *,
-  #game-plinko .plinko-multipliers > * {
-    pointer-events: auto;
-    white-space: nowrap !important;
   }
 }
 
@@ -3721,4 +3474,116 @@ body.modal-open {
     max-height: calc(100svh - 24px - env(safe-area-inset-bottom)) !important;
     padding-bottom: calc(16px + env(safe-area-inset-bottom)) !important;
   }
+}
+
+/* =========================
+   PLINKO (CLEAN + MATCHES HTML)
+   DOM: #plinkoBoard, #plinkoBuckets, .plinko-peg, #plinkoBall
+========================= */
+
+/* Layout for the 2 panels */
+#game-plinko .panel-row{
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 980px){
+  #game-plinko .panel-row{
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Wrap */
+.plinko-board-wrap{
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+/* Board */
+#plinkoBoard{
+  position: relative;
+  width: 100%;
+  max-width: 860px;
+  aspect-ratio: 1.55 / 1;
+  overflow: hidden;
+  border-radius: 18px;
+  margin: 0 auto;
+  padding-bottom: calc(var(--bucket-strip-h, 32px) + 22px);
+
+  /* IMPORTANT: JS reads paddingLeft as sidePad */
+  padding-left: 18px;
+  padding-right: 18px;
+  box-sizing: border-box;
+}
+
+/* Pegs + Ball */
+#plinkoBoard .plinko-peg{
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+
+#plinkoBall{
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+}
+
+/* Buckets pinned INSIDE board, always fits */
+#plinkoBuckets{
+  position: absolute;
+  left: var(--plinko-side-pad, 18px);
+  right: var(--plinko-side-pad, 18px);
+  bottom: 10px;
+  height: auto;
+
+  display: grid;
+  grid-template-columns: repeat(15, minmax(0, 1fr));
+  gap: 6px;
+
+  width: auto;
+  box-sizing: border-box;
+  z-index: 4;
+}
+
+#plinkoBuckets .plinko-bucket{
+  min-width: 0;
+  width: auto;
+  padding: 8px 4px;
+  font-size: clamp(10px, 2.6vw, 14px);
+  line-height: 1;
+  text-align: center;
+}
+
+/* FINAL: plinko layout authority (kills rogue order/flex overrides) */
+#game-plinko .panel-row{
+  display: grid !important;
+  grid-template-columns: 360px minmax(0, 1fr) !important;
+  gap: 16px !important;
+}
+
+@media (max-width: 980px){
+  #game-plinko .panel-row{
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+  }
+  #game-plinko .control-panel{ order: initial !important; }
+  #game-plinko .plinko-panel{ order: initial !important; }
+}
+
+#plinkoBoard{
+  padding-bottom: calc(var(--bucket-strip-h, 32px) + 28px) !important;
+  min-height: 360px !important; /* helps small widths + aspect-ratio combos */
+}
+
+#plinkoBuckets{
+  height: auto !important;
+  bottom: 10px !important;
+}
+
+@media (max-width: 980px){
+  #game-plinko .control-panel{ order: 2 !important; }
+  #game-plinko .plinko-panel{ order: 1 !important; }
 }
