@@ -1177,7 +1177,7 @@ const PLINKO_RENDER_ROWS = 16;
 // 14 decisions makes 15 buckets
 const PLINKO_DECISION_ROWS = PLINKO_BUCKETS - 1; // 14
 
-const PLINKO_PEG_R = 5;     // if your .plinko-peg is 10px
+const PLINKO_PEG_R = 5.5;     // if your .plinko-peg is 10px
 const PLINKO_BALL_R = 7;    // if your .plinko-ball is 14px
 const PLINKO_CLEAR = 2;     // extra spacing so it looks like a bounce
 
@@ -1272,7 +1272,7 @@ function renderPlinkoBoard() {
   const boardW = plinkoBoardEl.clientWidth || 640;
   const boardH = plinkoBoardEl.clientHeight || 360;
 
-  const topPad = 30;
+  const topPad = 14;
 
   const css = getComputedStyle(plinkoBoardEl);
   const stripH = parseFloat(css.getPropertyValue("--bucket-strip-h")) || 32;
@@ -1284,7 +1284,7 @@ function renderPlinkoBoard() {
 
   plinkoBoardEl.style.setProperty("--plinko-side-pad", `${sidePad}px`);
 
-  const bottomPad = stripH + 18;
+  const bottomPad = stripH + 10;
   const usableH = Math.max(240, boardH - topPad - bottomPad);
 
   const visibleRows = PLINKO_RENDER_ROWS - PLINKO_SHAVE;
