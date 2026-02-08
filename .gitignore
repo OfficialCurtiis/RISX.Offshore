@@ -141,4 +141,4 @@ vite.config.ts.timestamp-*
 dist/
 .env.local
 
-printf "\n.DS_Store\n**/.DS_Store\n" >> .gitignore
+printf "\n.DS_Store\n**/.DS_Store\n" >> .gitignore.DS_Store
