@@ -1272,7 +1272,7 @@ function renderPlinkoBoard() {
   const boardW = plinkoBoardEl.clientWidth || 640;
   const boardH = plinkoBoardEl.clientHeight || 360;
 
-  const topPad = 14;
+  const topPad = 22;
 
   const css = getComputedStyle(plinkoBoardEl);
   const stripH = parseFloat(css.getPropertyValue("--bucket-strip-h")) || 32;
