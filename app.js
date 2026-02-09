@@ -231,6 +231,24 @@ const pfLastRoundEl        = document.getElementById("pfLastRound");
 const openPfBtn            = document.getElementById("openPfBtn");
 const pfOpenBtn            = document.getElementById("pfOpenBtn");
 
+// DEV ONLY: press Shift + W to force a win
+window.addEventListener("keydown", (e) => {
+  if (e.shiftKey && e.key.toLowerCase() === "w") {
+    triggerChallengeWin({ amount: 250, currency: "USDT", chain: "SOL" });
+  }
+});
+
+function triggerChallengeWin(payout) {
+  // 1) lock the game
+  // 2) show win modal
+  // 3) create payout request (even if fake for now)
+  console.log("WIN!", payout);
+
+  // Example: show a modal / screen
+  const winEl = document.querySelector("#winModal");
+  if (winEl) winEl.classList.add("open");
+}
+
 
 // ================================
 // Bet Settings Lock (Mines/Crash/Plinko)
