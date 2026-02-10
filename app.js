@@ -3523,13 +3523,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const params = new URLSearchParams(window.location.search);
 
   if (params.get("win") === "1") {
-    console.log("✅ FORCE WIN VIA URL");
     window.triggerChallengeWin({
-      amount: 250,
+      target: 10000,
+      achieved: 10000,
+      payout: 250,
       currency: "USDT",
       chain: "SOL"
     });
   }
 });
 
-document.addEventListener("DOMContentLoaded", init);
+document.addEventListener("DOMContentLoaded", init); 
