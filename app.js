@@ -231,10 +231,27 @@ const pfLastRoundEl        = document.getElementById("pfLastRound");
 const openPfBtn            = document.getElementById("openPfBtn");
 const pfOpenBtn            = document.getElementById("pfOpenBtn");
 
-const params = new URLSearchParams(location.search);
-if (params.get("win") === "1") {
-  triggerChallengeWin({ amount: 250, currency: "USDT", chain: "SOL" });
+////////////////////////////////////
+////////TRIGGER WIN////////
+
+
+// DEV ONLY: press Shift + W to force a win
+window.addEventListener("keydown", (e) => {
+  if (e.shiftKey && e.key.toLowerCase() === "w") {
+    triggerChallengeWin({ amount: 250, currency: "USDT", chain: "SOL" });
+  }
+});
+
+function triggerChallengeWin(payout) {
+
+  console.log("WIN!", payout);
+
+  // Example: show a modal / screen
+  const winEl = document.querySelector("#winModal");
+  if (winEl) winEl.classList.add("open");
 }
+
+window.triggerChallengeWin = triggerChallengeWin;
 
 
 // ================================
@@ -3503,5 +3520,18 @@ if (challengeResetBtn && !challengeResetBtn._bound) {
 
   document.documentElement.classList.remove("booting");
 }
+
+document.addEventListener("DOMContentLoaded", () => {
+  const params = new URLSearchParams(window.location.search);
+
+  if (params.get("win") === "1") {
+    console.log("✅ FORCE WIN VIA URL");
+    window.triggerChallengeWin({
+      amount: 250,
+      currency: "USDT",
+      chain: "SOL"
+    });
+  }
+});
 
 document.addEventListener("DOMContentLoaded", init);
