@@ -234,24 +234,22 @@ const pfOpenBtn            = document.getElementById("pfOpenBtn");
 ////////////////////////////////////
 ////////TRIGGER WIN////////
 
+function triggerChallengeWin({ target, achieved, payout, currency, chain }) {
+  console.log("🏆 CHALLENGE WIN", { target, achieved, payout, currency, chain });
 
-// DEV ONLY: press Shift + W to force a win
-window.addEventListener("keydown", (e) => {
-  if (e.shiftKey && e.key.toLowerCase() === "w") {
-    triggerChallengeWin({ amount: 250, currency: "USDT", chain: "SOL" });
-  }
-});
+  document.getElementById("winTarget").textContent =
+    `$${target.toLocaleString()}`;
 
-function triggerChallengeWin(payout) {
+  document.getElementById("winAchieved").textContent =
+    `$${achieved.toLocaleString()}`;
 
-  console.log("WIN!", payout);
+  document.getElementById("winPayout").textContent =
+    `${payout} ${currency} (${chain})`;
 
-  // Example: show a modal / screen
-  const winEl = document.querySelector("#winModal");
-  if (winEl) winEl.classList.add("open");
+  document.getElementById("winModal").classList.add("open");
 }
 
-window.triggerChallengeWin = triggerChallengeWin;
+  window.triggerChallengeWin = triggerChallengeWin;
 
 
 // ================================
