@@ -234,22 +234,30 @@ const pfOpenBtn            = document.getElementById("pfOpenBtn");
 ////////////////////////////////////
 ////////TRIGGER WIN////////
 
-function triggerChallengeWin({ target, achieved, payout, currency, chain }) {
-  console.log("🏆 CHALLENGE WIN", { target, achieved, payout, currency, chain });
+function triggerChallengeWin() {
+  if (!challengeActive || !CHALLENGE?.tier) {
+    console.error("Win triggered without active challenge");
+    return;
+  }
+
+  const tierId = CHALLENGE.tier;
+  const tier = getTier(); // ← your existing helper
+
+  console.log("🏆 CHALLENGE WON", tierId, tier);
 
   document.getElementById("winTarget").textContent =
-    `$${target.toLocaleString()}`;
+    `${Number(tier.goalCredits).toLocaleString()} credits`;
 
   document.getElementById("winAchieved").textContent =
-    `$${achieved.toLocaleString()}`;
+    `${Number(tier.goalCredits).toLocaleString()} credits`;
 
   document.getElementById("winPayout").textContent =
-    `${payout} ${currency} (${chain})`;
+    `$${Number(tier.prizeUsd).toLocaleString()} USD`;
 
   document.getElementById("winModal").classList.add("open");
 }
 
-  window.triggerChallengeWin = triggerChallengeWin;
+window.triggerChallengeWin = triggerChallengeWin;
 
 
 // ================================
@@ -804,6 +812,34 @@ function adjustBalance(delta, opts = {}) {
   persistActiveWalletState?.();
 
   showChallengeResetIfNeeded?.();
+
+  // ===============================
+  // CHALLENGE WIN CHECK (SINGLE SOURCE)
+  // ===============================
+  if (!opts.suppressChallengeChecks) {
+    if (challengeActive && !challengeCompleted) {
+      const tier = getTier?.();
+      if (tier && balance >= tier.goalCredits) {
+        challengeCompleted = true;
+        challengeActive = false;
+
+        saveChallengeCompleted?.(true);
+        saveChallengeActive?.(false);
+        setChallengeStatus?.("completed");
+
+        lockAppUI?.(true);
+
+        triggerChallengeWin?.({
+          tier: CHALLENGE.tier,
+          target: tier.goalCredits,
+          achieved: balance,
+          payout: tier.prizeUsd,
+          currency: "USDT",
+          chain: "SOL"
+        });
+      }
+    }
+  }
 }
 
 function postRoundChecks() {
@@ -1653,9 +1689,8 @@ async function dropPlinkoBall() {
     highlightBucket(bucketIndex);
 
     const payout = bet * mult * 0.98;
-    adjustBalance(+payout, { suppressChallengeChecks: true, suppressMercy: true });
+    adjustBalance(+payout, { suppressMercy: true });
 
-    // keep whatever message style you prefer
     if (plinkoMessageEl) {
       plinkoMessageEl.textContent = `+${formatCredits(payout)} (${mult}x)`;
     }
@@ -2296,7 +2331,7 @@ function endMinesRound({ outcome, cashedOut, multiplier }) {
       : 0;
 
     if (winAmount > 0) {
-    adjustBalance(+winAmount, { suppressMercy: true, suppressChallengeChecks: true });
+    adjustBalance(+winAmount, { suppressMercy: true });
   } else {
     persistActiveWalletState?.();
   }
@@ -3498,6 +3533,61 @@ if (challengeResetBtn && !challengeResetBtn._bound) {
   });
 }
 
+  // -----------------------------
+  // Claim reward button
+  // -----------------------------
+  const submitClaimBtn = document.getElementById("submitClaimBtn");
+
+  if (submitClaimBtn && !submitClaimBtn._bound) {
+    submitClaimBtn._bound = true;
+
+    submitClaimBtn.addEventListener("click", () => {
+      const address = document
+        .getElementById("walletAddressInput")
+        ?.value
+        ?.trim();
+
+      if (!address) {
+        alert("Enter a wallet address");
+        return;
+      }
+
+      const tierId = CHALLENGE.tier;
+      const tier = getTier();
+
+      const payoutRequest = {
+        id: crypto.randomUUID(),
+        tier: tierId,
+        entryUsd: tier.entryUsd,
+        prizeUsd: tier.prizeUsd,
+        goalCredits: tier.goalCredits,
+        address,
+        status: "pending",
+        createdAt: Date.now()
+      };
+
+      console.log("💸 PAYOUT REQUEST", payoutRequest);
+
+      document.getElementById("claimModal")?.classList.remove("open");
+      alert("Claim submitted. Payout pending.");
+    });
+  }
+
+  // -----------------------------
+  // Dev win trigger (URL flag)
+  // -----------------------------
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("win") === "1") {
+    window.triggerChallengeWin({
+      target: getTier().goalCredits,
+      achieved: getTier().goalCredits,
+      payout: getTier().prizeUsd,
+      currency: "USDT",
+      chain: "SOL"
+    });
+  }
+
+
   startGameBtn?.addEventListener("click", () => withLock("minesStart", startMinesRound));
   cashOutBtn?.addEventListener("click", () => withLock("minesCashout", cashOutMines));
 
@@ -3518,19 +3608,5 @@ if (challengeResetBtn && !challengeResetBtn._bound) {
 
   document.documentElement.classList.remove("booting");
 }
-
-document.addEventListener("DOMContentLoaded", () => {
-  const params = new URLSearchParams(window.location.search);
-
-  if (params.get("win") === "1") {
-    window.triggerChallengeWin({
-      target: 10000,
-      achieved: 10000,
-      payout: 250,
-      currency: "USDT",
-      chain: "SOL"
-    });
-  }
-});
 
 document.addEventListener("DOMContentLoaded", init); 
