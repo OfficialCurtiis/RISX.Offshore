@@ -821,26 +821,18 @@ if (!opts.suppressChallengeChecks) {
 
     const tier = getTier?.();   // 👈 THIS LINE WAS MISSING OR MISPLACED
 
-    if (tier && balance >= tier.goalCredits) {
-
-      challengeCompleted = true;
-      challengeActive = false;
-
-      saveChallengeCompleted?.(true);
-      saveChallengeActive?.(false);
-      setChallengeStatus?.("completed");
-
-      triggerChallengeWin?.({
-        tier: CHALLENGE.tier,
-        target: tier.goalCredits,
-        achieved: balance,
-        payout: tier.prizeUsd,
-        currency: "USDT",
-        chain: "SOL"
-      });
-
-      lockAppUI?.(true);
-    }}
+   if (balance >= 10000) {
+  alert("WIN CONDITION HIT");
+  triggerChallengeWin?.({
+    tier: "beginner",
+    target: 10000,
+    achieved: balance,
+    payout: 100,
+    currency: "USDT",
+    chain: "SOL"
+  });
+  return;
+}}
   }
 }
 
@@ -1692,7 +1684,7 @@ async function dropPlinkoBall() {
     highlightBucket(bucketIndex);
 
     const payout = bet * mult * 0.98;
-    adjustBalance(+payout, { suppressChallengeChecks: true, suppressMercy: true });
+    adjustBalance(+payout, { suppressMercy: true });
 
     if (plinkoMessageEl) {
       plinkoMessageEl.textContent = `+${formatCredits(payout)} (${mult}x)`;
