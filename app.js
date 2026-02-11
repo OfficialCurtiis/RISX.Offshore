@@ -817,30 +817,33 @@ function adjustBalance(delta, opts = {}) {
   // CHALLENGE WIN CHECK (SINGLE SOURCE)
   // ===============================
   if (!opts.suppressChallengeChecks) {
-    if (challengeActive && !challengeCompleted) {
-      const tier = getTier?.();
-      if (tier && balance >= tier.goalCredits) {
-        challengeCompleted = true;
-        challengeActive = false;
+    if (tier && balance >= tier.goalCredits) {
 
-        saveChallengeCompleted?.(true);
-        saveChallengeActive?.(false);
-        setChallengeStatus?.("completed");
+  console.log("🔥 CHALLENGE WIN TRIGGERED");
 
-        lockAppUI?.(true);
+  challengeCompleted = true;
+  challengeActive = false;
 
-        triggerChallengeWin?.({
-          tier: CHALLENGE.tier,
-          target: tier.goalCredits,
-          achieved: balance,
-          payout: tier.prizeUsd,
-          currency: "USDT",
-          chain: "SOL"
-        });
-      }
+  saveChallengeCompleted?.(true);
+  saveChallengeActive?.(false);
+  setChallengeStatus?.("completed");
+
+  // 🔥 SHOW MODAL FIRST
+  triggerChallengeWin?.({
+    tier: CHALLENGE.tier,
+    target: tier.goalCredits,
+    achieved: balance,
+    payout: tier.prizeUsd,
+    currency: "USDT",
+    chain: "SOL"
+  });
+
+  // 🔒 THEN LOCK UI
+  lockAppUI?.(true);
     }
   }
 }
+
 
 function postRoundChecks() {
 if (!CHALLENGE?.enabled || !challengeActive) return;
