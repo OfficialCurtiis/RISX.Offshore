@@ -1689,7 +1689,7 @@ async function dropPlinkoBall() {
     highlightBucket(bucketIndex);
 
     const payout = bet * mult * 0.98;
-    adjustBalance(+payout, { suppressMercy: true });
+    adjustBalance(+payout, { suppressChallengeChecks: true, suppressMercy: true });
 
     if (plinkoMessageEl) {
       plinkoMessageEl.textContent = `+${formatCredits(payout)} (${mult}x)`;
