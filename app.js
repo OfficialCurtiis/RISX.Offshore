@@ -810,31 +810,36 @@ function adjustBalance(delta, opts = {}) {
 
   updateBalanceDisplay?.();
   persistActiveWalletState?.();
-
   showChallengeResetIfNeeded?.();
 
-  // ===============================
-  // CHALLENGE WIN CHECK (SINGLE SOURCE)
-  // ===============================
 if (!opts.suppressChallengeChecks) {
   if (challengeActive && !challengeCompleted) {
 
-    const tier = getTier?.();   // 👈 THIS LINE WAS MISSING OR MISPLACED
+    const tier = getTier();
+    if (!tier) return;
 
-   if (balance >= 10000) {
-  alert("WIN CONDITION HIT");
-  triggerChallengeWin?.({
-    tier: "beginner",
-    target: 10000,
-    achieved: balance,
-    payout: 100,
-    currency: "USDT",
-    chain: "SOL"
-  });
-  return;
-}}
+    if (balance >= tier.goalCredits) {
+
+      challengeCompleted = true;
+      challengeActive = false;
+
+      saveChallengeCompleted?.(true);
+      saveChallengeActive?.(false);
+      setChallengeStatus?.("completed");
+
+      triggerChallengeWin?.({
+        tier: CHALLENGE.tier,
+        target: tier.goalCredits,
+        achieved: balance,
+        payout: tier.prizeUsd,
+        currency: "USDT",
+        chain: "SOL"
+      });
+
+      return;
+    }
   }
-}
+}}
 
 
 function postRoundChecks() {
@@ -847,22 +852,6 @@ if (!CHALLENGE?.enabled || !challengeActive) return;
   const t = getTier?.() || {};
   const bal = Number(getBalance?.() ?? balance ?? 0);
   const goal = Number(t.goalCredits || 0);
-
-  // 🟢 WIN first
-  if (challengeActive && !challengeCompleted && goal > 0 && bal >= goal) {
-    challengeCompleted = true;
-    challengeActive = false;
-    CHALLENGE.active = false;
-
-    setChallengeStatus?.("won");
-    endRun("won");
-
-    saveChallengeActive?.(false);
-    toast?.(`✅ Goal reached: ${goal}!`);
-    showChallengeResetIfNeeded?.();
-    refreshChallengeHud();
-    return;
-  }
 
   // 🔴 FAIL second (only after the round is fully done)
   if (challengeActive && !challengeCompleted && bal <= 0) {
