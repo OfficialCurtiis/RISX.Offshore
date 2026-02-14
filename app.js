@@ -843,17 +843,15 @@ if (!opts.suppressChallengeChecks) {
 
 
 function postRoundChecks() {
-if (!CHALLENGE?.enabled || !challengeActive) return;
+  if (!CHALLENGE?.enabled || !challengeActive) return;
 
-  // ✅ Never judge mid-round
   const roundActiveNow = (typeof anyRoundActive === "function") ? anyRoundActive() : false;
   if (roundActiveNow) return;
 
   const t = getTier?.() || {};
   const bal = Number(getBalance?.() ?? balance ?? 0);
-  const goal = Number(t.goalCredits || 0);
 
-  // 🔴 FAIL second (only after the round is fully done)
+  // 🔴 FAIL only
   if (challengeActive && !challengeCompleted && bal <= 0) {
     challengeFail?.("Balance hit 0");
     showChallengeResetIfNeeded?.();
