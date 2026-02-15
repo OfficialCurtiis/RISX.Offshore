@@ -819,11 +819,12 @@ if (!opts.suppressChallengeChecks) {
     if (!tier) return;
 
     if (balance >= tier.goalCredits) {
-
       challengeCompleted = true;
-      challengeActive = false;
-
       saveChallengeCompleted?.(true);
+
+      refreshChallengeHud?.();  // Update UI immediately
+
+      challengeActive = false;
       saveChallengeActive?.(false);
       setChallengeStatus?.("completed");
 
@@ -832,14 +833,14 @@ if (!opts.suppressChallengeChecks) {
         target: tier.goalCredits,
         achieved: balance,
         payout: tier.prizeUsd,
-        currency: "USDT",
-        chain: "SOL"
+        currency: tier.prizeUsd?.currency || "USDT",
+        chain: tier.prizeUsd?.chain || "SOL"
       });
 
       return;
-    }
+    }}
   }
-}}
+}
 
 
 function postRoundChecks() {
@@ -851,12 +852,16 @@ function postRoundChecks() {
   const t = getTier?.() || {};
   const bal = Number(getBalance?.() ?? balance ?? 0);
 
-  // 🔴 FAIL only
-  if (challengeActive && !challengeCompleted && bal <= 0) {
-    challengeFail?.("Balance hit 0");
-    showChallengeResetIfNeeded?.();
-    return;
-  }
+if (challengeActive && !challengeCompleted && bal <= 0) {
+  challengeActive = false;
+  challengeCompleted = false;
+  saveChallengeActive?.(false);
+
+  challengeFail?.("Balance hit 0");
+  showChallengeResetIfNeeded?.();
+  refreshChallengeHud?.();
+  return;
+}
 
   showChallengeResetIfNeeded?.();
 }
@@ -1682,6 +1687,7 @@ async function dropPlinkoBall() {
     if (plinkoMessageEl) plinkoMessageEl.textContent = `Plinko error: ${err?.message || err}`;
   } finally {
     plinkoOnBallResolved_UnlockIfDone?.(); // 🔓 unlocks only when last ball resolves
+    refreshChallengeHud();
     postRoundChecks?.();
   }
 }
@@ -2289,6 +2295,7 @@ function startMinesRound() {
   lockBetSettings?.("mines", true);
   updateBalanceDisplay();
   updateMinesInfoPanel(1.0, safeClicks);
+  refreshChallengeHud();
 
   resultMessageEl.textContent = "";
   strategyMessageEl.textContent = "";
@@ -2327,6 +2334,7 @@ function endMinesRound({ outcome, cashedOut, multiplier }) {
   updateSessionStats?.();
   persistSessionStats?.();
   postRoundChecks?.();
+  refreshChallengeHud();
 }
 
 function resetMinesResultCard() {
@@ -2742,6 +2750,7 @@ if (rocket && wrap && marker) {
   // Toast (same fading card, just adds winnings line)
   showCrashToast(`Cashed out at ${cashedMult}x\n+${formatCredits(payout)} credits`);
 
+  refreshChallengeHud();
   postRoundChecks?.();
 }
 
