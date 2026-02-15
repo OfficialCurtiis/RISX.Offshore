@@ -235,10 +235,6 @@ const pfOpenBtn            = document.getElementById("pfOpenBtn");
 ////////TRIGGER WIN////////
 
 function triggerChallengeWin() {
-  if (!challengeActive || !CHALLENGE?.tier) {
-    console.error("Win triggered without active challenge");
-    return;
-  }
 
   const tierId = CHALLENGE.tier;
   const tier = getTier(); // ← your existing helper
@@ -812,7 +808,7 @@ function adjustBalance(delta, opts = {}) {
   persistActiveWalletState?.();
   showChallengeResetIfNeeded?.();
 
-if (!opts.suppressChallengeChecks) {
+  if (!opts.suppressChallengeChecks) {
   if (challengeActive && !challengeCompleted) {
 
     const tier = getTier();
@@ -838,8 +834,8 @@ if (!opts.suppressChallengeChecks) {
       });
 
       return;
-    }}
-  }
+    }
+  }}
 }
 
 
