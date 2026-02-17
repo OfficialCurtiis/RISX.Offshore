@@ -3481,9 +3481,9 @@ startRun(tier);
   refreshChallengeHud();
   closeModal(challengeModal);
   lockAppUI(false);
-}
+  }
 
-window.RISX_startChallengeFromPayment = async (tier) => {
+  window.RISX_startChallengeFromPayment = async (tier) => {
   closeModal(challengeModal);
 
   const ok = await hasValidUnlockForTier(tier);
@@ -3493,7 +3493,7 @@ window.RISX_startChallengeFromPayment = async (tier) => {
   }
 
   startChallengeNow(tier);
-};
+  };
 
 challengeStartBtn?.addEventListener("click", async () => {
   const tier = challengeTier?.value || "beginner";
