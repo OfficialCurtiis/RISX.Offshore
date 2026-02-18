@@ -2440,6 +2440,33 @@ body.modal-open {
   border: 1px solid rgba(255,255,255,0.10) !important;
 }
 
+.locked-tier-card {
+  opacity: 0.7;
+  filter: grayscale(60%);
+}
+
+.tier-locked-banner {
+  background: linear-gradient(45deg, #300, #600);
+  color: #fff;
+  padding: 8px;
+  text-align: center;
+  font-weight: bold;
+  margin-bottom: 10px;
+  border-radius: 6px;
+}
+
+.locked-text {
+  color: #ff4d4d;
+  font-weight: bold;
+}
+
+.locked-foot {
+  text-align: center;
+  padding: 20px 0;
+  font-size: 14px;
+  color: #aaa;
+}
+
 /* ========================= */
 /* WALLET (COMPACT SUMMARY)  */
 /* ========================= */

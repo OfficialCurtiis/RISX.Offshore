@@ -251,13 +251,17 @@ function startPolling(paymentId) {
       setCreateButtonLabel(true);
     
 
-      setPendingPayment({
-        tierKey: activeTierKey,
-        payment_id: data.payment_id,
-        pay_amount: data.pay_amount,
-        pay_currency: data.pay_currency || payCurrency,
-        pay_address: data.pay_address,
-        createdAt: Date.now()
+      const intent = localStorage.getItem("risx_payment_intent") || "entry";
+      localStorage.removeItem("risx_payment_intent");
+
+        setPendingPayment({
+          intent,
+          tierKey: activeTierKey,
+          payment_id: data.payment_id,
+          pay_amount: data.pay_amount,
+          pay_currency: data.pay_currency || payCurrency,
+          pay_address: data.pay_address,
+          createdAt: Date.now()
         });
         enableLeaveWarning();
 
@@ -344,6 +348,7 @@ checkBtn?.addEventListener("click", async () => {
       if (payIdEl) payIdEl.textContent = pid;
 
       setPendingPayment({
+        intent: "entry",
         tierKey: activeTierKey,
         payment_id: pid,
         pay_amount: s.pay_amount || "—",

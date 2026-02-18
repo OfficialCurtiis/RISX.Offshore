@@ -232,12 +232,18 @@ const openPfBtn            = document.getElementById("openPfBtn");
 const pfOpenBtn            = document.getElementById("pfOpenBtn");
 
 ////////////////////////////////////
-////////TRIGGER WIN////////
+////////TRIGGER WIN/FAIL////////
 
 function triggerChallengeWin() {
 
+  challengeState.status = "completed";
+  CHALLENGE.active = false;
+  challengeActive = false;
+
+  lockAppUI?.(true);
+
   const tierId = CHALLENGE.tier;
-  const tier = getTier(); // ← your existing helper
+  const tier = getTier();
 
   console.log("🏆 CHALLENGE WON", tierId, tier);
 
@@ -255,6 +261,10 @@ function triggerChallengeWin() {
 
 window.triggerChallengeWin = triggerChallengeWin;
 
+let challengeState = {
+  status: "inactive", // inactive | active | failed | completed | pending
+  resetExpiresAt: null
+};
 
 // ================================
 // Bet Settings Lock (Mines/Crash/Plinko)
@@ -381,7 +391,7 @@ function plinkoOnBallResolved_UnlockIfDone() {
 const CHALLENGE_TIERS = {
   beginner: {
     entryUsd: 10,
-    prizeUsd: 100,
+    prizeUsd: 65,
     restartUsd: 7,
     startCredits: 250,
     mercyAllInAt: 50,
@@ -398,8 +408,8 @@ const CHALLENGE_TIERS = {
   // Optional placeholders (you can tune later)
   intermediate: {
     entryUsd: 25,
-    prizeUsd: 300,
-    restartUsd: 20,
+    prizeUsd: 175,
+    restartUsd: 18,
     startCredits: 500,
     mercyAllInAt: 75,
     goalCredits: 25000,
@@ -425,7 +435,9 @@ const CHALLENGE_TIERS = {
     minesMin: 5,
     minesMaxCashoutMult: 3.5,
     plinkoMaxMult: 25,
-    crashAutoCashout: false
+    crashAutoCashout: false,
+    locked: true,
+    lockReason: "Invite Only"
   }
 };
 
@@ -452,15 +464,22 @@ function renderTierSummary() {
 
   const t = getTier();
 
-  // Safe fallbacks
   const entry = Number(t.entryUsd || 0);
   const prize = Number(t.prizeUsd || 0);
 
-    const key = (challengeTierSelected || CHALLENGE?.tier || "beginner");
+  const key = (challengeTierSelected || CHALLENGE?.tier || "beginner");
   const title = (t.label || key).toString().toUpperCase();
 
+  const isLocked = !!t.locked;
+
   el.innerHTML = `
-    <div class="tier-summary-card">
+    <div class="tier-summary-card ${isLocked ? "locked-tier-card" : ""}">
+
+      ${isLocked ? `
+        <div class="tier-locked-banner">
+          ${t.lockReason || "Invite Only"}
+        </div>
+      ` : ""}
 
       <div class="redeem-note">
         One run. No top-ups. Hit the goal or you reset.
@@ -468,28 +487,38 @@ function renderTierSummary() {
 
       <div class="tier-summary-top">
         <div class="tier-summary-title">${title}</div>
-        <div class="tier-summary-prize">Prize: <span>$${prize}</span></div>
+        <div class="tier-summary-prize">
+          ${isLocked 
+            ? `<span class="locked-text">Locked</span>`
+            : `Prize: <span>$${prize}</span>`}
+        </div>
       </div>
 
-      <div class="tier-summary-grid">
-        <div class="tier-kv"><div class="k">Entry</div><div class="v">$${entry}</div></div>
-        <div class="tier-kv"><div class="k">Restart</div><div class="v">$${Number(t.restartUsd || entry)}</div></div>
-        <div class="tier-kv"><div class="k">Start Credits</div><div class="v">${t.startCredits}</div></div>
-        <div class="tier-kv"><div class="k">Goal</div><div class="v">${t.goalCredits}</div></div>
-      </div>
+      ${isLocked ? `
+        <div class="tier-summary-foot locked-foot">
+          This tier is currently invite only.
+        </div>
+      ` : `
+        <div class="tier-summary-grid">
+          <div class="tier-kv"><div class="k">Entry</div><div class="v">$${entry}</div></div>
+          <div class="tier-kv"><div class="k">Restart</div><div class="v">$${Number(t.restartUsd || entry)}</div></div>
+          <div class="tier-kv"><div class="k">Start Credits</div><div class="v">${t.startCredits}</div></div>
+          <div class="tier-kv"><div class="k">Goal</div><div class="v">${t.goalCredits}</div></div>
+        </div>
 
-      <div class="tier-summary-rules">
-        <div class="rule-line">• Max bet (Mines & Crash): <b>${pct(t.minesMaxBetPct)}%</b> of balance</div>
-        <div class="rule-line">• Max bet (Plinko): <b>${pct(t.plinkoMaxBetPct)}%</b> of balance</div>
-        <div class="rule-line">• Mines cashouts capped at <b>${t.minesMaxCashoutMult}x</b></div>
-        <div class="rule-line">• Plinko can hit up to <b>${t.plinkoMaxMult}x</b></div>
-        <div class="rule-line">• Mines must be <b>${t.minesMin}+</b></div>
-      </div>
+        <div class="tier-summary-rules">
+          <div class="rule-line">• Max bet (Mines & Crash): <b>${pct(t.minesMaxBetPct)}%</b> of balance</div>
+          <div class="rule-line">• Max bet (Plinko): <b>${pct(t.plinkoMaxBetPct)}%</b> of balance</div>
+          <div class="rule-line">• Mines cashouts capped at <b>${t.minesMaxCashoutMult}x</b></div>
+          <div class="rule-line">• Plinko can hit up to <b>${t.plinkoMaxMult}x</b></div>
+          <div class="rule-line">• Mines must be <b>${t.minesMin}+</b></div>
+        </div>
 
-      <div class="tier-summary-foot">
-        Start with <b>${t.startCredits}</b> credits. Reach <b>${t.goalCredits}</b> to win <b>$${prize}</b>.<br>
-        If you fail, restart the tier for <b>$${Number(t.restartUsd || entry)}</b>.
-      </div>
+        <div class="tier-summary-foot">
+          Start with <b>${t.startCredits}</b> credits. Reach <b>${t.goalCredits}</b> to win <b>$${prize}</b>.<br>
+          If you fail, restart the tier for <b>$${Number(t.restartUsd || entry)}</b>.
+        </div>
+      `}
 
     </div>
   `;
@@ -627,6 +656,22 @@ function refreshChallengeHud() {
     sub: mercyOn ? "Mercy active: MAX = all-in" : "Challenge running",
     mercyOn
   });
+}
+
+ function completeReset() {
+  if (challengeState.status !== "failed") return;
+
+  challengeFailed = false;
+
+  CHALLENGE.active = true;
+  challengeActive = true;
+
+  challengeState.status = "active";
+
+  closeModal?.(failModal);
+  lockAppUI?.(false);
+
+  startChallenge();
 }
 
 function risxConfirm({ title = "Confirm", body = "", okText = "OK", cancelText = "Cancel" } = {}) {
@@ -883,14 +928,40 @@ function challengeFail(reason) {
   CHALLENGE.active = false;
   saveChallengeActive?.(false);
 
+  challengeState.status = "failed";
+
+  CHALLENGE.resetExpiresAt = Date.now() + (10 * 60 * 1000);
+
   refreshChallengeHud();
-  openModal?.(challengeModal);
-  renderTierSummary?.();
-  showChallengeResetIfNeeded?.();
+  openModal?.(failModal);
+  startResetTimer();
+
   lockAppUI?.(true);
 }
 
 let _mercyOn = false;
+
+function startResetTimer() {
+  const timerEl = document.getElementById("resetTimer");
+  if (!timerEl) return;
+
+  const interval = setInterval(() => {
+    const remaining = CHALLENGE.resetExpiresAt - Date.now();
+
+    if (remaining <= 0) {
+      clearInterval(interval);
+      timerEl.innerHTML = "Reset expired. Full entry required.";
+      document.getElementById("resetBtn").disabled = true;
+      return;
+    }
+
+    const mins = Math.floor(remaining / 60000);
+    const secs = Math.floor((remaining % 60000) / 1000);
+
+    timerEl.innerHTML =
+      `Reset available for ${mins}:${secs.toString().padStart(2, "0")}`;
+  }, 1000);
+}
 
 function getChallengeMaxBetForUI(gameKey) {
   if (!(CHALLENGE?.enabled && challengeActive)) return null;
@@ -934,33 +1005,6 @@ function wipeChallengeWalletOnly() {
   try {
     localStorage.removeItem(walletStoreKey(CHALLENGE_WALLET_ID));
   } catch {}
-}
-
-function resetChallengeRun() {
-  // wipe run status
-  challengeCompleted = false;
-  challengeFailed = false;
-
-  endRun("reset");         // ✅ NEW
-  clearRun();              // ✅ NEW (fresh start)
-
-  clearChallengeStatus?.();
-  saveChallengeCompleted?.(false);
-
-  wipeChallengeWalletOnly();
-
-  challengeActive = false;
-  CHALLENGE.active = false;
-  saveChallengeActive(false);
-
-  balance = 0;
-  updateBalanceDisplay?.();
-
-  openModal?.(challengeModal);
-  renderTierSummary?.();
-  showChallengeResetIfNeeded?.();
-
-  toast?.("Reset ready — pick a tier to start again.");
 }
 
 // =========================
@@ -3476,6 +3520,11 @@ startRun(tier);
   showChallengeResetIfNeeded();
   setDefaultBetsIfEmpty();
 
+  if (selectedTier.locked) {
+  alert("This tier is currently invite only.");
+  return;
+}
+
   if (challengeMsg) challengeMsg.textContent = `Challenge started: ${tier.toUpperCase()}`;
 
   refreshChallengeHud();
@@ -3512,11 +3561,21 @@ challengeStartBtn?.addEventListener("click", async () => {
   startChallengeNow(tier);
 });
 
-if (challengeResetBtn && !challengeResetBtn._bound) {
-  challengeResetBtn._bound = true;
-  challengeResetBtn.addEventListener("click", () => {
-    resetChallengeRun(); // your existing logic
-    _mercyOn = false;
+const resetBtn = document.getElementById("resetBtn");
+
+if (resetBtn && !resetBtn._bound) {
+  resetBtn._bound = true;
+
+  resetBtn.addEventListener("click", () => {
+    const tier = getTier();
+
+    if (Date.now() > CHALLENGE.resetExpiresAt) {
+      toast?.("Reset expired.");
+      return;
+    }
+
+   window.RISX_openPayModalForTier(tier.key);
+   localStorage.setItem("risx_payment_intent", "restart");
   });
 }
 
@@ -3528,36 +3587,43 @@ if (challengeResetBtn && !challengeResetBtn._bound) {
   if (submitClaimBtn && !submitClaimBtn._bound) {
     submitClaimBtn._bound = true;
 
-    submitClaimBtn.addEventListener("click", () => {
-      const address = document
-        .getElementById("walletAddressInput")
-        ?.value
-        ?.trim();
+   submitClaimBtn.addEventListener("click", () => {
 
-      if (!address) {
-        alert("Enter a wallet address");
-        return;
-      }
+  const address = document
+    .getElementById("walletAddressInput")
+    ?.value
+    ?.trim();
 
-      const tierId = CHALLENGE.tier;
-      const tier = getTier();
+  if (!address) {
+    alert("Enter a wallet address");
+    return;
+  }
 
-      const payoutRequest = {
-        id: crypto.randomUUID(),
-        tier: tierId,
-        entryUsd: tier.entryUsd,
-        prizeUsd: tier.prizeUsd,
-        goalCredits: tier.goalCredits,
-        address,
-        status: "pending",
-        createdAt: Date.now()
-      };
+  const tierId = CHALLENGE.tier;
+  const tier = getTier();
 
-      console.log("💸 PAYOUT REQUEST", payoutRequest);
+  const payoutRequest = {
+    id: crypto.randomUUID(),
+    tier: tierId,
+    entryUsd: tier.entryUsd,
+    prizeUsd: tier.prizeUsd,
+    goalCredits: tier.goalCredits,
+    address,
+    status: "pending",
+    createdAt: Date.now()
+  };
 
-      document.getElementById("claimModal")?.classList.remove("open");
-      alert("Claim submitted. Payout pending.");
-    });
+  challengeState.status = "pending";
+
+  submitClaimBtn.disabled = true;
+  submitClaimBtn.textContent = "Claim Submitted";
+
+  console.log("💸 PAYOUT REQUEST", payoutRequest);
+
+  document.getElementById("claimModal")?.classList.remove("open");
+
+  alert("Claim submitted. Payout pending.");
+  });
   }
 
   // -----------------------------
