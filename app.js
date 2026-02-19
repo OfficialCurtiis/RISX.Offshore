@@ -1674,8 +1674,6 @@ function getBucketIndexFromFinalX(finalXBoardSpace) {
 }
 
 async function dropPlinkoBall() {
-  if (challengeState?.status !== "active") return;
-  if (!CHALLENGE?.active) return; 
 
   // allow multiple balls; optionally cap spam
   const MAX_IN_FLIGHT = 8;
@@ -2300,8 +2298,6 @@ function generateMines(mineCount) {
 }
 
 function startMinesRound() {
-  if (challengeState?.status !== "active") return;
-  if (!CHALLENGE?.active) return;
  
   if (gameActive) return;
 
@@ -2343,8 +2339,9 @@ function startMinesRound() {
   strategyMessageEl.textContent = "";
 
   resetMinesGridVisual();
-  resetMinesResultCard();
   setMinesGridEnabled(true);
+  resetMinesResultCard();
+  resetMinesRound();
 
   startGameBtn.disabled = true;
   cashOutBtn.disabled = false;
@@ -2680,8 +2677,6 @@ function crashStep(timestamp) {
 }
 
 function startCrashRound() {
-  if (challengeState?.status !== "active") return;
-  if (!CHALLENGE?.active) return;
   if (crashRoundActive) return;
 
   const marker = document.getElementById("crashCashoutMarker");
