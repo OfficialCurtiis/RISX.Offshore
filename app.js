@@ -2300,6 +2300,8 @@ function generateMines(mineCount) {
 }
 
 function startMinesRound() {
+  if (challengeState?.status !== "active") return;
+  if (!CHALLENGE?.active) return;
  
   if (gameActive) return;
 
@@ -2341,9 +2343,8 @@ function startMinesRound() {
   strategyMessageEl.textContent = "";
 
   resetMinesGridVisual();
-  setMinesGridEnabled(true);
   resetMinesResultCard();
-  resetMinesRound();
+  setMinesGridEnabled(true);
 
   startGameBtn.disabled = true;
   cashOutBtn.disabled = false;
