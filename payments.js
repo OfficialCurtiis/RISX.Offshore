@@ -199,6 +199,15 @@ function handleConfirmed(resp) {
     return;
   }
 
+  const pending = getPendingPayment?.();
+  const intent = pending?.intent || "entry";
+
+  if (intent === "restart") {
+    window.completeReset?.();
+  } else {
+    window.RISX_startChallengeFromPayment?.(activeTierKey);
+  }
+
   localStorage.setItem("risx_unlock_token", resp.unlock_token);
   localStorage.setItem("risx_unlock_tier", resp.tierKey);
 

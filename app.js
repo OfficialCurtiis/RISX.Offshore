@@ -452,8 +452,8 @@ const CHALLENGE = {
 };
 
 function getTier() {
-  const key = challengeTierSelected || CHALLENGE.tier || "beginner";
-  return CHALLENGE_TIERS[key] || CHALLENGE_TIERS.beginner;
+  const tierKey = challengeTierSelected || CHALLENGE.tier || "beginner";
+  return CHALLENGE_TIERS[tierKey] || CHALLENGE_TIERS.beginner;
 }
 
 function pct(n){ return Math.round((Number(n)||0) * 100); }
@@ -658,21 +658,20 @@ function refreshChallengeHud() {
   });
 }
 
- function completeReset() {
-  if (challengeState.status !== "failed") return;
+  function completeReset() {
+    if (challengeState.status !== "failed") return;
 
-  challengeFailed = false;
+    CHALLENGE.resetExpiresAt = null;
 
-  CHALLENGE.active = true;
-  challengeActive = true;
+    challengeState.status = "active";
+    CHALLENGE.active = true;
+    challengeActive = true;
 
-  challengeState.status = "active";
+    closeModal?.(failModal);
+    lockAppUI?.(false);
 
-  closeModal?.(failModal);
-  lockAppUI?.(false);
-
-  startChallenge();
-}
+    startChallengeNow(CHALLENGE.tier);
+  }
 
 function risxConfirm({ title = "Confirm", body = "", okText = "OK", cancelText = "Cancel" } = {}) {
   return new Promise((resolve) => {
@@ -3498,46 +3497,51 @@ challengeTier?.addEventListener("change", () => {
 });
 
 function startChallengeNow(tier) {
-startRun(tier);
+  startRun(tier);
 
+  // set selected tier first (so getTier() always matches)
   challengeTierSelected = tier;
   CHALLENGE.tier = tier;
+
+  const t = getTier();
+
+  if (t.locked) {
+    alert("This tier is currently invite only.");
+    return;
+  }
+
+  challengeState.status = "active";
+  CHALLENGE.active = true;
+  challengeActive = true;
+
   saveChallengeState?.();
   setChallengeStatus("active");
 
-  // keep if you want v1 always-on gating
   CHALLENGE.enabled = true;
 
-  CHALLENGE.active = true;
-  challengeActive = true;
   saveChallengeActive(true);
   challengeCompleted = false;
 
   setChallengeWalletUI();
   setActiveWallet(CHALLENGE_WALLET_ID);
 
-  // starting credits for the tier
-  const t = getTier();
   balance = Number(t.startCredits || 0);
   _lastBalanceForMercy = Number(balance || 0);
   _mercyOn = false;
+
   updateBalanceDisplay?.();
   persistActiveWalletState?.();
   saveChallengeCompleted(false);
+
   showChallengeResetIfNeeded();
   setDefaultBetsIfEmpty();
-
-  if (selectedTier.locked) {
-  alert("This tier is currently invite only.");
-  return;
-}
 
   if (challengeMsg) challengeMsg.textContent = `Challenge started: ${tier.toUpperCase()}`;
 
   refreshChallengeHud();
   closeModal(challengeModal);
   lockAppUI(false);
-  }
+}
 
   window.RISX_startChallengeFromPayment = async (tier) => {
   closeModal(challengeModal);
@@ -3551,7 +3555,7 @@ startRun(tier);
   startChallengeNow(tier);
   };
 
-challengeStartBtn?.addEventListener("click", async () => {
+  challengeStartBtn?.addEventListener("click", async () => {
   const tier = challengeTier?.value || "beginner";
 
   const ok = await hasValidUnlockForTier(tier);
@@ -3574,15 +3578,16 @@ if (resetBtn && !resetBtn._bound) {
   resetBtn._bound = true;
 
   resetBtn.addEventListener("click", () => {
-    const tier = getTier();
+  const tierKey = challengeTierSelected || CHALLENGE.tier || "beginner";
+  const t = getTier();
 
-    if (Date.now() > CHALLENGE.resetExpiresAt) {
-      toast?.("Reset expired.");
-      return;
-    }
+  if (Date.now() > CHALLENGE.resetExpiresAt) {
+    toast?.("Reset expired.");
+    return;
+  }
 
-   window.RISX_openPayModalForTier(tier.key);
-   localStorage.setItem("risx_payment_intent", "restart");
+  localStorage.setItem("risx_payment_intent", "restart"); // ✅ first
+  window.RISX_openPayModalForTier?.(tierKey);            // ✅ use tierKey
   });
 }
 
