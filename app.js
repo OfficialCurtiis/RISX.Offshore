@@ -2414,6 +2414,8 @@ function showMinesResultCard({ outcome, multiplier = 1, winAmount = 0 }) {
 }
 
 function onMinesCellClick(e) {
+
+  console.log("CLICK gameActive:", gameActive);
   if (!gameActive) return;
 
   const cell = e.currentTarget;
