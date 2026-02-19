@@ -2341,7 +2341,6 @@ function startMinesRound() {
   resetMinesGridVisual();
   setMinesGridEnabled(true);
   resetMinesResultCard();
-  resetMinesRound();
 
   startGameBtn.disabled = true;
   cashOutBtn.disabled = false;
