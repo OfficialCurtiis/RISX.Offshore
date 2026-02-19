@@ -2300,8 +2300,6 @@ function generateMines(mineCount) {
 }
 
 function startMinesRound() {
-  if (challengeState?.status !== "active") return;
-  if (!CHALLENGE?.active) return;
  
   if (gameActive) return;
 
