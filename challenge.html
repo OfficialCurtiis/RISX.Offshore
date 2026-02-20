@@ -135,7 +135,7 @@
       <div class="game-arena game-arena--mines">
       <div class="mines-grid"></div>
 
-      <!-- RESULT CARD (now correctly centered) -->
+      <!-- RESULT CARD  -->
       <div id="minesResultCard" class="mines-result-card hidden">
         <div id="minesResultTitle" class="mines-result-title">Round</div>
         <div class="mines-result-mult">
@@ -709,6 +709,27 @@
       <div style="padding:12px; border-radius:12px; background: rgba(29,242,127,.12); border: 1px solid rgba(29,242,127,.35);">
         ✅ Tier unlocked. You can start the challenge now.
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- =========================
+       FAIL MODAL
+  ========================== -->
+<div id="failModal" class="modal fail-modal" aria-hidden="true">
+  <div class="modal-card fail-card">
+    <h1 class="fail-title">CHALLENGE FAILED</h1>
+    <div class="fail-sub">Your run has been liquidated.</div>
+
+    <div class="fail-timer" id="resetTimer">Reset window: —</div>
+
+    <div class="modal-actions" style="margin-top:14px;">
+      <button id="resetBtn" class="btn primary" type="button">Restart (Discount)</button>
+      <button id="failCloseBtn" class="btn secondary" type="button">Close</button>
+    </div>
+
+    <div class="fail-warning">
+      Discount expires when the timer hits 0. After that, full entry price applies.
     </div>
   </div>
 </div>

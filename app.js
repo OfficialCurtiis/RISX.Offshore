@@ -18,6 +18,8 @@ let challengeFailed = false;
 let challengeTierSelected = "beginner";
 let _lastBalanceForMercy = 0;
 let ROUND_ACTIVE = false;
+let failModal;
+
 
 // SESSION STATS (not persisted)
 let sessionRounds = 0;
@@ -944,22 +946,22 @@ function startResetTimer() {
   const timerEl = document.getElementById("resetTimer");
   if (!timerEl) return;
 
-  const interval = setInterval(() => {
-    const remaining = CHALLENGE.resetExpiresAt - Date.now();
+  const tick = () => {
+    const remaining = (CHALLENGE.resetExpiresAt || 0) - Date.now();
 
     if (remaining <= 0) {
-      clearInterval(interval);
-      timerEl.innerHTML = "Reset expired. Full entry required.";
-      document.getElementById("resetBtn").disabled = true;
+      timerEl.textContent = "Reset expired. Full entry required.";
+      document.getElementById("resetBtn")?.setAttribute("disabled", "true");
       return;
     }
 
     const mins = Math.floor(remaining / 60000);
     const secs = Math.floor((remaining % 60000) / 1000);
+    timerEl.textContent = `Discount reset available: ${mins}:${String(secs).padStart(2, "0")}`;
+    setTimeout(tick, 1000);
+  };
 
-    timerEl.innerHTML =
-      `Reset available for ${mins}:${secs.toString().padStart(2, "0")}`;
-  }, 1000);
+  tick();
 }
 
 function getChallengeMaxBetForUI(gameKey) {
@@ -3272,6 +3274,13 @@ function initPlinko() {
 function init() {
   if (init._didBind) return;
   init._didBind = true;
+
+  failModal = document.getElementById("failModal");
+  const failCloseBtn = document.getElementById("failCloseBtn");
+
+  failCloseBtn?.addEventListener("click", () => {
+    closeModal?.(failModal);
+  });
 
   // ---- restore challenge state FIRST ----
   loadChallengeState(); 
