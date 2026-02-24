@@ -684,7 +684,6 @@ function risxConfirm({ title = "Confirm", body = "", okText = "OK", cancelText =
     const canBtn  = document.getElementById("risxModalCancel");
 
     if (!modal || !tEl || !bEl || !okBtn || !canBtn) {
-      // Fallback if modal isn't on this page
       resolve(confirm(`${title}\n\n${body}`));
       return;
     }
@@ -695,6 +694,11 @@ function risxConfirm({ title = "Confirm", body = "", okText = "OK", cancelText =
     canBtn.textContent = cancelText;
 
     const close = (val) => {
+      // ✅ Fix ARIA warning: don't hide a modal while something inside it still has focus
+      if (modal.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
+
       modal.classList.remove("open");
       modal.setAttribute("aria-hidden", "true");
       cleanup();
@@ -2415,7 +2419,6 @@ function showMinesResultCard({ outcome, multiplier = 1, winAmount = 0 }) {
 }
 
 function onMinesCellClick(e) {
- console.log("CLICK - gameActive:", gameActive);
 
   if (!gameActive) return;
 
