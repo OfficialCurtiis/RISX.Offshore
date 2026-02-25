@@ -6,8 +6,9 @@ export default async function handler(req, res) {
     const apiKey = process.env.NOWPAYMENTS_API_KEY;
     if (!apiKey) return res.status(500).json({ error: "Missing NOWPAYMENTS_API_KEY on server" });
 
-    const { tierKey, payCurrency, intent = "entry" } = req.body || {};
-    const payCur = String(payCurrency || currency || "usdcsol").toLowerCase();
+    // ✅ Parse body first, then derive payCur
+    const { tierKey, payCurrency, currency: bodyCurrency, intent = "entry" } = req.body || {};
+    const payCur = String(payCurrency || bodyCurrency || "usdcsol").toLowerCase();
     if (!tierKey) return res.status(400).json({ error: "Missing tierKey" });
 
     // LOCK PRICES SERVER-SIDE (prevents client tampering)
@@ -22,18 +23,17 @@ export default async function handler(req, res) {
 
     const priceUsd = (intent === "restart") ? tier.restartUsd : tier.entryUsd;
     const allowed = new Set(["btc", "ltc", "trx", "sol", "usdtsol", "usdcsol"]);
-    const currency = (payCurrency || "usdcsol").toLowerCase();
-    if (!allowed.has(currency)) return res.status(400).json({ error: "Invalid payCurrency" });
+    if (!allowed.has(payCur)) return res.status(400).json({ error: "Invalid payCurrency" });
 
     const order_id = `risx_${tierKey}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 
-    const payload = {
-      price_amount: priceUsd,
-      price_currency: payCur,
-      pay_currency: currency,
-      order_id,
-      order_description: `RISX ${tierKey} ${intent === "restart" ? "restart" : "entry"}`,
-    };
+   const payload = {
+  price_amount: priceUsd,
+  price_currency: "usd",
+  pay_currency: payCur,
+  order_id,
+  order_description: `RISX ${tierKey} ${intent === "restart" ? "restart" : "entry"}`,
+  };
 
     const r = await fetch("https://api.nowpayments.io/v1/payment", {
       method: "POST",
