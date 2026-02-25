@@ -3970,3 +3970,30 @@ body.modal-open {
   opacity: .75;
   font-size: 12px;
 }
+
+/* ===== FAIL MODAL: force true centering no matter how JS shows it ===== */
+#failModal.fail-modal{
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;                 /* hidden by default */
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0,0,0,.6);
+}
+
+/* If JS toggles .open */
+#failModal.fail-modal.open{
+  display: flex !important;
+}
+
+/* If JS uses aria-hidden instead (or you set it false) */
+#failModal.fail-modal[aria-hidden="false"]{
+  display: flex !important;
+}
+
+/* If some code sets display:block inline, this still centers the child */
+#failModal.fail-modal[style*="display: block"]{
+  display: flex !important;
+}

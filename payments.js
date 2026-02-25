@@ -87,39 +87,20 @@
     window.onbeforeunload = null;
     }
 
-function lockBodyScroll() {
-  // Save current scroll position
-  const y = window.scrollY || 0;
-  document.body.dataset.risxScrollY = String(y);
-
-  // Lock the body in place
-  document.body.style.position = "fixed";
-  document.body.style.top = `-${y}px`;
-  document.body.style.left = "0";
-  document.body.style.right = "0";
-  document.body.style.width = "100%";
-}
-
-function unlockBodyScroll() {
-  const y = Number(document.body.dataset.risxScrollY || "0");
-
-  // Restore body styles
-  document.body.style.position = "";
-  document.body.style.top = "";
-  document.body.style.left = "";
-  document.body.style.right = "";
-  document.body.style.width = "";
-  delete document.body.dataset.risxScrollY;
-
-  // Restore scroll position
-  window.scrollTo(0, y);
-}
-
-function openModal(tierKey) {
+function openModal(tierKey, intent = "entry") {
   activeTierKey = tierKey;
   activePaymentId = null;
 
-  tierLabel.textContent = `Tier: ${tierKey}`;
+  const t = CHALLENGE_TIERS[tierKey] || CHALLENGE_TIERS.beginner;
+  const usd = (intent === "restart") ? t.restartUsd : t.entryUsd;
+
+  // Update existing UI elements safely
+  const modalTitle = modal.querySelector("h2");
+  if (modalTitle) modalTitle.textContent = (intent === "restart") ? "Reset Challenge" : "Unlock Tier";
+
+  tierLabel.textContent =
+    `Tier: ${String(tierKey).toUpperCase()} • ${(intent === "restart") ? `Restart: $${usd}` : `Entry: $${usd}`}`;
+
   step2.style.display = "none";
   unlockedBox.style.display = "none";
   statusEl.textContent = "Waiting for payment…";
@@ -129,7 +110,6 @@ function openModal(tierKey) {
   if (manualMsgEl) manualMsgEl.textContent = "";
 
   setCreateButtonLabel(false);
-
   modal.style.display = "block";
 
   // ✅ Restore pending payment for this tier after refresh
@@ -156,10 +136,10 @@ function closeModal() {
     disableLeaveWarning();
 }
 
-  function stopPolling() {
+function stopPolling() {
     if (pollTimer) clearTimeout(pollTimer);
     pollTimer = null;
-  }
+}
 
   function setUnlocked(tierKey) {
     unlockedBox.style.display = "block";
@@ -169,15 +149,20 @@ function closeModal() {
     stopPolling();
   }
 
-function isUnlocked() {
-  return !!localStorage.getItem("risx_unlock_token");
+function isUnlocked(tierKey) {
+  const tok = localStorage.getItem("risx_unlock_token");
+  const tk  = localStorage.getItem("risx_unlock_tier");
+  return !!tok && (!tierKey || tk === tierKey);
 }
 
-  async function createPayment(tierKey, payCurrency) {
+  async function createPayment(tierKey, currency, intent = "entry") {
+    const t = CHALLENGE_TIERS[tierKey] || CHALLENGE_TIERS.beginner;
+    const usd = (intent === "restart") ? t.restartUsd : t.entryUsd;
+
     const r = await fetch("/api/create-payment", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tierKey, payCurrency })
+      body: JSON.stringify({ tierKey, usd, currency, intent })
     });
 
     const j = await r.json();
@@ -199,24 +184,25 @@ function handleConfirmed(resp) {
     return;
   }
 
-  const pending = getPendingPayment?.();
-  const intent = pending?.intent || "entry";
-
-  if (intent === "restart") {
-    window.completeReset?.();
-  } else {
-    window.RISX_startChallengeFromPayment?.(activeTierKey);
-  }
-
+  // Persist unlock (entry unlock token still useful)
   localStorage.setItem("risx_unlock_token", resp.unlock_token);
   localStorage.setItem("risx_unlock_tier", resp.tierKey);
 
-  activeTierKey = resp.tierKey;
+  const pending = getPendingPayment();
+  const intent = pending?.intent || "entry";
+  const tierKey = pending?.tierKey || resp.tierKey;
 
+  // mark UI unlocked/close modal first
+  activeTierKey = tierKey;
   setUnlocked(activeTierKey);
   closeModal();
 
-  window.RISX_startChallengeFromPayment?.(activeTierKey);
+  // ONE branch only
+  if (intent === "restart") {
+    window.RISX_completeReset?.(tierKey);
+  } else {
+    window.RISX_startChallengeFromPayment?.(tierKey);
+  }
 }
 
 function startPolling(paymentId) {
@@ -253,15 +239,14 @@ function startPolling(paymentId) {
 
     try {
       const payCurrency = currencySel.value;
-      const data = await createPayment(activeTierKey, payCurrency);
+      const intent = localStorage.getItem("risx_payment_intent") || "entry";
+      localStorage.removeItem("risx_payment_intent");
+
+      const data = await createPayment(activeTierKey, payCurrency, intent);
 
       activePaymentId = data.payment_id;
       if (payIdEl) payIdEl.textContent = data.payment_id;
       setCreateButtonLabel(true);
-    
-
-      const intent = localStorage.getItem("risx_payment_intent") || "entry";
-      localStorage.removeItem("risx_payment_intent");
 
         setPendingPayment({
           intent,
@@ -378,10 +363,12 @@ checkBtn?.addEventListener("click", async () => {
 
   // ------- Expose ONE function for your tier buttons -------
   window.RISX_openPayModalForTier = (tierKey) => {
-    if (isUnlocked(tierKey)) {
-      alert(`✅ ${tierKey} already unlocked.`);
-      return;
-    }
-    openModal(tierKey);
-  };
+  const intent = localStorage.getItem("risx_payment_intent") || "entry";
+  if (intent === "entry" && isUnlocked(tierKey)) {
+    toast?.(`✅ ${tierKey} already unlocked.`);
+    return;
+  }
+
+  openModal(tierKey, intent); // pass intent through
+};
 })();

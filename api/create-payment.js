@@ -6,21 +6,21 @@ export default async function handler(req, res) {
     const apiKey = process.env.NOWPAYMENTS_API_KEY;
     if (!apiKey) return res.status(500).json({ error: "Missing NOWPAYMENTS_API_KEY on server" });
 
-    const { tierKey, payCurrency } = req.body || {};
+    const { tierKey, payCurrency, intent = "entry" } = req.body || {};
+    const payCur = String(payCurrency || currency || "usdcsol").toLowerCase();
     if (!tierKey) return res.status(400).json({ error: "Missing tierKey" });
 
     // LOCK PRICES SERVER-SIDE (prevents client tampering)
     const TIERS = {
-      beginner: { entryUsd: 10 },
-      intermediate: { entryUsd: 25 },
-      pro: { entryUsd: 50 },
-    };
+  beginner: { entryUsd: 10, restartUsd: 7 },
+  intermediate: { entryUsd: 25, restartUsd: 18 },
+  pro: { entryUsd: 50, restartUsd: 35 },
+  };
 
     const tier = TIERS[tierKey];
     if (!tier) return res.status(400).json({ error: "Invalid tierKey" });
 
-    // Allowed pay currencies (use NOWPayments tickers)
-    // BTC, LTC, TRX, SOL, USDT Solana, USDC Solana
+    const priceUsd = (intent === "restart") ? tier.restartUsd : tier.entryUsd;
     const allowed = new Set(["btc", "ltc", "trx", "sol", "usdtsol", "usdcsol"]);
     const currency = (payCurrency || "usdcsol").toLowerCase();
     if (!allowed.has(currency)) return res.status(400).json({ error: "Invalid payCurrency" });
@@ -28,13 +28,11 @@ export default async function handler(req, res) {
     const order_id = `risx_${tierKey}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 
     const payload = {
-      price_amount: tier.entryUsd,
-      price_currency: "usd",
+      price_amount: priceUsd,
+      price_currency: payCur,
       pay_currency: currency,
       order_id,
-      order_description: `RISX ${tierKey} entry`,
-      // Optional: add later if you want webhooks
-      // ipn_callback_url: `${process.env.PUBLIC_BASE_URL}/api/nowpayments-ipn`,
+      order_description: `RISX ${tierKey} ${intent === "restart" ? "restart" : "entry"}`,
     };
 
     const r = await fetch("https://api.nowpayments.io/v1/payment", {
