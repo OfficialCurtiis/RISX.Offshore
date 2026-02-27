@@ -4065,3 +4065,40 @@ body.modal-open {
 .modal .modal-body{
   background: transparent;               /* keep body clean */
 }
+
+/* ===== Modal sizing tweaks ===== */
+
+/* Rules: wider */
+#rulesModal .modal-card{
+  width: min(1000px, 94vw);
+}
+
+/* Rules: allow content to breathe, only scroll if truly needed */
+#rulesModal .modal-body{
+  max-height: none;
+  overflow: visible;
+}
+
+/* On small screens, still allow scrolling */
+@media (max-width: 720px){
+  #rulesModal .modal-body{
+    max-height: 70vh;
+    overflow: auto;
+  }
+}
+
+/* Support & Fair Play: clean centered size */
+#supportModal .modal-card,
+#fairnessModal .modal-card{
+  width: min(720px, 94vw);
+}
+
+.modal.open{
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+#rulesModal h3{ font-size: 14px; margin: 14px 0 8px; }
+#rulesModal ul{ margin: 0 0 10px 18px; }
+#rulesModal li{ margin: 6px 0; opacity: .9; }
