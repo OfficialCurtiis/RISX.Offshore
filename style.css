@@ -4049,3 +4049,19 @@ body.modal-open {
 #failModal.fail-modal[style*="display: block"]{
   display: flex !important;
 }
+
+/* ===== MODALS: make cards opaque so text behind doesn't bleed through ===== */
+.modal {
+  background: rgba(0,0,0,.72);          /* darken the page behind */
+  backdrop-filter: blur(8px);
+}
+
+.modal .modal-card{
+  background: rgba(10,12,18,.96) !important; /* solid card */
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 10px 40px rgba(0,0,0,.65);
+}
+
+.modal .modal-body{
+  background: transparent;               /* keep body clean */
+}
