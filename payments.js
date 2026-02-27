@@ -111,6 +111,7 @@ function openModal(tierKey, intent = "entry") {
 
   setCreateButtonLabel(false);
   modal.style.display = "block";
+  lockBodyScroll();
 
   // ✅ Restore pending payment for this tier after refresh
   const pending = getPendingPayment();
@@ -166,7 +167,7 @@ function isUnlocked(tierKey) {
     });
 
     const j = await r.json();
-    if (!r.ok) throw new Error(j?.error || "Create payment failed");
+    if (!r.ok) throw new Error(j?.details ? `${j.error}: ${j.details}` : (j?.error || "Create payment failed"));
 
     return j; // contains payment_id, pay_amount, pay_address, etc.
   }

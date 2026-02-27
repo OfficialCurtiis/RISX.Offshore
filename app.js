@@ -936,6 +936,8 @@ function challengeFail(reason) {
   challengeState.status = "failed";
 
   CHALLENGE.resetExpiresAt = Date.now() + (10 * 60 * 1000);
+  localStorage.setItem("risx_restart_required", "1");
+  localStorage.setItem("risx_reset_expires_at", String(CHALLENGE.resetExpiresAt));
 
   refreshChallengeHud();
   openModal?.(failModal);
@@ -3282,8 +3284,17 @@ function init() {
   const failCloseBtn = document.getElementById("failCloseBtn");
 
   failCloseBtn?.addEventListener("click", () => {
-    closeModal?.(failModal);
-  });
+  // Clear any active run state so they don't come back stuck
+  try {
+    saveChallengeActive(false);
+    CHALLENGE.active = false;
+    challengeActive = false;
+    clearRun?.();
+  } catch {}
+
+  // Go back to the beginning (tier modal will open on load if you coded that)
+  window.location.href = "challenge.html";
+});
 
   // ---- restore challenge state FIRST ----
   loadChallengeState(); 
@@ -3553,23 +3564,40 @@ function startChallengeNow(tier) {
   window.RISX_startChallengeFromPayment = async (tier) => {
   closeModal(challengeModal);
 
+  // If they failed and are in reset window, entry/unlock doesn't matter — force restart payment
+  if (restartRequiredNow()) {
+    localStorage.setItem("risx_payment_intent", "restart");
+    window.RISX_openPayModalForTier?.(tier);
+    return;
+  }
+
   const ok = await hasValidUnlockForTier(tier);
   if (!ok) {
+    localStorage.setItem("risx_payment_intent", "entry");
     window.RISX_openPayModalForTier?.(tier);
     return;
   }
 
   startChallengeNow(tier);
-  };
+};
 
   challengeStartBtn?.addEventListener("click", async () => {
   const tier = challengeTier?.value || "beginner";
 
+  // ✅ Gate: if they failed and are within reset window, force restart payment
+  if (restartRequiredNow()) {
+    closeModal(challengeModal);
+    localStorage.setItem("risx_payment_intent", "restart");
+    window.RISX_openPayModalForTier?.(tier);
+    toast?.("Restart required — pay reset to start again.");
+    return;
+  }
+
   const ok = await hasValidUnlockForTier(tier);
   if (!ok) {
     closeModal(challengeModal);
+    localStorage.setItem("risx_payment_intent", "entry");
     window.RISX_openPayModalForTier?.(tier);
-
     if (challengeMsg) {
       challengeMsg.textContent = `Tier locked: ${tier.toUpperCase()} — complete payment to unlock.`;
     }
@@ -3596,6 +3624,13 @@ if (resetBtn && !resetBtn._bound) {
   localStorage.setItem("risx_payment_intent", "restart"); // ✅ first
   window.RISX_openPayModalForTier?.(tierKey);            // ✅ use tierKey
   });
+}
+
+function restartRequiredNow() {
+  const required = localStorage.getItem("risx_restart_required") === "1";
+  const expiresAt = Number(localStorage.getItem("risx_reset_expires_at") || CHALLENGE.resetExpiresAt || 0);
+  const stillInWindow = expiresAt && Date.now() <= expiresAt;
+  return required && stillInWindow;
 }
 
   // -----------------------------
