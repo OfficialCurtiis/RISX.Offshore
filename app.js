@@ -3488,8 +3488,6 @@ function init() {
 
   // FOOTER LINKS //
 
- document.getElementById("yearNow").textContent = String(new Date().getFullYear());
-
 document.querySelectorAll('[data-open]').forEach(btn => {
   btn.addEventListener('click', () => {
     const id = btn.getAttribute('data-open');
