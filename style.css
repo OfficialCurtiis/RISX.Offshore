@@ -4102,3 +4102,17 @@ body.modal-open {
 #rulesModal h3{ font-size: 14px; margin: 14px 0 8px; }
 #rulesModal ul{ margin: 0 0 10px 18px; }
 #rulesModal li{ margin: 6px 0; opacity: .9; }
+
+.support-inline{
+  text-align:center;
+  margin: 10px 0 18px;
+  font-size: 12px;
+  opacity: .7;
+}
+.support-inline a{
+  color: rgba(140,255,190,.9);
+  text-decoration: none;
+}
+.support-inline a:hover{
+  text-decoration: underline;
+}

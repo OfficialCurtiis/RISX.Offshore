@@ -3511,31 +3511,35 @@ document.getElementById("copySupportEmail")?.addEventListener("click", async () 
   try { await navigator.clipboard.writeText(email); } catch {}
 });
 
-document.getElementById("supportCopyReport")?.addEventListener("click", async () => {
+document.getElementById("supportSend")?.addEventListener("click", () => {
+  const to = "risx.challenge@gmail.com";
+  const userEmail = (document.getElementById("supportUserEmail")?.value || "").trim();
+  const payId = (document.getElementById("supportPayId")?.value || "").trim();
   const msg = (document.getElementById("supportMsg")?.value || "").trim();
-  const pay = (document.getElementById("supportPayId")?.value || "").trim();
-  const email = document.getElementById("supportEmail")?.value || "";
-  const report =
-`RISX Support Report
-Time: ${new Date().toISOString()}
+
+  if (!msg) {
+    const el = document.getElementById("supportToast");
+    if (el) el.textContent = "Please enter a message so we know what happened.";
+    return;
+  }
+
+  const subject = encodeURIComponent(`RISX Support ${payId ? `— Payment/Game ID: ${payId}` : ""}`);
+  const body = encodeURIComponent(
+`Support Request
+
+From: ${userEmail || "n/a"}
+Payment/Game ID: ${payId || "n/a"}
 Page: ${location.href}
-Tier: ${window?.CHALLENGE?.tier || "unknown"}
-Wallet: ${localStorage.getItem("RISX_ACTIVE_WALLET") || "n/a"}
-Payment ID: ${pay || "n/a"}
+Time: ${new Date().toISOString()}
 
 Message:
-${msg || "(no details provided)"}
-Contact: ${email}
-`;
+${msg}
+`
+  );
 
-  try {
-    await navigator.clipboard.writeText(report);
-    const el = document.getElementById("supportToast");
-    if (el) el.textContent = "Copied. Paste this into an email/DM to Support.";
-  } catch {
-    const el = document.getElementById("supportToast");
-    if (el) el.textContent = "Copy failed. Try manually selecting the text.";
-  }
+  window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
+  const el = document.getElementById("supportToast");
+  if (el) el.textContent = "Opening your email app…";
 });
 
 // =============================
