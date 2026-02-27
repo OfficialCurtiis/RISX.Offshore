@@ -3486,6 +3486,58 @@ function init() {
     btn.addEventListener("click", () => closeModal?.(adminModal))
   );
 
+  // FOOTER LINKS //
+
+ document.getElementById("yearNow").textContent = String(new Date().getFullYear());
+
+document.querySelectorAll('[data-open]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const id = btn.getAttribute('data-open');
+    const m = document.getElementById(id);
+    if (m) openModal(m);
+  });
+});
+
+document.querySelectorAll('[data-close]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const id = btn.getAttribute('data-close');
+    const m = document.getElementById(id);
+    if (m) closeModal(m);
+  });
+});
+
+document.getElementById("copySupportEmail")?.addEventListener("click", async () => {
+  const email = document.getElementById("supportEmail")?.value || "";
+  try { await navigator.clipboard.writeText(email); } catch {}
+});
+
+document.getElementById("supportCopyReport")?.addEventListener("click", async () => {
+  const msg = (document.getElementById("supportMsg")?.value || "").trim();
+  const pay = (document.getElementById("supportPayId")?.value || "").trim();
+  const email = document.getElementById("supportEmail")?.value || "";
+  const report =
+`RISX Support Report
+Time: ${new Date().toISOString()}
+Page: ${location.href}
+Tier: ${window?.CHALLENGE?.tier || "unknown"}
+Wallet: ${localStorage.getItem("RISX_ACTIVE_WALLET") || "n/a"}
+Payment ID: ${pay || "n/a"}
+
+Message:
+${msg || "(no details provided)"}
+Contact: ${email}
+`;
+
+  try {
+    await navigator.clipboard.writeText(report);
+    const el = document.getElementById("supportToast");
+    if (el) el.textContent = "Copied. Paste this into an email/DM to Support.";
+  } catch {
+    const el = document.getElementById("supportToast");
+    if (el) el.textContent = "Copy failed. Try manually selecting the text.";
+  }
+});
+
 // =============================
 // GAME WIRING
 // =============================

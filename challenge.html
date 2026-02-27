@@ -66,7 +66,7 @@
         <option value="LTC">LTC</option>
       </select>
       <div class="hint small" id="currencyNote">
-        Demo mode: balances are simulated and stored locally per wallet.
+       Balances are tracked per session. Challenge mode uses internal credits.
       </div>
     </div>
 
@@ -324,32 +324,30 @@
       ========================== -->
       <section class="risx-info">
         <div class="risx-info-inner">
-          <h2 class="info-title">How RISX Works (Demo)</h2>
+          <h2 class="info-title">How RISX Works</h2>
           <p class="info-subtitle">
-            RISX is a <strong>play-credits demo</strong>. No real money, no deposits, no withdrawals.
+            One run. <strong>No top-ups.</strong> Hit the target or get liquidated.
           </p>
 
-          <div class="info-grid">
-            <div class="info-card">
-              <h3>Credits & Balance</h3>
-            </div>
+          <div class="info-card">
+          <h3>Credits & Balance</h3>
+          <p class="info-text">
+            Start with a fixed stack. No top-ups. Your balance is your oxygen — protect it, grow it, hit the goal.
+          </p>
+        </div>
 
             <div class="info-card">
               <h3>Fair Play & Odds</h3>
-              <ul>
-                <li>Mines uses odds-based multipliers.</li>
-                <li>Crash uses a hidden crash point.</li>
-                <li>Plinko uses seeded deterministic decisions (provably fair).</li>
-              </ul>
+              <p class="info-text">
+                Deterministic outcomes from seeded logic. No balance-based rigging. No hidden boosts.
+              </p>
             </div>
 
             <div class="info-card">
               <h3>Disclaimer</h3>
-              <ul>
-                <li>This is a prototype.</li>
-                <li>No real wagering or payouts.</li>
-                <li>Built for UX + math testing.</li>
-              </ul>
+              <p class="info-text">
+                Play smart. Payments unlock access. Confirmations may take time. If something looks off, hit Support with your Payment ID.
+              </p>
             </div>
           </div>
         </div>
@@ -358,7 +356,17 @@
     </main>
 
     <footer class="site-footer">
-      RISX • Demo build
+      <div class="footer-bar">
+  <div class="footer-left">RISX • Rules • Fair Play • Support</div>
+
+  <div class="footer-links">
+    <button class="footer-link" data-open="rulesModal" type="button">Rules</button>
+    <button class="footer-link" data-open="fairnessModal" type="button">Fair Play</button>
+    <button class="footer-link" data-open="supportModal" type="button">Support</button>
+  </div>
+
+  <div class="footer-right">© <span id="yearNow"></span></div>
+</div>
     </footer>
   </div>
 
@@ -475,7 +483,7 @@
 
       <div class="modal-body">
         <div class="redeem-note">
-          Demo flow: choose a currency, then copy the address. In production you’d generate addresses per user and confirm on-chain.
+          Deposits are currently limited. If you have an approved wallet, follow the on-screen instructions.
         </div>
 
         <div class="field">
@@ -525,7 +533,8 @@
 
       <div class="modal-body">
         <div class="redeem-note">
-          Demo flow: submit a request. Operator can approve in Admin Ops.
+          Withdrawals are reviewed for security. Submit a request and track status here.
+          
         </div>
 
         <div class="field">
@@ -570,7 +579,7 @@
 
       <div class="modal-body">
         <div class="redeem-note">
-          <b>Operator tools (demo).</b> Mark deposits/withdrawals as PAID to update balances.
+          <b>Operator console. Review and process deposit/withdraw requests.
         </div>
 
         <div class="admin-topbar">
@@ -713,9 +722,127 @@
   </div>
 </div>
 
+<!--==========================
+       SUPPORT MODAL          
+============================== -->
+
+<div id="supportModal" class="modal" aria-hidden="true">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div class="modal-title">Support</div>
+      <button class="modal-x" data-close="supportModal" type="button">×</button>
+    </div>
+
+    <div class="modal-body">
+      <p style="opacity:.85; margin-top:0;">
+        For help, payouts, or payment issues, Message us and include your Payment ID (if applicable).
+      </p>
+
+      <div class="field">
+        <label>Contact</label>
+        <div style="display:flex; gap:10px;">
+          <input id="supportEmail" type="text" value="RISX.CHALLENGE@gmail.com" readonly />
+          <button id="copySupportEmail" class="btn secondary" type="button">Copy</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Payment ID (if applicable)</label>
+        <input id="supportPayId" type="text" placeholder="e.g., 1234567890" />
+      </div>
+
+      <div class="field">
+        <label>Message</label>
+        <textarea id="supportMsg" rows="4" placeholder="What happened? Include steps/screenshots if possible."></textarea>
+      </div>
+
+      <div class="modal-actions">
+        <button id="supportCopyReport" class="btn primary" type="button">Copy Support Report</button>
+        <button class="btn secondary" data-close="supportModal" type="button">Close</button>
+      </div>
+
+      <div id="supportToast" style="margin-top:10px; opacity:.75; font-size:12px;"></div>
+    </div>
+  </div>
+  </div>
+
+  <!-- =========================
+       Rules modal
+  ========================== -->
+
+  <div id="rulesModal" class="modal" aria-hidden="true">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div class="modal-title">Rules</div>
+      <button class="modal-x" data-close="rulesModal" type="button">×</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="rules-block">
+        <h3>Challenge Structure</h3>
+        <ul>
+          <li>One run. No top-ups. Hit the goal or your run ends.</li>
+          <li>Start credits, goal, and limits are defined by the selected tier.</li>
+          <li>Max bet (Mines & Crash): 15% of balance • Max bet (Plinko): 10% of balance.</li>
+          <li>Mines cashouts capped at 4.5x. Plinko can hit up to 40x (tier-dependent).</li>
+        </ul>
+
+        <h3>Restart</h3>
+        <ul>
+          <li>If you fail, a restart window may be available at a discounted price.</li>
+          <li>When the timer expires, the standard restart price applies.</li>
+        </ul>
+
+        <h3>Payments & Confirmations</h3>
+        <ul>
+          <li>Payments are on-chain and may require confirmations before access is granted.</li>
+          <li>If paid but not unlocked, use your Payment ID in Support.</li>
+        </ul>
+
+        <h3>Fair Play</h3>
+        <ul>
+          <li>Outcomes are generated deterministically from seeded logic (provably fair-style).</li>
+          <li>Abuse, automation, or exploit attempts may result in access being revoked.</li>
+        </ul>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn primary" data-close="rulesModal" type="button">Got it</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =========================
+       FAIRNESS MODAL
+  ========================== -->
+
+  <div id="fairnessModal" class="modal" aria-hidden="true">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div class="modal-title">Fair Play</div>
+      <button class="modal-x" data-close="fairnessModal" type="button">×</button>
+    </div>
+
+    <div class="modal-body">
+      <p style="opacity:.85; margin-top:0;">
+        RISX uses seeded, deterministic logic for outcome generation. Results are not influenced by wallet balance or user identity.
+      </p>
+      <p style="opacity:.75;">
+        If something looks off, contact Support with your session details and (if applicable) Payment ID.
+      </p>
+
+      <div class="modal-actions">
+        <button class="btn primary" data-close="fairnessModal" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- =========================
        FAIL MODAL
   ========================== -->
+
 <div id="failModal" class="modal fail-modal" aria-hidden="true">
   <div class="modal-card fail-card">
     <h1 class="fail-title">CHALLENGE FAILED</h1>
