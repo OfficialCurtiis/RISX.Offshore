@@ -524,6 +524,7 @@ function renderTierSummary() {
 
     </div>
   `;
+  renderChallengeParams();
 }
 
 // =========================
@@ -2995,6 +2996,61 @@ function setAdminTab(tab){
   adminViewUsers?.classList.toggle("hidden", tab!=="users");
 }
 
+function pctText(n){
+  return `${Math.round((Number(n) || 0) * 100)}%`;
+}
+
+function renderChallengeParams(){
+  const el = document.getElementById("challengeParams");
+  if (!el) return;
+
+  const tierKey = (challengeTierSelected || CHALLENGE.tier || "beginner");
+  const t = CHALLENGE_TIERS[tierKey] || CHALLENGE_TIERS.beginner;
+
+  const lockedLine = t.locked
+    ? `<div class="param-h">Status: <b>LOCKED</b> — ${t.lockReason || "Invite Only"}</div>`
+    : "";
+
+  el.innerHTML = `
+    <div class="param-card">
+      <div class="param-k">Tier</div>
+      <div class="param-v">${tierKey.toUpperCase()}</div>
+      <div class="param-h">Entry: $${t.entryUsd} • Restart: $${t.restartUsd} • Prize: $${t.prizeUsd}</div>
+      ${lockedLine}
+    </div>
+
+    <div class="param-card">
+      <div class="param-k">Run</div>
+      <div class="param-v">${t.startCredits} → ${t.goalCredits}</div>
+      <div class="param-h">Start credits → Goal credits</div>
+    </div>
+
+    <div class="param-card">
+      <div class="param-k">Max Bet Caps</div>
+      <div class="param-v">Mines: ${pctText(t.minesMaxBetPct)} • Crash: ${pctText(t.crashMaxBetPct)}</div>
+      <div class="param-h">Plinko: ${pctText(t.plinkoMaxBetPct)} of balance</div>
+    </div>
+
+    <div class="param-card">
+      <div class="param-k">Mines Rules</div>
+      <div class="param-v">Min mines: ${t.minesMin}+</div>
+      <div class="param-h">Cashout cap: ${t.minesMaxCashoutMult}x</div>
+    </div>
+
+    <div class="param-card">
+      <div class="param-k">Plinko</div>
+      <div class="param-v">Max: ${t.plinkoMaxMult}x</div>
+      <div class="param-h">Tier-dependent payout ceiling</div>
+    </div>
+
+    <div class="param-card">
+      <div class="param-k">Mercy Mode</div>
+      <div class="param-v">All-in at ≤ ${Number(t.mercyAllInAt || 0)}</div>
+      <div class="param-h">When balance drops below this line, MAX becomes full balance.</div>
+    </div>
+  `;
+}
+
 function renderAdminList(list, kind){
   if (!list.length) return `<div class="redeem-empty">Nothing here.</div>`;
   return list.map(r => `
@@ -3572,7 +3628,7 @@ async function hasValidUnlockForTier(tier) {
 
 challengeTier?.addEventListener("change", () => {
   challengeTierSelected = challengeTier.value;
-  renderTierSummary();
+  renderTierSummary(); // this already calls renderChallengeParams()
 });
 
 function startChallengeNow(tier) {
@@ -3614,6 +3670,7 @@ function startChallengeNow(tier) {
 
   showChallengeResetIfNeeded();
   setDefaultBetsIfEmpty();
+  renderChallengeParams();
 
   if (challengeMsg) challengeMsg.textContent = `Challenge started: ${tier.toUpperCase()}`;
 
@@ -3832,6 +3889,7 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
 
   initPlinko?.();
 
+  renderChallengeParams();
   refreshChallengeHud();
   window.updateSupportIdPill?.();
 
