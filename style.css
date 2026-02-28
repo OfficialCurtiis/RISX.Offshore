@@ -4116,3 +4116,22 @@ body.modal-open {
 .support-inline a:hover{
   text-decoration: underline;
 }
+
+.support-id-pill{
+  position: absolute;
+  right: 18px;
+  top: 14px;
+  font-size: 12px;
+  opacity: .55;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(0,0,0,.25);
+}
+
+.support-note{ opacity:.85; margin-top:0; }
+.support-row{ margin:12px 0; }
+.support-label{ font-size:12px; opacity:.65; margin-bottom:6px; }
+.support-value{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.support-value span{ font-weight:700; opacity:.9; }
+.support-toast{ margin-top:10px; font-size:12px; opacity:.75; }

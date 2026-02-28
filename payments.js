@@ -115,19 +115,21 @@ function openModal(tierKey, intent = "entry") {
 
   // ✅ Restore pending payment for this tier after refresh
   const pending = getPendingPayment();
-  if (pending && pending.tierKey === tierKey && pending.payment_id) {
-    activePaymentId = pending.payment_id;
-    setCreateButtonLabel(true);
+if (pending && pending.tierKey === tierKey && pending.payment_id) {
+  activePaymentId = pending.payment_id;
+  localStorage.setItem("risx_last_payment_id", pending.payment_id); 
+  window.updateSupportIdPill?.();
 
-    step2.style.display = "block";
-    amountEl.textContent = `${pending.pay_amount} ${String(pending.pay_currency).toUpperCase()}`;
-    addressEl.textContent = pending.pay_address;
-    if (payIdEl) payIdEl.textContent = pending.payment_id;
+  setCreateButtonLabel(true);
+  step2.style.display = "block";
+  amountEl.textContent = `${pending.pay_amount} ${String(pending.pay_currency).toUpperCase()}`;
+  addressEl.textContent = pending.pay_address;
+  if (payIdEl) payIdEl.textContent = pending.payment_id;
 
-    statusEl.textContent = "Status: restoring… (checking every 2.5s)";
-    enableLeaveWarning();
-    startPolling(activePaymentId);
-  }
+  statusEl.textContent = "Status: restoring… (checking every 2.5s)";
+  enableLeaveWarning();
+  startPolling(activePaymentId);
+ }
 }
 
 function closeModal() {
@@ -246,6 +248,11 @@ function startPolling(paymentId) {
       const data = await createPayment(activeTierKey, payCurrency, intent);
 
       activePaymentId = data.payment_id;
+      localStorage.setItem("risx_last_payment_id", data.payment_id);
+      window.updateSupportIdPill?.();
+
+      localStorage.setItem("risx_last_payment_tier", activeTierKey);
+      localStorage.setItem("risx_last_payment_intent", intent);
       if (payIdEl) payIdEl.textContent = data.payment_id;
       setCreateButtonLabel(true);
 

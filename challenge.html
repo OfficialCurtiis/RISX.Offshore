@@ -14,6 +14,7 @@
   <div class="logo-block">
     <div class="logo-text">RISX</div>
     <div class="logo-tagline">Where risk becomes reward.</div>
+    <div id="supportIdPill" class="support-id-pill">ID: —</div>
   </div>
 
   <!-- CENTER -->
@@ -736,9 +737,38 @@
     </div>
 
     <div class="modal-body">
-      <p style="opacity:.85; margin-top:0;">
-        For help, payouts, or payment issues, Message us and include your Payment ID (if applicable).
-      </p>
+      <p class="support-note">
+  Contact support anytime. Include your <b>Payment/Game ID</b> and a short description.
+  Screenshots help.
+</p>
+
+<div class="support-row">
+  <div class="support-label">Support Email</div>
+  <div class="support-value">
+    <span id="supportEmailText">risx.challenge@gmail.com</span>
+    <button id="copySupportEmail" class="btn secondary" type="button">Copy</button>
+  </div>
+</div>
+
+<div class="support-row">
+  <div class="support-label">Payment/Game ID</div>
+  <div class="support-value">
+    <span id="supportPaymentIdText">—</span>
+    <button id="copySupportId" class="btn secondary" type="button">Copy</button>
+  </div>
+</div>
+
+<div class="field">
+  <label>Message (optional)</label>
+  <textarea id="supportMsg" rows="4" placeholder="What happened? What did you click? What did you expect?"></textarea>
+</div>
+
+  <div class="modal-actions">
+    <a id="emailSupportLink" class="btn primary" href="#" target="_blank" rel="noreferrer">Email Support</a>
+    <button class="btn secondary" data-close="supportModal" type="button">Close</button>
+  </div>
+
+  <div id="supportToast" class="support-toast"></div>
 
       <div class="field">
         <label>Contact</label>

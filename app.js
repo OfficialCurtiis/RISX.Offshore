@@ -773,6 +773,13 @@ function mercyConfirm(msg, onConfirm) {
   };
 }
 
+window.updateSupportIdPill = function () {
+  const el = document.getElementById("supportIdPill");
+  if (!el) return;
+  const pid = localStorage.getItem("risx_last_payment_id") || "—";
+  el.textContent = `ID: ${pid}`;
+};
+
 function loadChallengeState() {
   try {
     const isActive = localStorage.getItem("RISX_CH_ACTIVE") === "1";
@@ -3687,6 +3694,67 @@ function restartRequiredNow() {
   return required && stillInWindow;
 }
 
+function updateSupportIdPill(){
+  const el = document.getElementById("supportIdPill");
+  if (!el) return;
+  const pid = localStorage.getItem("risx_last_payment_id") || "—";
+  el.textContent = `ID: ${pid}`;
+}
+updateSupportIdPill();
+
+function getLastSupportId(){
+  // later you can expand to include a separate gameId if you add one
+  return localStorage.getItem("risx_last_payment_id") || "—";
+}
+
+function refreshSupportModal(){
+  const pid = getLastSupportId();
+  const pidEl = document.getElementById("supportPaymentIdText");
+  if (pidEl) pidEl.textContent = pid;
+
+  const link = document.getElementById("emailSupportLink");
+  if (link) {
+    const to = "risx.challenge@gmail.com";
+    const subject = encodeURIComponent(`RISX Support — ID: ${pid}`);
+    const body = encodeURIComponent(
+`Support Request
+
+ID: ${pid}
+Page: ${location.href}
+Time: ${new Date().toISOString()}
+
+Message:
+${(document.getElementById("supportMsg")?.value || "").trim()}
+`
+    );
+    link.href = `mailto:${to}?subject=${subject}&body=${body}`;
+  }
+}
+
+// When opening support modal, populate ID + mailto
+document.querySelector('[data-open="supportModal"]')?.addEventListener("click", () => {
+  setTimeout(refreshSupportModal, 0);
+});
+
+document.getElementById("copySupportEmail")?.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText("risx.challenge@gmail.com");
+    const el = document.getElementById("supportToast");
+    if (el) el.textContent = "Support email copied.";
+  } catch {}
+});
+
+document.getElementById("copySupportId")?.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(getLastSupportId());
+    const el = document.getElementById("supportToast");
+    if (el) el.textContent = "ID copied.";
+  } catch {}
+});
+
+  // Update mailto when they type
+  document.getElementById("supportMsg")?.addEventListener("input", refreshSupportModal);
+
   // -----------------------------
   // Claim reward button
   // -----------------------------
@@ -3765,6 +3833,7 @@ function restartRequiredNow() {
   initPlinko?.();
 
   refreshChallengeHud();
+  window.updateSupportIdPill?.();
 
 
   document.documentElement.classList.remove("booting");
