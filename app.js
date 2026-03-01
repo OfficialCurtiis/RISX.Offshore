@@ -3699,6 +3699,9 @@ function startChallengeNow(tier) {
   startChallengeNow(tier);
 };
 
+  if (challengeStartBtn && !challengeStartBtn._bound) {
+  challengeStartBtn._bound = true;
+  
   challengeStartBtn?.addEventListener("click", async () => {
   const tier = challengeTier?.value || "beginner";
 
@@ -3724,6 +3727,7 @@ function startChallengeNow(tier) {
 
   startChallengeNow(tier);
 });
+}
 
 const resetBtn = document.getElementById("resetBtn");
 
