@@ -3171,6 +3171,7 @@ function renderAdmin() {
   const withdrawals = readList(withdrawalsKey);
 
   // counts
+  adminCountClaims && (adminCountClaims.textContent = String(claims.filter(c => c.status === "PENDING").length));
   adminCountDeposits && (adminCountDeposits.textContent = String(deposits.filter(d => d.status === "PENDING").length));
   adminCountWithdrawals && (adminCountWithdrawals.textContent = String(withdrawals.filter(d => d.status === "PENDING").length));
   if (adminCountUsers) {
