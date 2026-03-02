@@ -286,7 +286,6 @@
             <!-- Footer chips (INSIDE the panel, so layout doesn't break) -->
             <div class="plinko-footer">
               <div class="plinko-footer-left">
-                <span class="plinko-chip">Zero Edge</span>
               </div>
 
               <!-- IMPORTANT: id matches JS -->
@@ -572,16 +571,22 @@
 
         <div class="admin-topbar">
           <div class="admin-tabs">
-            <button id="adminTabDeposits" class="btn small active" type="button">
-              Deposits <span id="adminCountDeposits" class="admin-count">0</span>
-            </button>
-            <button id="adminTabWithdrawals" class="btn small" type="button">
-              Withdrawals <span id="adminCountWithdrawals" class="admin-count">0</span>
-            </button>
-            <button id="adminTabUsers" class="btn small" type="button">
-              Users <span id="adminCountUsers" class="admin-count">0</span>
-            </button>
-          </div>
+          <button id="adminTabDeposits" class="btn small active" type="button">
+            Deposits <span id="adminCountDeposits" class="admin-count">0</span>
+          </button>
+          <button id="adminTabWithdrawals" class="btn small" type="button">
+            Withdrawals <span id="adminCountWithdrawals" class="admin-count">0</span>
+          </button>
+
+          <!-- ✅ NEW -->
+          <button id="adminTabClaims" class="btn small" type="button">
+            Claims <span id="adminCountClaims" class="admin-count">0</span>
+          </button>
+
+          <button id="adminTabUsers" class="btn small" type="button">
+            Users <span id="adminCountUsers" class="admin-count">0</span>
+          </button>
+        </div>
 
           <div class="admin-filters">
             <label class="admin-check">
@@ -597,6 +602,8 @@
 
         <div id="adminViewDeposits" class="admin-view"></div>
         <div id="adminViewWithdrawals" class="admin-view hidden"></div>
+        <div id="adminViewUsers" class="admin-view hidden"></div>
+        <div id="adminViewClaims" class="admin-view hidden"></div>
         <div id="adminViewUsers" class="admin-view hidden"></div>
       </div>
 

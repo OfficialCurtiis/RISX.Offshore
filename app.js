@@ -135,6 +135,9 @@ const adminMsg = document.getElementById("adminMsg");
 const adminCountDeposits = document.getElementById("adminCountDeposits");
 const adminCountWithdrawals = document.getElementById("adminCountWithdrawals");
 const adminCountUsers = document.getElementById("adminCountUsers");
+const adminTabClaims     = document.getElementById("adminTabClaims");
+const adminViewClaims    = document.getElementById("adminViewClaims");
+const adminCountClaims   = document.getElementById("adminCountClaims");
 
 // =========================
 // DOM HOOKS
@@ -2982,17 +2985,22 @@ function switchUser() {
 
 const depositsKey   = `${RISX_SAVE_KEY}::deposits`;
 const withdrawalsKey= `${RISX_SAVE_KEY}::withdrawals`;
+const claimsKey = `${RISX_SAVE_KEY}::claims`;
 
 // Admin
 let adminTab = "deposits";
+
 function setAdminTab(tab){
   adminTab = tab;
+
   adminTabDeposits?.classList.toggle("active", tab==="deposits");
   adminTabWithdrawals?.classList.toggle("active", tab==="withdrawals");
+  adminTabClaims?.classList.toggle("active", tab==="claims");   // ✅
   adminTabUsers?.classList.toggle("active", tab==="users");
 
   adminViewDeposits?.classList.toggle("hidden", tab!=="deposits");
   adminViewWithdrawals?.classList.toggle("hidden", tab!=="withdrawals");
+  adminViewClaims?.classList.toggle("hidden", tab!=="claims");  // ✅
   adminViewUsers?.classList.toggle("hidden", tab!=="users");
 }
 
@@ -3068,6 +3076,32 @@ function renderAdminList(list, kind){
   `).join("");
 }
 
+function renderClaimsList(list){
+  if (!list.length) return `<div class="redeem-empty">No claims yet.</div>`;
+
+  return list.map(c => `
+    <div class="admin-row">
+      <div class="admin-col">
+        <div class="admin-title">
+          ${escapeHtml(c.tier || "—")} • $${Number(c.prizeUsd || 0).toFixed(2)}
+          <span style="opacity:.7; font-size:12px; margin-left:8px;">(${escapeHtml(c.status || "")})</span>
+        </div>
+        <div class="admin-sub">Run: ${escapeHtml(c.runId || "—")} • PaymentID: ${escapeHtml(c.supportId || "—")}</div>
+        <div class="admin-sub">${new Date(c.createdAt).toLocaleString()}</div>
+        <div class="admin-sub">To: <b>${escapeHtml(c.address || "")}</b></div>
+        ${c.email ? `<div class="admin-sub">Email: ${escapeHtml(c.email)}</div>` : ""}
+        ${c.note ? `<div class="admin-sub">Note: ${escapeHtml(c.note)}</div>` : ""}
+        ${c.txid ? `<div class="admin-sub">Tx: ${escapeHtml(c.txid)}</div>` : ""}
+      </div>
+
+      <div class="admin-actions">
+        <button class="btn small primary" data-claim-mark="${escapeHtml(c.id)}" data-claim-status="PAID">PAID</button>
+        <button class="btn small secondary" data-claim-mark="${escapeHtml(c.id)}" data-claim-status="VOID">VOID</button>
+      </div>
+    </div>
+  `).join("");
+}
+
 function adminMark(id, kind, status) {
   const key = (kind === "deposit") ? depositsKey : withdrawalsKey;
   const list = readList(key);
@@ -3132,6 +3166,7 @@ function renderAdmin() {
   const q = (adminSearch?.value || "").trim().toLowerCase();
   const pendingOnly = !!adminPendingOnly?.checked;
 
+  const claims = readList(claimsKey);
   const deposits = readList(depositsKey);
   const withdrawals = readList(withdrawalsKey);
 
@@ -3148,6 +3183,11 @@ function renderAdmin() {
       .filter(r => !pendingOnly || r.status === "PENDING")
       .filter(r => !q || JSON.stringify(r).toLowerCase().includes(q));
     adminViewDeposits.innerHTML = renderAdminList(list, "deposit");
+  } else if (adminTab === "claims") {
+  const list = claims
+    .filter(r => !pendingOnly || r.status === "PENDING")
+    .filter(r => !q || JSON.stringify(r).toLowerCase().includes(q));
+  adminViewClaims.innerHTML = renderClaimsList(list);
   } else if (adminTab === "withdrawals") {
     const list = withdrawals
       .filter(r => !pendingOnly || r.status === "PENDING")
@@ -3162,13 +3202,39 @@ function renderAdmin() {
 
 // delegate PAID/VOID clicks inside admin modal
 function bindAdminModalClicks() {
-  
+  const claimBtn = e.target.closest("[data-claim-mark]");
+if (claimBtn) {
+  const id = claimBtn.getAttribute("data-claim-mark");
+  const status = claimBtn.getAttribute("data-claim-status");
+  return adminMarkClaim(id, status);
+}
   adminModal?.addEventListener("click", (e) => {
     const paid = e.target.closest("[data-admin-paid]");
     const voidBtn = e.target.closest("[data-admin-void]");
     if (paid) return adminMark(paid.getAttribute("data-admin-paid"), paid.getAttribute("data-kind"), "PAID");
     if (voidBtn) return adminMark(voidBtn.getAttribute("data-admin-void"), voidBtn.getAttribute("data-kind"), "VOID");
   });
+}
+
+function adminMarkClaim(id, status) {
+  const list = readList(claimsKey);
+  const idx = list.findIndex(x => String(x.id) === String(id));
+  if (idx < 0) return;
+
+  // prevent double-finalizing
+  const prev = String(list[idx].status || "");
+  if (prev === "PAID" || prev === "VOID") return;
+
+  if (status === "PAID") {
+    const txid = prompt("Paste txid / payout ref (optional):", list[idx].txid || "");
+    if (txid) list[idx].txid = txid.trim();
+    list[idx].paidAt = Date.now();
+  }
+
+  list[idx].status = status;
+  writeList(claimsKey, list);
+
+  renderAdmin?.();
 }
 
 // =========================
@@ -3533,6 +3599,7 @@ function init() {
   adminTabDeposits?.addEventListener("click", () => { setAdminTab?.("deposits"); renderAdmin?.(); });
   adminTabWithdrawals?.addEventListener("click", () => { setAdminTab?.("withdrawals"); renderAdmin?.(); });
   adminTabUsers?.addEventListener("click", () => { setAdminTab?.("users"); renderAdmin?.(); });
+  adminTabClaims?.addEventListener("click", () => { setAdminTab?.("claims"); renderAdmin?.(); });
 
   adminRefreshBtn?.addEventListener("click", renderAdmin);
   adminPendingOnly?.addEventListener("change", renderAdmin);
@@ -3825,42 +3892,47 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
     submitClaimBtn._bound = true;
 
    submitClaimBtn.addEventListener("click", () => {
-
-  const address = document
-    .getElementById("walletAddressInput")
-    ?.value
-    ?.trim();
-
-  if (!address) {
+  // Ask directly (fastest, no extra modal needed)
+  const address = prompt("Enter payout wallet address:", "");
+  if (!address || !address.trim()) {
     alert("Enter a wallet address");
     return;
   }
 
+  const email = prompt("Email (optional, for support contact):", "") || "";
+  const note  = prompt("Note (optional):", "") || "";
+
   const tierId = CHALLENGE.tier;
   const tier = getTier();
+  const run = getRun?.() || {};
+  const supportId = localStorage.getItem("risx_last_payment_id") || "—";
 
-  const payoutRequest = {
-    id: crypto.randomUUID(),
+  const claim = {
+    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+    runId: run.id || localStorage.getItem("risx_run_id") || "",
     tier: tierId,
-    entryUsd: tier.entryUsd,
-    prizeUsd: tier.prizeUsd,
-    goalCredits: tier.goalCredits,
-    address,
-    status: "pending",
+    prizeUsd: Number(tier.prizeUsd || 0),
+    goalCredits: Number(tier.goalCredits || 0),
+    address: address.trim(),
+    email: email.trim(),
+    note: note.trim(),
+    supportId,
+    status: "PENDING",
     createdAt: Date.now()
   };
 
-  challengeState.status = "pending";
+  const list = readList(claimsKey);
+  list.unshift(claim);
+  writeList(claimsKey, list);
 
   submitClaimBtn.disabled = true;
   submitClaimBtn.textContent = "Claim Submitted";
 
-  console.log("💸 PAYOUT REQUEST", payoutRequest);
+  // keep UX clean
+  document.getElementById("winModal")?.classList.remove("open");
 
-  document.getElementById("claimModal")?.classList.remove("open");
-
-  alert("Claim submitted. Payout pending.");
-  });
+  alert("Claim submitted. Manual review + payout within 24h.");
+});
   }
 
   // -----------------------------
