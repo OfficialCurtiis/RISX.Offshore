@@ -3203,17 +3203,20 @@ function renderAdmin() {
 
 // delegate PAID/VOID clicks inside admin modal
 function bindAdminModalClicks() {
-  const claimBtn = e.target.closest("[data-claim-mark]");
-if (claimBtn) {
-  const id = claimBtn.getAttribute("data-claim-mark");
-  const status = claimBtn.getAttribute("data-claim-status");
-  return adminMarkClaim(id, status);
-}
   adminModal?.addEventListener("click", (e) => {
+    // deposits / withdrawals
     const paid = e.target.closest("[data-admin-paid]");
     const voidBtn = e.target.closest("[data-admin-void]");
     if (paid) return adminMark(paid.getAttribute("data-admin-paid"), paid.getAttribute("data-kind"), "PAID");
     if (voidBtn) return adminMark(voidBtn.getAttribute("data-admin-void"), voidBtn.getAttribute("data-kind"), "VOID");
+
+    // ✅ claims
+    const claimBtn = e.target.closest("[data-claim-mark]");
+    if (claimBtn) {
+      const id = claimBtn.getAttribute("data-claim-mark");
+      const status = claimBtn.getAttribute("data-claim-status");
+      return adminMarkClaim(id, status);
+    }
   });
 }
 
