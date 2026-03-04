@@ -555,6 +555,36 @@
   </div>
 
   <!-- =========================
+       ADMIN LOGIN MODAL
+  ========================== -->
+  <div id="adminLoginModal" class="modal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-title">Admin Login</div>
+        <button class="btn small" type="button" data-admin-login-close>✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="redeem-note">
+          Enter admin password to continue.
+        </div>
+
+        <form id="adminLoginForm">
+          <div class="field">
+            <label for="adminLoginPassword">Password</label>
+            <input id="adminLoginPassword" type="password" autocomplete="current-password" />
+          </div>
+          <div id="adminLoginMsg" class="hint small"></div>
+          <div class="modal-actions">
+            <button class="btn primary" type="submit">Sign In</button>
+            <button class="btn secondary" type="button" data-admin-login-close>Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================
        ADMIN OPS MODAL
   ========================== -->
   <div id="adminModal" class="modal" aria-hidden="true">

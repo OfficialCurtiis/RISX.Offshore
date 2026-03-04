@@ -106,6 +106,7 @@ function debounce(fn, delay = 150) {
 const depositModal = document.getElementById("depositModal");
 const withdrawModal = document.getElementById("withdrawModal");
 const adminModal = document.getElementById("adminModal");
+const adminLoginModal = document.getElementById("adminLoginModal");
 
 const depositCurrency = document.getElementById("depositCurrency");
 const depositAddress = document.getElementById("depositAddress");
@@ -138,6 +139,113 @@ const adminCountUsers = document.getElementById("adminCountUsers");
 const adminTabClaims     = document.getElementById("adminTabClaims");
 const adminViewClaims    = document.getElementById("adminViewClaims");
 const adminCountClaims   = document.getElementById("adminCountClaims");
+const adminLoginForm = document.getElementById("adminLoginForm");
+const adminLoginPassword = document.getElementById("adminLoginPassword");
+const adminLoginMsg = document.getElementById("adminLoginMsg");
+const ADMIN_HOTKEY = "l";
+let adminSessionAuthed = false;
+
+function openAdminPanel() {
+  openModal?.(adminModal);
+  setAdminTab?.("deposits");
+  renderAdmin?.();
+}
+
+function isTypingTarget(target) {
+  return target instanceof HTMLElement
+    && !!target.closest("input, textarea, select, [contenteditable='true']");
+}
+
+function setAdminLoginMessage(msg, isError = true) {
+  if (!adminLoginMsg) return;
+  adminLoginMsg.textContent = String(msg || "");
+  adminLoginMsg.style.color = isError ? "#ff9b9b" : "";
+}
+
+async function apiJson(path, opts = {}) {
+  const res = await fetch(path, {
+    credentials: "include",
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      ...(opts.headers || {}),
+    },
+  });
+  let data = {};
+  try { data = await res.json(); } catch {}
+  return { ok: res.ok, status: res.status, data };
+}
+
+async function checkAdminSession() {
+  const { ok, data } = await apiJson("/api/admin/me", { method: "GET" });
+  adminSessionAuthed = !!(ok && data?.authed);
+  return adminSessionAuthed;
+}
+
+async function openAdminEntry() {
+  try {
+    const authed = await checkAdminSession();
+    if (authed) {
+      closeModal?.(adminLoginModal);
+      setAdminLoginMessage("", false);
+      openAdminPanel();
+      return;
+    }
+  } catch {}
+
+  if (adminLoginPassword) adminLoginPassword.value = "";
+  setAdminLoginMessage("Admin login required.");
+  openModal?.(adminLoginModal);
+}
+
+async function requireAdminSession() {
+  try {
+    if (await checkAdminSession()) return true;
+  } catch {}
+  closeModal?.(adminModal);
+  setAdminLoginMessage("Session expired. Please sign in again.");
+  openModal?.(adminLoginModal);
+  return false;
+}
+
+async function submitAdminLogin(e) {
+  e.preventDefault();
+  const password = String(adminLoginPassword?.value || "");
+  if (!password) {
+    setAdminLoginMessage("Enter admin password.");
+    return;
+  }
+
+  setAdminLoginMessage("Signing in...", false);
+  const { ok, status, data } = await apiJson("/api/admin/login", {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+
+  if (!ok) {
+    const msg = status === 429
+      ? `Too many attempts. Retry in ${Number(data?.retryAfterSec || 60)}s.`
+      : String(data?.error || "Login failed.");
+    setAdminLoginMessage(msg);
+    return;
+  }
+
+  setAdminLoginMessage("Signed in.", false);
+  adminSessionAuthed = true;
+  if (adminLoginPassword) adminLoginPassword.value = "";
+  closeModal?.(adminLoginModal);
+  openAdminPanel();
+}
+
+function handleAdminComboHotkey(e) {
+  if (e.defaultPrevented || e.isComposing) return;
+  if (isTypingTarget(e.target)) return;
+  const key = String(e.key || "").toLowerCase();
+  if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && key === ADMIN_HOTKEY) {
+    e.preventDefault();
+    openAdminEntry();
+  }
+}
 
 // =========================
 // DOM HOOKS
@@ -3102,7 +3210,17 @@ function renderClaimsList(list){
   `).join("");
 }
 
-function adminMark(id, kind, status) {
+async function adminMark(id, kind, status) {
+  if (!(await requireAdminSession())) return;
+  const markRes = await apiJson("/api/admin/requests/mark", {
+    method: "POST",
+    body: JSON.stringify({ id, kind, status }),
+  });
+  if (!markRes.ok) {
+    adminMsg && (adminMsg.textContent = String(markRes.data?.error || "Admin action rejected."));
+    return;
+  }
+
   const key = (kind === "deposit") ? depositsKey : withdrawalsKey;
   const list = readList(key);
   const idx = list.findIndex(x => String(x.id) === String(id));
@@ -3207,20 +3325,22 @@ function bindAdminModalClicks() {
     // deposits / withdrawals
     const paid = e.target.closest("[data-admin-paid]");
     const voidBtn = e.target.closest("[data-admin-void]");
-    if (paid) return adminMark(paid.getAttribute("data-admin-paid"), paid.getAttribute("data-kind"), "PAID");
-    if (voidBtn) return adminMark(voidBtn.getAttribute("data-admin-void"), voidBtn.getAttribute("data-kind"), "VOID");
+    if (paid) return void adminMark(paid.getAttribute("data-admin-paid"), paid.getAttribute("data-kind"), "PAID");
+    if (voidBtn) return void adminMark(voidBtn.getAttribute("data-admin-void"), voidBtn.getAttribute("data-kind"), "VOID");
 
     // ✅ claims
     const claimBtn = e.target.closest("[data-claim-mark]");
     if (claimBtn) {
       const id = claimBtn.getAttribute("data-claim-mark");
       const status = claimBtn.getAttribute("data-claim-status");
-      return adminMarkClaim(id, status);
+      return void adminMarkClaim(id, status);
     }
   });
 }
 
-function adminMarkClaim(id, status) {
+async function adminMarkClaim(id, status) {
+  if (!(await requireAdminSession())) return;
+
   const list = readList(claimsKey);
   const idx = list.findIndex(x => String(x.id) === String(id));
   if (idx < 0) return;
@@ -3234,6 +3354,17 @@ function adminMarkClaim(id, status) {
     if (txid) list[idx].txid = txid.trim();
     list[idx].paidAt = Date.now();
   }
+
+  const markRes = await apiJson("/api/admin/claims/markPaid", {
+    method: "POST",
+    body: JSON.stringify({ claimId: id, status, txid: list[idx].txid || "" }),
+  });
+  if (!markRes.ok) {
+    adminMsg && (adminMsg.textContent = String(markRes.data?.error || "Claim update rejected."));
+    return;
+  }
+
+  if (status === "VOID") list[idx].voidAt = Date.now();
 
   list[idx].status = status;
   writeList(claimsKey, list);
@@ -3586,11 +3717,9 @@ function init() {
   });
 
   // Admin open
-  adminBtn?.addEventListener("click", () => {
-    openModal?.(adminModal);
-    setAdminTab?.("deposits");
-    renderAdmin?.();
-  });
+  adminBtn?.addEventListener("click", () => { void openAdminEntry(); });
+  document.addEventListener("keydown", handleAdminComboHotkey);
+  adminLoginForm?.addEventListener("submit", (e) => { void submitAdminLogin(e); });
 
   // Session reset
   resetSessionBtn?.addEventListener("click", () => {
@@ -3618,6 +3747,9 @@ function init() {
   );
   document.querySelectorAll("[data-admin-close]").forEach(btn =>
     btn.addEventListener("click", () => closeModal?.(adminModal))
+  );
+  document.querySelectorAll("[data-admin-login-close]").forEach(btn =>
+    btn.addEventListener("click", () => closeModal?.(adminLoginModal))
   );
 
   // FOOTER LINKS //
