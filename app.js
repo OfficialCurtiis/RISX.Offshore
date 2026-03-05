@@ -152,6 +152,7 @@ const adminLoginMsg = document.getElementById("adminLoginMsg");
 const ADMIN_HOTKEY = "l";
 let adminSessionAuthed = false;
 let adminMintDebugTimer = null;
+const DEBUG = false;
 
 function openAdminPanel() {
   openModal?.(adminModal);
@@ -303,7 +304,7 @@ async function applyUnlockFromAdminMint(resp = {}) {
 
   localStorage.setItem("risx_unlock_token", token);
   localStorage.setItem("risx_unlock_tier", tier);
-  console.log("[RISX][mint-debug] saved unlock token", { key: "risx_unlock_token", tier });
+  if (DEBUG) console.log("[RISX][mint-debug] saved unlock token", { key: "risx_unlock_token", tier });
 
   const verifyRes = await fetch("/api/verify-token", {
     method: "POST",
@@ -315,7 +316,7 @@ async function applyUnlockFromAdminMint(resp = {}) {
   if (!ok) {
     setAdminSecurityOutput(adminMintOut, `Verify failed for tier:${tier}`);
     if (adminMsg) adminMsg.textContent = "Minted token failed /api/verify-token.";
-    console.log("[RISX][mint-debug] verify failed", verifyJson);
+    if (DEBUG) console.log("[RISX][mint-debug] verify failed", verifyJson);
     return false;
   }
 
@@ -324,7 +325,7 @@ async function applyUnlockFromAdminMint(resp = {}) {
     tier,
     exp: Number(verifyJson?.exp || resp?.exp || 0),
   });
-  console.log("[RISX][mint-debug] verify ok", { tier: verifyJson?.tierKey, exp: verifyJson?.exp });
+  if (DEBUG) console.log("[RISX][mint-debug] verify ok", { tier: verifyJson?.tierKey, exp: verifyJson?.exp });
 
   // Refresh local unlock UX immediately; mirrors payment flow outcome without requiring reload.
   if (challengeTier) challengeTier.value = tier;

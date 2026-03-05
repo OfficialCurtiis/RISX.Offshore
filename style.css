@@ -782,10 +782,12 @@ select:focus {
 #game-mines .mines-main-panel {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: stretch;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: 12px;
   min-height: 0;
-  position: relative
+  position: relative;
 }
 
 /* Mines history pills under controls */
@@ -809,6 +811,12 @@ select:focus {
   min-width: 0;
   overflow: hidden;
   width: 100%;
+}
+
+#game-mines .game-footer{
+  width: 100%;
+  margin-top: 0;
+  flex-wrap: wrap;
 }
 
 /* The 5×5 grid */
