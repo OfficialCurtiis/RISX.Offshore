@@ -150,6 +150,16 @@
       </div>
     </div>
 
+    <div class="game-footer">
+      <div class="game-footer-left">
+        <span class="game-footer-risx">RISX</span>
+        <span class="game-footer-zero-edge">Zero Edge</span>
+      </div>
+      <button class="plinko-chip plinko-chip-btn game-footer-pf-btn" data-open-pf type="button">
+        Provably Fair
+      </button>
+    </div>
+
     </div>
   </section>
 
@@ -231,6 +241,16 @@
 
       </div>
 
+      <div class="game-footer">
+        <div class="game-footer-left">
+          <span class="game-footer-risx">RISX</span>
+          <span class="game-footer-zero-edge">Zero Edge</span>
+        </div>
+        <button class="plinko-chip plinko-chip-btn game-footer-pf-btn" data-open-pf type="button">
+          Provably Fair
+        </button>
+      </div>
+
     </div>
 
   </div>
@@ -283,13 +303,12 @@
               </div>
             </div>
 
-            <!-- Footer chips (INSIDE the panel, so layout doesn't break) -->
-            <div class="plinko-footer">
-              <div class="plinko-footer-left">
+            <div class="game-footer">
+              <div class="game-footer-left">
+                <span class="game-footer-risx">RISX</span>
+                <span class="game-footer-zero-edge">Zero Edge</span>
               </div>
-
-              <!-- IMPORTANT: id matches JS -->
-              <button class="plinko-chip plinko-chip-btn" id="openPfBtn" type="button">
+              <button class="plinko-chip plinko-chip-btn game-footer-pf-btn" data-open-pf type="button">
                 Provably Fair
               </button>
             </div>
@@ -402,10 +421,6 @@
               <button id="pfRotateBtn" class="btn secondary small" type="button">Rotate</button>
             </div>
           </div>
-
-              <button class="plinko-chip plinko-chip-btn" id="pfOpenBtn" type="button">
-                Provably Fair
-              </button>
 
           <div class="pf-row">
             <button id="pfVerifyBtn" class="btn secondary small" type="button">Verify Last</button>
@@ -630,6 +645,33 @@
 
         <div id="adminMsg" class="hint small"></div>
 
+        <div class="admin-security">
+          <div class="admin-security-card">
+            <div class="admin-security-title">Mint Token</div>
+            <div class="admin-security-row">
+              <select id="adminMintTier">
+                <option value="beginner" selected>Beginner</option>
+                <option value="intermediate">Intermediate</option>
+                <option value="pro">Pro</option>
+              </select>
+              <button id="adminMintBtn" class="btn small primary" type="button">Mint Token</button>
+            </div>
+            <div id="adminMintOut" class="hint small admin-mono">—</div>
+          </div>
+
+          <div class="admin-security-card">
+            <div class="admin-security-title">Rotate Key (safe)</div>
+            <div class="hint small">
+              1) Set <b>RISX_ADMIN_KEY_CURRENT</b> in Vercel, 2) redeploy, 3) click Verify.
+            </div>
+            <div class="admin-security-row">
+              <button id="adminKeyStatusBtn" class="btn small secondary" type="button">Check Status</button>
+              <button id="adminRotateKeyBtn" class="btn small secondary" type="button">Verify Rotation</button>
+            </div>
+            <div id="adminKeyStatusOut" class="hint small admin-mono">—</div>
+          </div>
+        </div>
+
         <div id="adminViewDeposits" class="admin-view"></div>
         <div id="adminViewWithdrawals" class="admin-view hidden"></div>
         <div id="adminViewUsers" class="admin-view hidden"></div>
@@ -638,6 +680,7 @@
       </div>
 
       <div class="modal-actions">
+        <button id="adminLogoutBtn" class="btn secondary" type="button">Logout</button>
         <button class="btn secondary" type="button" data-admin-close>Close</button>
       </div>
     </div>

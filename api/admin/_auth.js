@@ -6,6 +6,7 @@ const SESSION_MAX_AGE_SEC = 60 * 60 * 8; // 8h
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
 const loginAttempts = new Map();
+const actionAttempts = new Map();
 
 function b64urlEncode(input) {
   return Buffer.from(input).toString("base64url");
@@ -165,4 +166,42 @@ export function parseJsonBody(req) {
 
 export function getRequestIp(req) {
   return getIp(req);
+}
+
+export function canAttemptAdminAction(req, scope, maxAttempts = 20, windowMs = 10 * 60 * 1000) {
+  const ip = getIp(req);
+  const key = `${scope}:${ip}`;
+  const now = Date.now();
+  const rec = actionAttempts.get(key);
+  if (!rec) return { allowed: true, ip };
+
+  if (now - rec.windowStart > windowMs) {
+    actionAttempts.delete(key);
+    return { allowed: true, ip };
+  }
+
+  if (rec.count >= maxAttempts) {
+    const retryAfterSec = Math.max(1, Math.ceil((windowMs - (now - rec.windowStart)) / 1000));
+    return { allowed: false, ip, retryAfterSec };
+  }
+  return { allowed: true, ip };
+}
+
+export function recordFailedAdminAction(req, scope, reason = "action_failed", windowMs = 10 * 60 * 1000) {
+  const ip = getIp(req);
+  const key = `${scope}:${ip}`;
+  const now = Date.now();
+  const rec = actionAttempts.get(key);
+  if (!rec || (now - rec.windowStart > windowMs)) {
+    actionAttempts.set(key, { count: 1, windowStart: now });
+  } else {
+    rec.count += 1;
+    actionAttempts.set(key, rec);
+  }
+  console.warn("[admin-action-failed]", {
+    at: new Date(now).toISOString(),
+    ip,
+    scope,
+    reason,
+  });
 }

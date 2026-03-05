@@ -1,20 +1,10 @@
 // /api/verify-payment.js
-import crypto from "crypto";
+import { signUnlockToken } from "./admin/_mint.js";
 
 function extractTierKeyFromOrderId(order_id = "") {
   // order_id format created in create-payment.js: risx_${tierKey}_${Date.now()}_${rand}
   const m = String(order_id).match(/^risx_(beginner|intermediate|pro)_/i);
   return m ? m[1].toLowerCase() : null;
-}
-
-function signUnlockToken({ tierKey, paymentId, exp }) {
-  const secret = process.env.RISX_TOKEN_SECRET;
-  if (!secret) throw new Error("Missing RISX_TOKEN_SECRET on server");
-
-  const payload = { tierKey, paymentId, exp };
-  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const sig = crypto.createHmac("sha256", secret).update(body).digest("base64url");
-  return `${body}.${sig}`;
 }
 
 export default async function handler(req, res) {
@@ -60,6 +50,9 @@ export default async function handler(req, res) {
 
     return res.status(200).json(out);
   } catch (e) {
+    if (String(e?.message || "").includes("Missing RISX_ADMIN_KEY_CURRENT")) {
+      return res.status(500).json({ error: "Missing RISX_ADMIN_KEY_CURRENT" });
+    }
     return res.status(500).json({ error: "Server error", details: String(e) });
   }
 }

@@ -133,12 +133,19 @@ const adminRefreshBtn = document.getElementById("adminRefreshBtn");
 const adminPendingOnly = document.getElementById("adminPendingOnly");
 const adminSearch = document.getElementById("adminSearch");
 const adminMsg = document.getElementById("adminMsg");
+const adminMintTier = document.getElementById("adminMintTier");
+const adminMintBtn = document.getElementById("adminMintBtn");
+const adminMintOut = document.getElementById("adminMintOut");
+const adminKeyStatusBtn = document.getElementById("adminKeyStatusBtn");
+const adminRotateKeyBtn = document.getElementById("adminRotateKeyBtn");
+const adminKeyStatusOut = document.getElementById("adminKeyStatusOut");
 const adminCountDeposits = document.getElementById("adminCountDeposits");
 const adminCountWithdrawals = document.getElementById("adminCountWithdrawals");
 const adminCountUsers = document.getElementById("adminCountUsers");
 const adminTabClaims     = document.getElementById("adminTabClaims");
 const adminViewClaims    = document.getElementById("adminViewClaims");
 const adminCountClaims   = document.getElementById("adminCountClaims");
+const adminLogoutBtn = document.getElementById("adminLogoutBtn");
 const adminLoginForm = document.getElementById("adminLoginForm");
 const adminLoginPassword = document.getElementById("adminLoginPassword");
 const adminLoginMsg = document.getElementById("adminLoginMsg");
@@ -149,6 +156,7 @@ function openAdminPanel() {
   openModal?.(adminModal);
   setAdminTab?.("deposits");
   renderAdmin?.();
+  checkAdminStatus?.();
 }
 
 function isTypingTarget(target) {
@@ -235,6 +243,68 @@ async function submitAdminLogin(e) {
   if (adminLoginPassword) adminLoginPassword.value = "";
   closeModal?.(adminLoginModal);
   openAdminPanel();
+}
+
+async function logoutAdminSession() {
+  const { ok, data } = await apiJson("/api/admin/logout", { method: "POST" });
+  adminSessionAuthed = false;
+  closeModal?.(adminModal);
+  if (adminLoginPassword) adminLoginPassword.value = "";
+  if (ok) {
+    setAdminLoginMessage("Signed out.", false);
+  } else {
+    setAdminLoginMessage(String(data?.error || "Logout failed. Please sign in again."));
+  }
+  openModal?.(adminLoginModal);
+}
+
+function setAdminSecurityOutput(el, msg) {
+  if (!el) return;
+  el.textContent = String(msg || "—");
+}
+
+async function checkAdminStatus() {
+  setAdminSecurityOutput(adminKeyStatusOut, "Checking...");
+  const { ok, data } = await apiJson("/api/admin/status", { method: "GET" });
+  if (!ok) {
+    setAdminSecurityOutput(adminKeyStatusOut, String(data?.error || "Status check failed."));
+    return;
+  }
+  const mint = data?.mint || {};
+  const auth = data?.auth || {};
+  setAdminSecurityOutput(
+    adminKeyStatusOut,
+    `CURRENT:${mint.hasCurrent ? "yes" : "no"} PREVIOUS:${mint.hasPrevious ? "yes" : "no"} ADMIN_TOKEN:${auth.hasAdminToken ? "yes" : "no"}`
+  );
+}
+
+async function mintAdminToken() {
+  const tierKey = String(adminMintTier?.value || "beginner");
+  setAdminSecurityOutput(adminMintOut, "Minting...");
+  const { ok, data } = await apiJson("/api/admin/mint", {
+    method: "POST",
+    body: JSON.stringify({ tierKey }),
+  });
+  if (!ok) {
+    setAdminSecurityOutput(adminMintOut, String(data?.error || "Mint failed."));
+    return;
+  }
+  const token = String(data?.unlock_token || "");
+  if (token && navigator?.clipboard?.writeText) {
+    try { await navigator.clipboard.writeText(token); } catch {}
+  }
+  setAdminSecurityOutput(adminMintOut, token ? `Token minted (copied): ${token}` : "Minted, but no token returned.");
+}
+
+async function verifyAdminKeyRotation() {
+  setAdminSecurityOutput(adminKeyStatusOut, "Verifying rotation...");
+  const { ok, data } = await apiJson("/api/admin/rotate-key", { method: "POST" });
+  if (!ok) {
+    setAdminSecurityOutput(adminKeyStatusOut, String(data?.error || "Rotation verification failed."));
+    return;
+  }
+  setAdminSecurityOutput(adminKeyStatusOut, String(data?.message || "Rotation check passed."));
+  await checkAdminStatus();
 }
 
 function handleAdminComboHotkey(e) {
@@ -339,10 +409,6 @@ const pfRotateBtn          = document.getElementById("pfRotateBtn");
 const pfVerifyBtn          = document.getElementById("pfVerifyBtn");
 const pfVerifyResultEl     = document.getElementById("pfVerifyResult");
 const pfLastRoundEl        = document.getElementById("pfLastRound");
-
-// Optional: you might have 2 open buttons in HTML (one in plinko, one inside drawer)
-const openPfBtn            = document.getElementById("openPfBtn");
-const pfOpenBtn            = document.getElementById("pfOpenBtn");
 
 ////////////////////////////////////
 ////////TRIGGER WIN/FAIL////////
@@ -1949,8 +2015,9 @@ function setupProvablyFairDrawer() {
     document.body.style.overflow = "hidden";
   };
 
-  document.getElementById("openPfBtn")?.addEventListener("click", open);
-  document.getElementById("pfOpenBtn")?.addEventListener("click", open);
+  document.querySelectorAll("[data-open-pf]").forEach((btn) => {
+    btn.addEventListener("click", open);
+  });
 
   modal.addEventListener("click", (e) => {
     if (e.target?.matches("[data-pf-close]")) close();
@@ -3720,6 +3787,10 @@ function init() {
   adminBtn?.addEventListener("click", () => { void openAdminEntry(); });
   document.addEventListener("keydown", handleAdminComboHotkey);
   adminLoginForm?.addEventListener("submit", (e) => { void submitAdminLogin(e); });
+  adminLogoutBtn?.addEventListener("click", () => { void logoutAdminSession(); });
+  adminMintBtn?.addEventListener("click", () => { void mintAdminToken(); });
+  adminKeyStatusBtn?.addEventListener("click", () => { void checkAdminStatus(); });
+  adminRotateKeyBtn?.addEventListener("click", () => { void verifyAdminKeyRotation(); });
 
   // Session reset
   resetSessionBtn?.addEventListener("click", () => {
