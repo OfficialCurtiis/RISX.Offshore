@@ -150,6 +150,27 @@ body.landing{
   box-sizing: border-box;
 }
 
+/* Keep brand/text/CTA centered inside each landing panel only */
+.landing-brand{
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0 0 12px 0;
+  text-align: center;
+}
+
+.landing-brandtext{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+
+.landing-content .landing-cta{
+  align-self: center;
+}
+
 /* Brand */
 .landing-title{
   font-weight: 900;
