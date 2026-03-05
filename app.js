@@ -151,6 +151,7 @@ const adminLoginPassword = document.getElementById("adminLoginPassword");
 const adminLoginMsg = document.getElementById("adminLoginMsg");
 const ADMIN_HOTKEY = "l";
 let adminSessionAuthed = false;
+let adminMintDebugTimer = null;
 
 function openAdminPanel() {
   openModal?.(adminModal);
@@ -263,6 +264,76 @@ function setAdminSecurityOutput(el, msg) {
   el.textContent = String(msg || "—");
 }
 
+function formatRemainingMs(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function clearAdminMintDebugTimer() {
+  if (adminMintDebugTimer) {
+    clearInterval(adminMintDebugTimer);
+    adminMintDebugTimer = null;
+  }
+}
+
+function setMintDebugStatus({ keyName, tier, exp }) {
+  clearAdminMintDebugTimer();
+  const expMs = Number(exp || 0);
+  const render = () => {
+    const left = expMs ? formatRemainingMs(expMs - Date.now()) : "n/a";
+    const line = `saved:${keyName} tier:${String(tier || "—")} ttl:${left}`;
+    setAdminSecurityOutput(adminMintOut, line);
+    if (adminMsg) adminMsg.textContent = `Mint debug → ${line}`;
+  };
+  render();
+  if (expMs > Date.now()) {
+    adminMintDebugTimer = setInterval(render, 1000);
+  }
+}
+
+async function applyUnlockFromAdminMint(resp = {}) {
+  const token = String(resp?.unlock_token || resp?.token || "");
+  const tier = String(resp?.tierKey || adminMintTier?.value || challengeTier?.value || "").toLowerCase();
+  if (!token || !tier) {
+    setAdminSecurityOutput(adminMintOut, "Mint failed: missing token or tier.");
+    return false;
+  }
+
+  localStorage.setItem("risx_unlock_token", token);
+  localStorage.setItem("risx_unlock_tier", tier);
+  console.log("[RISX][mint-debug] saved unlock token", { key: "risx_unlock_token", tier });
+
+  const verifyRes = await fetch("/api/verify-token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  const verifyJson = await verifyRes.json().catch(() => ({}));
+  const ok = !!(verifyRes.ok && verifyJson?.valid && verifyJson?.tierKey === tier);
+  if (!ok) {
+    setAdminSecurityOutput(adminMintOut, `Verify failed for tier:${tier}`);
+    if (adminMsg) adminMsg.textContent = "Minted token failed /api/verify-token.";
+    console.log("[RISX][mint-debug] verify failed", verifyJson);
+    return false;
+  }
+
+  setMintDebugStatus({
+    keyName: "risx_unlock_token",
+    tier,
+    exp: Number(verifyJson?.exp || resp?.exp || 0),
+  });
+  console.log("[RISX][mint-debug] verify ok", { tier: verifyJson?.tierKey, exp: verifyJson?.exp });
+
+  // Refresh local unlock UX immediately; mirrors payment flow outcome without requiring reload.
+  if (challengeTier) challengeTier.value = tier;
+  challengeTierSelected = tier;
+  renderTierSummary?.();
+  if (challengeMsg) challengeMsg.textContent = `Tier unlocked: ${tier.toUpperCase()} — press Start Challenge.`;
+  return true;
+}
+
 async function checkAdminStatus() {
   setAdminSecurityOutput(adminKeyStatusOut, "Checking...");
   const { ok, data } = await apiJson("/api/admin/status", { method: "GET" });
@@ -289,11 +360,13 @@ async function mintAdminToken() {
     setAdminSecurityOutput(adminMintOut, String(data?.error || "Mint failed."));
     return;
   }
-  const token = String(data?.unlock_token || "");
-  if (token && navigator?.clipboard?.writeText) {
-    try { await navigator.clipboard.writeText(token); } catch {}
+  const applied = await applyUnlockFromAdminMint(data);
+  if (!applied) return;
+
+  const mintedToken = String(data?.unlock_token || data?.token || "");
+  if (mintedToken && navigator?.clipboard?.writeText) {
+    try { await navigator.clipboard.writeText(mintedToken); } catch {}
   }
-  setAdminSecurityOutput(adminMintOut, token ? `Token minted (copied): ${token}` : "Minted, but no token returned.");
 }
 
 async function verifyAdminKeyRotation() {
