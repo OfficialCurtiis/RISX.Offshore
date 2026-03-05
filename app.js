@@ -107,6 +107,23 @@ const depositModal = document.getElementById("depositModal");
 const withdrawModal = document.getElementById("withdrawModal");
 const adminModal = document.getElementById("adminModal");
 const adminLoginModal = document.getElementById("adminLoginModal");
+const risxInputModal = document.getElementById("risxInputModal");
+const risxInputTitle = document.getElementById("risxInputTitle");
+const risxInputDescription = document.getElementById("risxInputDescription");
+const risxInputLabel = document.getElementById("risxInputLabel");
+const risxInputField = document.getElementById("risxInputField");
+const risxInputError = document.getElementById("risxInputError");
+const risxInputCancel = document.getElementById("risxInputCancel");
+const risxInputConfirm = document.getElementById("risxInputConfirm");
+const risxPayoutModal = document.getElementById("risxPayoutModal");
+const payoutAsset = document.getElementById("payoutAsset");
+const payoutChain = document.getElementById("payoutChain");
+const payoutAddress = document.getElementById("payoutAddress");
+const payoutEmail = document.getElementById("payoutEmail");
+const payoutPasteBtn = document.getElementById("payoutPasteBtn");
+const risxPayoutError = document.getElementById("risxPayoutError");
+const risxPayoutCancel = document.getElementById("risxPayoutCancel");
+const risxPayoutConfirm = document.getElementById("risxPayoutConfirm");
 
 const depositCurrency = document.getElementById("depositCurrency");
 const depositAddress = document.getElementById("depositAddress");
@@ -927,6 +944,13 @@ function refreshChallengeHud() {
     startChallengeNow(CHALLENGE.tier);
   }
 
+const PAYOUT_ASSET_CHAINS = {
+  USDC: ["Solana", "Ethereum", "Polygon", "Arbitrum"],
+  SOL: ["Solana"],
+  ETH: ["Ethereum", "Arbitrum", "Optimism", "Base"],
+  BTC: ["Bitcoin"],
+};
+
 function risxConfirm({ title = "Confirm", body = "", okText = "OK", cancelText = "Cancel" } = {}) {
   return new Promise((resolve) => {
     const modal   = document.getElementById("risxModal");
@@ -936,7 +960,7 @@ function risxConfirm({ title = "Confirm", body = "", okText = "OK", cancelText =
     const canBtn  = document.getElementById("risxModalCancel");
 
     if (!modal || !tEl || !bEl || !okBtn || !canBtn) {
-      resolve(confirm(`${title}\n\n${body}`));
+      resolve(false);
       return;
     }
 
@@ -946,11 +970,9 @@ function risxConfirm({ title = "Confirm", body = "", okText = "OK", cancelText =
     canBtn.textContent = cancelText;
 
     const close = (val) => {
-      // ✅ Fix ARIA warning: don't hide a modal while something inside it still has focus
       if (modal.contains(document.activeElement)) {
         document.activeElement.blur();
       }
-
       modal.classList.remove("open");
       modal.setAttribute("aria-hidden", "true");
       cleanup();
@@ -980,6 +1002,210 @@ function risxConfirm({ title = "Confirm", body = "", okText = "OK", cancelText =
 
     modal.classList.add("open");
     modal.setAttribute("aria-hidden", "false");
+    okBtn.focus();
+  });
+}
+
+async function risxAlert({ title = "Notice", body = "", okText = "OK" } = {}) {
+  return risxConfirm({ title, body, okText, cancelText: "Close" });
+}
+
+function validateAddressByAsset(asset, chain, address) {
+  const raw = String(address || "").trim();
+  if (!raw) return "Wallet address is required.";
+  if (raw.length < 14 || raw.length > 140) return "Wallet address looks invalid.";
+
+  const normalizedAsset = String(asset || "").toUpperCase();
+  const normalizedChain = String(chain || "").toLowerCase();
+
+  if ((normalizedAsset === "BTC" || normalizedChain === "bitcoin") && !/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{20,}$/.test(raw)) {
+    return "BTC address should start with bc1, 1, or 3.";
+  }
+  if ((normalizedAsset === "SOL" || normalizedChain === "solana") && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(raw)) {
+    return "Solana address should be base58 (32-44 chars).";
+  }
+  if ((normalizedAsset === "ETH" || normalizedAsset === "USDC" || ["ethereum", "arbitrum", "optimism", "base", "polygon"].includes(normalizedChain))
+      && !/^0x[a-fA-F0-9]{40}$/.test(raw)) {
+    return "EVM address should be 0x + 40 hex characters.";
+  }
+
+  return "";
+}
+
+function updatePayoutChains(asset) {
+  if (!payoutChain) return;
+  const chains = PAYOUT_ASSET_CHAINS[String(asset || "").toUpperCase()] || [];
+  payoutChain.innerHTML = chains.map((chain) => `<option value="${escapeHtml(chain)}">${escapeHtml(chain)}</option>`).join("");
+}
+
+function risxInputPrompt({
+  title = "Input",
+  description = "",
+  label = "Value",
+  value = "",
+  placeholder = "",
+  confirmText = "Confirm",
+  cancelText = "Cancel",
+  required = false,
+  inputType = "text",
+} = {}) {
+  return new Promise((resolve) => {
+    if (!risxInputModal || !risxInputField || !risxInputConfirm || !risxInputCancel) {
+      resolve({ confirmed: false, value: "" });
+      return;
+    }
+
+    risxInputTitle && (risxInputTitle.textContent = title);
+    risxInputDescription && (risxInputDescription.textContent = description || "");
+    risxInputLabel && (risxInputLabel.textContent = label);
+    risxInputField.type = inputType;
+    risxInputField.value = String(value || "");
+    risxInputField.placeholder = String(placeholder || "");
+    risxInputConfirm.textContent = confirmText;
+    risxInputCancel.textContent = cancelText;
+    risxInputError && (risxInputError.textContent = "");
+
+    let closed = false;
+    const close = (confirmed) => {
+      if (closed) return;
+      closed = true;
+      cleanup();
+      closeModal?.(risxInputModal);
+      resolve({ confirmed, value: String(risxInputField.value || "").trim() });
+    };
+
+    const submit = () => {
+      const val = String(risxInputField.value || "").trim();
+      if (required && !val) {
+        if (risxInputError) risxInputError.textContent = `${label} is required.`;
+        risxInputField.focus();
+        return;
+      }
+      close(true);
+    };
+
+    const onConfirm = () => submit();
+    const onCancel = () => close(false);
+    const onBackdrop = (e) => {
+      if (e.target === risxInputModal || e.target?.matches?.("[data-risx-input-close]")) close(false);
+    };
+    const onEsc = (e) => { if (e.key === "Escape") close(false); };
+    const onEnter = (e) => { if (e.key === "Enter") submit(); };
+
+    const cleanup = () => {
+      risxInputConfirm.removeEventListener("click", onConfirm);
+      risxInputCancel.removeEventListener("click", onCancel);
+      risxInputModal.removeEventListener("click", onBackdrop);
+      document.removeEventListener("keydown", onEsc);
+      risxInputField.removeEventListener("keydown", onEnter);
+    };
+
+    risxInputConfirm.addEventListener("click", onConfirm);
+    risxInputCancel.addEventListener("click", onCancel);
+    risxInputModal.addEventListener("click", onBackdrop);
+    document.addEventListener("keydown", onEsc);
+    risxInputField.addEventListener("keydown", onEnter);
+
+    openModal?.(risxInputModal);
+    setTimeout(() => risxInputField.focus(), 0);
+  });
+}
+
+function openPayoutDetailsModal() {
+  return new Promise((resolve) => {
+    if (!risxPayoutModal || !payoutAsset || !payoutChain || !payoutAddress || !risxPayoutConfirm || !risxPayoutCancel) {
+      resolve({ confirmed: false, payout: null });
+      return;
+    }
+
+    payoutAsset.innerHTML = Object.keys(PAYOUT_ASSET_CHAINS)
+      .map((asset) => `<option value="${escapeHtml(asset)}">${escapeHtml(asset)}</option>`)
+      .join("");
+    payoutAsset.value = "USDC";
+    updatePayoutChains(payoutAsset.value);
+    payoutAddress.value = "";
+    payoutEmail && (payoutEmail.value = "");
+    risxPayoutError && (risxPayoutError.textContent = "");
+
+    let closed = false;
+    const close = (confirmed, payout = null) => {
+      if (closed) return;
+      closed = true;
+      cleanup();
+      closeModal?.(risxPayoutModal);
+      resolve({ confirmed, payout });
+    };
+
+    const validate = () => {
+      const asset = String(payoutAsset.value || "").toUpperCase();
+      const chain = String(payoutChain.value || "");
+      const address = String(payoutAddress.value || "").trim();
+      const email = String(payoutEmail?.value || "").trim();
+
+      if (!asset) return "Asset is required.";
+      if (!chain) return "Chain is required.";
+
+      const assetChains = PAYOUT_ASSET_CHAINS[asset] || [];
+      if (!assetChains.includes(chain)) return "Selected chain does not match asset.";
+
+      const addrError = validateAddressByAsset(asset, chain, address);
+      if (addrError) return addrError;
+
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Email format looks invalid.";
+      return "";
+    };
+
+    const submit = () => {
+      const msg = validate();
+      if (msg) {
+        if (risxPayoutError) risxPayoutError.textContent = msg;
+        return;
+      }
+      const payout = {
+        asset: String(payoutAsset.value || "").toUpperCase(),
+        chain: String(payoutChain.value || ""),
+        address: String(payoutAddress.value || "").trim(),
+      };
+      const email = String(payoutEmail?.value || "").trim();
+      if (email) payout.email = email;
+      close(true, payout);
+    };
+
+    const onAssetChange = () => {
+      updatePayoutChains(payoutAsset.value);
+      if (risxPayoutError) risxPayoutError.textContent = "";
+    };
+    const onConfirm = () => submit();
+    const onCancel = () => close(false);
+    const onBackdrop = (e) => {
+      if (e.target === risxPayoutModal || e.target?.matches?.("[data-risx-payout-close]")) close(false);
+    };
+    const onEsc = (e) => { if (e.key === "Escape") close(false); };
+    const onPaste = async () => {
+      try {
+        const txt = await navigator.clipboard.readText();
+        if (txt) payoutAddress.value = txt.trim();
+      } catch {}
+    };
+
+    const cleanup = () => {
+      payoutAsset.removeEventListener("change", onAssetChange);
+      risxPayoutConfirm.removeEventListener("click", onConfirm);
+      risxPayoutCancel.removeEventListener("click", onCancel);
+      payoutPasteBtn?.removeEventListener("click", onPaste);
+      risxPayoutModal.removeEventListener("click", onBackdrop);
+      document.removeEventListener("keydown", onEsc);
+    };
+
+    payoutAsset.addEventListener("change", onAssetChange);
+    risxPayoutConfirm.addEventListener("click", onConfirm);
+    risxPayoutCancel.addEventListener("click", onCancel);
+    payoutPasteBtn?.addEventListener("click", onPaste);
+    risxPayoutModal.addEventListener("click", onBackdrop);
+    document.addEventListener("keydown", onEsc);
+
+    openModal?.(risxPayoutModal);
+    setTimeout(() => payoutAddress.focus(), 0);
   });
 }
 
@@ -3210,11 +3436,19 @@ function closeModal(modalEl) {
   unlockBodyScroll();
 }
 
-function switchUser() {
-  const name = prompt("Enter player name:", currentWallet || "Guest");
-  if (name === null) return;
+async function switchUser() {
+  const { confirmed, value } = await risxInputPrompt({
+    title: "Switch Player",
+    description: "Set the player name used for this demo session.",
+    label: "Player Name",
+    value: currentWallet || "Guest",
+    placeholder: "Guest",
+    confirmText: "Save",
+    required: true,
+  });
+  if (!confirmed) return;
 
-  const next = name.trim();
+  const next = value.trim();
   if (!next) return;
 
   currentWallet = next;
@@ -3337,8 +3571,9 @@ function renderClaimsList(list){
         </div>
         <div class="admin-sub">Run: ${escapeHtml(c.runId || "—")} • PaymentID: ${escapeHtml(c.supportId || "—")}</div>
         <div class="admin-sub">${new Date(c.createdAt).toLocaleString()}</div>
-        <div class="admin-sub">To: <b>${escapeHtml(c.address || "")}</b></div>
-        ${c.email ? `<div class="admin-sub">Email: ${escapeHtml(c.email)}</div>` : ""}
+        <div class="admin-sub">To: <b>${escapeHtml(c.payout?.address || c.address || "")}</b></div>
+        <div class="admin-sub">Asset/Chain: ${escapeHtml(c.payout?.asset || c.asset || "—")} • ${escapeHtml(c.payout?.chain || c.chain || "—")}</div>
+        ${(c.payout?.email || c.email) ? `<div class="admin-sub">Email: ${escapeHtml(c.payout?.email || c.email)}</div>` : ""}
         ${c.note ? `<div class="admin-sub">Note: ${escapeHtml(c.note)}</div>` : ""}
         ${c.txid ? `<div class="admin-sub">Tx: ${escapeHtml(c.txid)}</div>` : ""}
       </div>
@@ -3491,8 +3726,18 @@ async function adminMarkClaim(id, status) {
   if (prev === "PAID" || prev === "VOID") return;
 
   if (status === "PAID") {
-    const txid = prompt("Paste txid / payout ref (optional):", list[idx].txid || "");
-    if (txid) list[idx].txid = txid.trim();
+    const { confirmed, value } = await risxInputPrompt({
+      title: "Payout Reference",
+      description: "Optional: add txid or payout reference before marking claim as paid.",
+      label: "TxID / Reference",
+      value: list[idx].txid || "",
+      placeholder: "Optional",
+      confirmText: "Save + Mark Paid",
+      cancelText: "Cancel",
+      required: false,
+    });
+    if (!confirmed) return;
+    if (value) list[idx].txid = value.trim();
     list[idx].paidAt = Date.now();
   }
 
@@ -3761,14 +4006,22 @@ function init() {
   // =============================
 
   // Connect wallet (identity only)
-  connectWalletBtn?.addEventListener("click", () => {
+  connectWalletBtn?.addEventListener("click", async () => {
   if (CHALLENGE?.enabled && challengeActive) {
     toast?.("Challenge mode uses internal credits. Wallet connect is disabled.");
     return;
   }
-  const input = prompt("Enter wallet address (demo):", currentWallet || "");
-  if (!input) return;
-  setActiveWallet(input.trim());
+  const { confirmed, value } = await risxInputPrompt({
+    title: "Connect Wallet",
+    description: "Demo mode: enter a wallet identifier to continue.",
+    label: "Wallet Address",
+    value: currentWallet || "",
+    placeholder: "Wallet address",
+    confirmText: "Connect",
+    required: true,
+  });
+  if (!confirmed || !value) return;
+  setActiveWallet(value.trim());
 });
 
   // Deposit modal open
@@ -3989,7 +4242,11 @@ function startChallengeNow(tier) {
   const t = getTier();
 
   if (t.locked) {
-    alert("This tier is currently invite only.");
+    void risxAlert({
+      title: "Tier Locked",
+      body: "This tier is currently invite only.",
+      okText: "Close",
+    });
     return;
   }
 
@@ -4172,16 +4429,10 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
   if (submitClaimBtn && !submitClaimBtn._bound) {
     submitClaimBtn._bound = true;
 
-   submitClaimBtn.addEventListener("click", () => {
-  // Ask directly (fastest, no extra modal needed)
-  const address = prompt("Enter payout wallet address:", "");
-  if (!address || !address.trim()) {
-    alert("Enter a wallet address");
-    return;
-  }
-
-  const email = prompt("Email (optional, for support contact):", "") || "";
-  const note  = prompt("Note (optional):", "") || "";
+   submitClaimBtn.addEventListener("click", async () => {
+  const payoutRes = await openPayoutDetailsModal();
+  if (!payoutRes.confirmed || !payoutRes.payout) return;
+  const payout = payoutRes.payout;
 
   const tierId = CHALLENGE.tier;
   const tier = getTier();
@@ -4194,9 +4445,11 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
     tier: tierId,
     prizeUsd: Number(tier.prizeUsd || 0),
     goalCredits: Number(tier.goalCredits || 0),
-    address: address.trim(),
-    email: email.trim(),
-    note: note.trim(),
+    payout,
+    address: payout.address,
+    email: payout.email || "",
+    asset: payout.asset,
+    chain: payout.chain,
     supportId,
     status: "PENDING",
     createdAt: Date.now()
@@ -4212,7 +4465,11 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
   // keep UX clean
   document.getElementById("winModal")?.classList.remove("open");
 
-  alert("Claim submitted. Manual review + payout within 24h.");
+  void risxAlert({
+    title: "Claim Submitted",
+    body: "Manual review + payout is typically completed within 24h.",
+    okText: "Done",
+  });
 });
   }
 

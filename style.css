@@ -4243,3 +4243,129 @@ body.modal-open {
 @media (max-width: 760px){
   .params-grid{ grid-template-columns: 1fr; }
 }
+
+/* =========================
+   RISX Input + Payout Modals
+   ========================= */
+.risx-form-modal{
+  width: min(560px, 94vw);
+  background: linear-gradient(180deg, rgba(8,14,22,0.98), rgba(6,10,16,0.98)) !important;
+  border: 1px solid rgba(29,242,127,0.22);
+  box-shadow:
+    0 20px 45px rgba(0,0,0,0.68),
+    0 0 22px rgba(29,242,127,0.14);
+}
+
+.risx-form-modal .modal-head{
+  border-bottom: 1px solid rgba(29,242,127,0.18);
+}
+
+.risx-form-modal .modal-title{
+  color: rgba(229,255,241,0.96);
+}
+
+.risx-form-modal input,
+.risx-form-modal select{
+  background: rgba(4,9,14,0.88);
+  border: 1px solid rgba(29,242,127,0.24);
+}
+
+.risx-form-modal input:focus,
+.risx-form-modal select:focus{
+  border-color: rgba(29,242,127,0.55);
+  box-shadow:
+    0 0 0 2px rgba(29,242,127,0.14),
+    0 0 14px rgba(29,242,127,0.18);
+}
+
+.risx-inline-input-row{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.risx-inline-input-row input{
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.risx-inline-error{
+  min-height: 18px;
+  color: #ff9b9b;
+  margin-top: 2px;
+}
+
+/* Claim + Win modal parity (RISX glass + neon) */
+#risxPayoutModal,
+#winModal{
+  background: rgba(0,0,0,0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+#risxPayoutModal.open,
+#winModal.open{
+  display: flex !important;
+}
+
+#risxPayoutModal .modal-card,
+#winModal .modal-card{
+  width: min(420px, calc(100vw - 32px));
+  max-width: 420px;
+  border-radius: 16px;
+  border: 1px solid rgba(29,242,127,0.28);
+  background: linear-gradient(180deg, rgba(9,14,23,0.96), rgba(6,10,17,0.97)) !important;
+  box-shadow:
+    0 20px 48px rgba(0,0,0,0.7),
+    0 0 0 1px rgba(29,242,127,0.12) inset,
+    0 0 26px rgba(29,242,127,0.18);
+}
+
+#winModal .modal-card{
+  text-align: center;
+}
+
+#winModal .win-title{
+  margin: 0 0 14px 0;
+  color: #1df27f;
+  text-shadow: 0 0 12px rgba(29,242,127,0.45);
+}
+
+#submitClaimBtn{
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(29,242,127,0.42);
+  background: linear-gradient(90deg, rgba(29,242,127,.92), rgba(29,242,127,.74));
+  color: rgba(3,8,6,.95);
+  font-weight: 800;
+  letter-spacing: .02em;
+  box-shadow: 0 14px 30px rgba(29,242,127,0.24), 0 0 20px rgba(29,242,127,0.16);
+  cursor: pointer;
+}
+
+#submitClaimBtn:hover{
+  transform: translateY(-1px);
+}
+
+@media (max-width: 560px){
+  #risxPayoutModal,
+  #winModal{
+    padding: 12px;
+  }
+  #risxPayoutModal .modal-card,
+  #winModal .modal-card{
+    width: calc(100vw - 24px);
+    max-width: none;
+  }
+  .risx-inline-input-row{
+    flex-wrap: wrap;
+  }
+  .risx-inline-input-row .btn{
+    width: 100%;
+  }
+}

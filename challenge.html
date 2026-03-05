@@ -687,7 +687,7 @@
   </div>
   <div id="toast" class="toast"></div>
 
-  <div class="risx-modal" id="risxModal" aria-hidden="true">
+<div class="risx-modal" id="risxModal" aria-hidden="true">
   <div class="risx-modal__backdrop" data-close></div>
 
   <div class="risx-modal__panel" role="dialog" aria-modal="true" aria-labelledby="risxModalTitle">
@@ -697,6 +697,69 @@
     <div class="risx-modal__actions">
       <button class="btn secondary" id="risxModalCancel" type="button">Cancel</button>
       <button class="btn primary" id="risxModalOk" type="button">Proceed</button>
+    </div>
+  </div>
+</div>
+
+<div id="risxInputModal" class="modal" aria-hidden="true">
+  <div class="modal-card risx-form-modal">
+    <div class="modal-head">
+      <div class="modal-title" id="risxInputTitle">Input</div>
+      <button class="modal-x" data-risx-input-close type="button">×</button>
+    </div>
+    <div class="modal-body">
+      <p id="risxInputDescription" class="hint small" style="margin-top:0;"></p>
+      <div class="field">
+        <label for="risxInputField" id="risxInputLabel">Value</label>
+        <input id="risxInputField" type="text" />
+      </div>
+      <div id="risxInputError" class="hint small risx-inline-error"></div>
+      <div class="modal-actions">
+        <button id="risxInputCancel" class="btn secondary" type="button">Cancel</button>
+        <button id="risxInputConfirm" class="btn primary" type="button">Confirm</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="risxPayoutModal" class="modal" aria-hidden="true">
+  <div class="modal-card risx-form-modal">
+    <div class="modal-head">
+      <div class="modal-title">Claim Payout Details</div>
+      <button class="modal-x" data-risx-payout-close type="button">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint small" style="margin-top:0;">Enter payout destination details for manual processing.</p>
+
+      <div class="field">
+        <label for="payoutAsset">Asset</label>
+        <select id="payoutAsset"></select>
+      </div>
+
+      <div class="field">
+        <label for="payoutChain">Chain</label>
+        <select id="payoutChain"></select>
+      </div>
+
+      <div class="field">
+        <label for="payoutAddress">Wallet Address</label>
+        <div class="risx-inline-input-row">
+          <input id="payoutAddress" type="text" placeholder="Paste wallet address" />
+          <button id="payoutPasteBtn" class="btn small secondary" type="button">Paste</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="payoutEmail">Email (optional)</label>
+        <input id="payoutEmail" type="email" placeholder="name@example.com" />
+      </div>
+
+      <div id="risxPayoutError" class="hint small risx-inline-error"></div>
+
+      <div class="modal-actions">
+        <button id="risxPayoutCancel" class="btn secondary" type="button">Cancel</button>
+        <button id="risxPayoutConfirm" class="btn primary" type="button">Submit Claim</button>
+      </div>
     </div>
   </div>
 </div>
