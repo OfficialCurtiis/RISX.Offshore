@@ -1899,6 +1899,8 @@ body.modal-open {
 
 .plinko-ball {
   position: absolute;
+  left: 0;
+  top: 0;
   width: 14px;
   height: 14px;
   border-radius: 999px;
@@ -1906,18 +1908,23 @@ body.modal-open {
   box-shadow:
     0 0 10px rgba(29, 242, 127, 0.9),
     0 0 22px rgba(29, 242, 127, 0.6);
-  transform: translate(-50%, -50%);
+  --bx: 0px;
+  --by: 0px;
+  --ball-scale: 1;
+  transform: translate3d(var(--bx), var(--by), 0) scale(var(--ball-scale));
+  transform-origin: center center;
+  will-change: transform;
   z-index: 5;
   pointer-events: none;
 }
 
 .plinko-ball {
-  animation: pulseBall 0.8s infinite alternate;
+  animation: pulseBallScale 0.8s infinite alternate;
 }
 
-@keyframes pulseBall {
-  from { transform: translate(-50%, -50%) scale(1); }
-  to   { transform: translate(-50%, -50%) scale(1.15); }
+@keyframes pulseBallScale {
+  from { --ball-scale: 1; }
+  to   { --ball-scale: 1.15; }
 }
 
 .plinko-ball.hidden { display: none; }
@@ -3712,9 +3719,10 @@ body.modal-open {
   /* JS will set these */
   --bx: 0px;
   --by: 0px;
+  --ball-scale: 1;
 
   /* keep any other transforms you want AFTER the translate */
-  transform: translate3d(var(--bx), var(--by), 0);
+  transform: translate3d(var(--bx), var(--by), 0) scale(var(--ball-scale));
   will-change: transform;
 }
 

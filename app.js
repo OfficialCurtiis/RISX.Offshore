@@ -1788,12 +1788,40 @@ function spawnPlinkoBall() {
 }
 
 function setBallPosFor(ballEl, x, y) {
- if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    console.warn("[plinko] setBallPosFor received NaN", { x, y, ballEl });
+    return;
+  }
+
+  // guarantee ball lives inside the board before animating
+  if (plinkoBoardEl && ballEl?.parentElement !== plinkoBoardEl) {
+    plinkoBoardEl.appendChild(ballEl);
+  }
+
   const xr = Math.round(x * 2) / 2;
   const yr = Math.round(y * 2) / 2;
 
   ballEl.style.setProperty("--bx", `${xr}px`);
   ballEl.style.setProperty("--by", `${yr}px`);
+
+  // lightweight debug: first 10 frames per ball
+  const dbgCount = ballEl.__dbgFramesLogged || 0;
+  if (dbgCount < 10) {
+    const parent = ballEl.parentElement;
+    const cs = getComputedStyle(ballEl);
+    const rect = ballEl.getBoundingClientRect();
+    console.debug("[plinko] ball frame", dbgCount + 1, {
+      parentId: parent?.id,
+      parentClass: parent?.className,
+      x, y, xr, yr,
+      left: cs.left,
+      top: cs.top,
+      transform: cs.transform,
+      rectLeft: rect.left,
+      rectTop: rect.top
+    });
+    ballEl.__dbgFramesLogged = dbgCount + 1;
+  }
 }
 
 // ---------- Plinko polish: spawn jitter + glow decay ----------
