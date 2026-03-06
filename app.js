@@ -2098,7 +2098,16 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
     const fakeout = fakeDir * dx * 0.95 * Math.sin(chaosT * Math.PI);
     const settleT = clamp((progress - 0.84) / 0.16, 0, 1);
 
-    let x = peg.x + (path[step] ? 1 : -1) * baseDrift + chaosWobble + fakeout;
+        // Push the path toward the spaces BETWEEN pegs instead of riding peg centers
+    const dir = path[step] ? 1 : -1;
+    const gapBias = dir * dx * (0.42 + 0.08 * progress); // ~0.42 lane shift, ramps slightly
+
+    let x = peg.x
+      + gapBias
+      + dir * baseDrift
+      + chaosWobble
+      + fakeout;
+      
     x = lerp(x, targetX, Math.pow(settleT, 1.1));
     x = clamp(x, minX, maxX);
 
