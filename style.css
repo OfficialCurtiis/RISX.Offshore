@@ -4390,3 +4390,200 @@ body.modal-open {
     width: 100%;
   }
 }
+
+/* =========================
+   PLINKO — CONSOLIDATED RESPONSIVE STAGE (single source of truth)
+   Put this at the very bottom of style.css
+   ========================= */
+
+/* ---- TUNERS (edit these only) ---- */
+#game-plinko #plinkoBoard{
+  --plinko-side-pad: 18px;      /* desktop glass inset basis (18–40) */
+  --plinko-x-nudge: 0px;        /* micro left/right (ex: 12px) */
+  --plinko-bucket-bottom: 12px;  /* base bucket lift */
+}
+
+/* ---- Base layout (applies everywhere unless overridden) ---- */
+#game-plinko .plinko-panel{
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#game-plinko .plinko-stage{
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+#game-plinko #plinkoBoard{
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  min-height: 0;
+  margin: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+
+  /* IMPORTANT: do NOT use clamp padding here on desktop; JS already uses sidePad math */
+  padding-left: 0;
+  padding-right: 0;
+  padding-bottom: 0;
+}
+
+/* Buckets live inside board */
+#game-plinko #plinkoBuckets{
+  position: absolute;
+  left: 50%;
+  right: auto;
+  width: calc(100% - (var(--plinko-side-pad) * 2));
+  transform: translateX(calc(-50% + var(--plinko-x-nudge)));
+  bottom: var(--plinko-bucket-bottom);
+}
+
+@media (min-width: 981px){
+  #game-plinko #plinkoBuckets{
+    bottom: 32px !important; /* desktop: lift buckets toward last peg row */
+  }
+}
+
+/* Plinko glass inset */
+#game-plinko #plinkoBoard::after{
+  content: "";
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  bottom: 6px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01)),
+    radial-gradient(120% 90% at 50% 0%, rgba(29,242,127,0.08), rgba(0,0,0,0) 58%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    inset 0 -14px 26px rgba(0,0,0,0.22);
+  pointer-events: none;
+  z-index: 1;
+}
+/* Optional: nudge pegs to match buckets without touching JS */
+#game-plinko #plinkoBoard .plinko-peg{
+  transform: translate3d(var(--plinko-x-nudge), 0, 0);
+}
+
+/* ---- Desktop polish ---- */
+@media (min-width: 981px){
+  /* tighten bet settings ↔ board gap */
+  #game-plinko .panel-row{
+    gap: 12px !important;
+    column-gap: 4px !important;
+  }
+
+  /* board size: keep the pyramid feeling perfect */
+  #game-plinko .plinko-stage{
+    aspect-ratio: 4 / 5;
+    height: min(76vh, 780px);
+    min-height: 560px;
+    margin: 0; /* no centering gutters */
+    max-width: none;
+  }
+
+  /* If your glass inset is larger on desktop, set it here */
+  #game-plinko #plinkoBoard{
+    --plinko-side-pad: 34px; /* your current best value */
+  }
+}
+
+/* ---- Mobile/tablet behavior (stack + keep responsive aspect) ---- */
+@media (max-width: 980px){
+  #game-plinko .panel-row{
+    grid-template-columns: 1fr !important;
+  }
+  #game-plinko .control-panel{
+    order: 2 !important;
+    max-width: 100% !important;
+  }
+  #game-plinko .plinko-panel{
+    order: 1 !important;
+    width: 100%;
+    max-width: none;
+  }
+
+  #game-plinko .plinko-stage{
+    max-width: 640px;
+    aspect-ratio: 4 / 5;
+    height: auto;
+    margin: 0 auto;
+  }
+
+  /* mobile safe padding (OK to use clamps here) */
+  #game-plinko #plinkoBoard{
+    padding-left: clamp(10px, 4.5vw, 24px);
+    padding-right: clamp(10px, 4.5vw, 24px);
+    padding-bottom: calc(var(--bucket-strip-h, 32px) + clamp(14px, 3vw, 24px));
+  }
+}
+
+@media (max-width: 520px){
+  #game-plinko .plinko-stage{
+    max-width: 100%;
+    aspect-ratio: 1 / 1;
+  }
+}
+
+@media (min-width: 981px){
+  /* make Plinko stage match Crash/Mines scale */
+  #game-plinko .plinko-stage{
+    height: min(70vh, 720px) !important; /* was ~76vh/780px */
+    min-height: 520px !important;        /* was 560px */
+    aspect-ratio: 4 / 5 !important;      /* keep the pyramid feel */
+  }
+}
+
+@media (min-width: 981px){
+  #game-plinko .plinko-stage{
+    margin: 0 !important;      /* remove centering gutters */
+    max-width: none !important;
+  }
+}
+
+@media (min-width: 981px){
+  /* Tuner */
+  #plinkoBoard{
+    --plinko-hood-h: 44px;     /* thickness of the top lip (try 36–60) */
+    --plinko-hood-blur: 14px;  /* glow softness */
+  }
+
+  /* Make sure board can hold an overlay */
+  #plinkoBoard{
+    position: absolute; /* already is */
+    overflow: hidden;
+  }
+
+  /* The “hood” that hides the ball start (depth illusion) */
+  #plinkoBoard::before{
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: var(--plinko-hood-h);
+    z-index: 20;              /* above pegs + ball */
+    pointer-events: none;
+
+    /* dark glass lip + fade */
+    background: linear-gradient(
+      180deg,
+      rgba(3,6,14,0.95) 0%,
+      rgba(3,6,14,0.85) 55%,
+      rgba(3,6,14,0.00) 100%
+    );
+
+    /* optional subtle inner edge */
+    box-shadow:
+      inset 0 -1px 0 rgba(255,255,255,0.06),
+      0 8px var(--plinko-hood-blur) rgba(0,0,0,0.55);
+  }
+}

@@ -446,6 +446,7 @@ const safeClicksEl     = document.getElementById("safeClicks");
 const plinkoRowsEl      = document.getElementById("plinkoRows");
 const plinkoDropBtn     = document.getElementById("plinkoDropBtn");
 const plinkoMessageEl   = document.getElementById("plinkoMessage");
+const plinkoStageEl     = document.getElementById("plinkoStage");
 const plinkoBoardEl     = document.getElementById("plinkoBoard");
 const plinkoBucketsEl   = document.getElementById("plinkoBuckets");
 const plinkoOutcomeEl   = document.getElementById("plinkoOutcome");
@@ -1744,16 +1745,13 @@ function withLock(key, fn) {
 // PLINKO: HELPERS & SETTINGS (14/15 model, flat top)
 // =========================
 const PLINKO_BUCKETS = 15;
-const PLINKO_SHAVE = 2;
-
-// 13 visible rows (3..15) + 2 shaved rows = 15 total render rows
-const PLINKO_RENDER_ROWS = 16;
-
-// 14 decisions makes 15 buckets
-const PLINKO_DECISION_ROWS = PLINKO_BUCKETS - 1; // 14
-
-const PLINKO_PEG_R = 5.5;     // if your .plinko-peg is 10px
-const PLINKO_BALL_R = 7;    // if your .plinko-ball is 14px
+const PLINKO_DECISION_ROWS = PLINKO_BUCKETS - 1; // 14 decisions => 15 buckets
+const PLINKO_MIN_SIDE_PAD = 10;
+const PLINKO_MAX_SIDE_PAD = 24;
+const PLINKO_MIN_TOP_PAD = 16;
+const PLINKO_MAX_TOP_PAD = 34;
+const PLINKO_TOP_NUDGE = 10; // visual: push apex down slightly
+const PLINKO_BALL_R = 7;
 const PLINKO_CLEAR = 2;     // extra spacing so it looks like a bounce
 
 function getBucketCenterX(bucketIndex) {
@@ -1826,6 +1824,7 @@ const PLINKO_TABLES = {
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
 let plinkoGeom = null;
+let plinkoPegCenters = new Map();
 
 function renderPlinkoBoard() {
   if (!plinkoBoardEl) return;
@@ -1843,40 +1842,38 @@ function renderPlinkoBoard() {
   }
 
   if (ballNode) ballNode.classList.add("hidden");
+  plinkoPegCenters = new Map();
 
-  const boardW = plinkoBoardEl.clientWidth || 640;
-  const boardH = plinkoBoardEl.clientHeight || 360;
-
-  const topPad = 22;
+  const stageW = plinkoStageEl?.clientWidth || plinkoBoardEl.clientWidth || 640;
+  const stageH = plinkoStageEl?.clientHeight || plinkoBoardEl.clientHeight || 520;
+  const boardW = stageW;
+  const boardH = stageH;
 
   const css = getComputedStyle(plinkoBoardEl);
   const stripH = parseFloat(css.getPropertyValue("--bucket-strip-h")) || 32;
-
-  // ✅ REPLACE your sidePad/dx block with this:
-  const sidePad = parseFloat(css.paddingLeft) || 18; // read from CSS padding
-  const innerW = boardW - sidePad * 2;               // true drawable width
-  const dx = innerW / PLINKO_BUCKETS;                // 15 bucket gaps
+  const sidePad = clamp(boardW * 0.045, PLINKO_MIN_SIDE_PAD, PLINKO_MAX_SIDE_PAD);
+  const topPad = clamp(boardH * 0.07, PLINKO_MIN_TOP_PAD, PLINKO_MAX_TOP_PAD) + PLINKO_TOP_NUDGE;
+  const innerW = Math.max(120, boardW - sidePad * 2);
+  const cols = PLINKO_BUCKETS + 1;
+  // Responsive spacing: scales from stage width, no mobile pixel constants.
+  const dx = innerW / (cols - 1);
 
   plinkoBoardEl.style.setProperty("--plinko-side-pad", `${sidePad}px`);
+  plinkoBoardEl.style.setProperty("--plinko-peg-size", `${clamp(dx * 0.28, 8, 14)}px`);
 
-  const bottomPad = stripH + 10;
-  const usableH = Math.max(240, boardH - topPad - bottomPad);
+  const bottomPad = stripH + clamp(boardH * 0.055, 14, 28);
+  const usableH = Math.max(150, boardH - topPad - bottomPad);
+  // Responsive spacing: scales from stage height and decision rows.
+  const dy = usableH / (PLINKO_DECISION_ROWS + 1);
+  const pegR = clamp(Math.min(dx, dy) * 0.17, 3.2, 6.8);
 
-  const visibleRows = PLINKO_RENDER_ROWS - PLINKO_SHAVE;
-  const dy = usableH / (visibleRows - 1);
+  // Geometry is rebuilt by ResizeObserver whenever stage dimensions change.
+  plinkoGeom = { boardW, boardH, innerW, topPad, bottomPad, sidePad, dx, dy, pegR };
 
-  // ✅ store for animation + bucket center math
-  plinkoGeom = { boardW, boardH, innerW, topPad, bottomPad, sidePad, dx, dy };
-
-  for (let r = 0; r < PLINKO_RENDER_ROWS; r++) {
-    if (r < PLINKO_SHAVE) continue;
-
-    const vr = r - PLINKO_SHAVE;
-    const pegsInRow = Math.min(PLINKO_BUCKETS + 1, 3 + vr); // cap at 16
-
-    // ✅ REPLACE your startX math + peg left with this:
+  for (let r = 0; r < PLINKO_DECISION_ROWS; r++) {
+    const pegsInRow = Math.min(cols, 3 + r);
     const rowW = (pegsInRow - 1) * dx;
-    const startX = (innerW - rowW) / 2;
+    const startX = sidePad + (innerW - rowW) / 2;
 
     for (let c = 0; c < pegsInRow; c++) {
       const peg = document.createElement("div");
@@ -1884,8 +1881,16 @@ function renderPlinkoBoard() {
       peg.dataset.row = String(r);
       peg.dataset.col = String(c);
 
-      peg.style.left = `${sidePad + startX + c * dx}px`; // ✅ add sidePad offset
-      peg.style.top  = `${topPad + vr * dy}px`;
+      const px = startX + c * dx;
+      const py = topPad + (r + 1) * dy;
+
+      peg.style.left = `${px}px`;
+      peg.style.top = `${py}px`;
+      peg.style.width = `${pegR * 2}px`;
+      peg.style.height = `${pegR * 2}px`;
+      peg.style.marginLeft = `${-pegR}px`;
+      peg.style.marginTop = `${-pegR}px`;
+      plinkoPegCenters.set(`${r}:${c}`, { x: px, y: py });
 
       if (plinkoBucketsEl && plinkoBucketsEl.parentElement === plinkoBoardEl) {
         plinkoBoardEl.insertBefore(peg, plinkoBucketsEl);
@@ -1958,16 +1963,14 @@ function plinkoSampleBucket(rows) {
 }
 
 function pegsInRenderedRow(r) {
-  const visibleRows = PLINKO_RENDER_ROWS - PLINKO_SHAVE;
-  const vr = r - PLINKO_SHAVE;
-  if (vr < 0) return 0;
-  return Math.min(PLINKO_BUCKETS + 1, 3 + vr); // ✅ cap at 16
+  if (r < 0) return 0;
+  return Math.min(PLINKO_BUCKETS + 1, 3 + r);
 }
 
 let plinkoResizeObs = null;
 
 function attachPlinkoResizeObserver() {
-  if (!plinkoBoardEl) return;
+  if (!plinkoStageEl && !plinkoBoardEl) return;
   if (plinkoResizeObs) return; // prevent double observers
 
   let raf = 0;
@@ -1976,29 +1979,18 @@ function attachPlinkoResizeObserver() {
     raf = requestAnimationFrame(() => {
       renderPlinkoBoard();     // re-place pegs + update plinkoGeom
       renderPlinkoBuckets();   // keeps buckets/grid synced after resize
-      attachPlinkoResizeObserver(); 
     });
   });
 
-  plinkoResizeObs.observe(plinkoBoardEl);
+  plinkoResizeObs.observe(plinkoStageEl || plinkoBoardEl);
 }
 
 function getPegCenter(row, logicalCol) {
   const count = pegsInRenderedRow(row);
   if (count <= 0) return null;
 
-  // ✅ Duel-style mapping: logical slot -> peg index
   const renderedCol = clamp(logicalCol + 1, 0, count - 1);
-
-  const peg = plinkoBoardEl.querySelector(
-    `.plinko-peg[data-row="${row}"][data-col="${renderedCol}"]`
-  );
-  if (!peg) return null;
-
-  return {
-    x: parseFloat(peg.style.left),
-    y: parseFloat(peg.style.top),
-  };
+  return plinkoPegCenters.get(`${row}:${renderedCol}`) || null;
 }
 
 function computePlinkoOutcome(rows) {
@@ -2023,120 +2015,98 @@ function lerp(a, b, t) {
 }
 
 async function animatePlinkoBall(ballEl, rows, path, options = {}) {
-  const stepMs    = options.stepMs ?? 120;
-  const driftPx   = options.driftPx ?? 6;
-  const dropExtra = options.dropExtra ?? 20;
-  const targetBucketIndex = options.targetBucketIndex; // ✅ z
-  const startRow = PLINKO_SHAVE;
+  const stepMs = options.stepMs ?? 58; // fast casino-like drop cadence
+  const targetBucketIndex = options.targetBucketIndex;
   const g = plinkoGeom;
   const boardW = g?.boardW || plinkoBoardEl.clientWidth || 640;
+  const boardH = g?.boardH || plinkoBoardEl.clientHeight || 520;
   const dx = g?.dx || (boardW / PLINKO_BUCKETS);
 
   const minX = PLINKO_BALL_R + 2;
   const maxX = boardW - (PLINKO_BALL_R + 2);
 
-  const BALL_R = 7;
-  const PEG_R  = 5;
-  const HIT_Y  = PEG_R + BALL_R + 2;
-  const KICK_X = PEG_R + BALL_R + 1;
-
-  const points = [];
   let col = 0;
+  const first = getPegCenter(0, 0);
+  if (!first) throw new Error("Missing first Plinko peg");
 
-  const first = getPegCenter(startRow, 0);
-  if (!first) throw new Error(`Missing peg row ${startRow} col ${col}`);
-  points.push({ x: first.x, y: first.y - 40 });
-
-    // Decision step 0..rows-1 maps to board row (startRow + step)
-  for (let step = 0; step < rows; step++) {
-    const boardRow = startRow + step;
-
-    const peg = getPegCenter(boardRow, col);
-    if (!peg) throw new Error(`Missing peg row ${boardRow} col ${col}`);
-
-    const dir = (path[step] === 1) ? 1 : -1;
-
-    const remaining = (rows - 1) - step;          // last step => 0
-    const damp = clamp((remaining + 1) / 6, 0.12, 1); // last ~5 steps damp hard
-    const kick = Math.min(KICK_X * damp, dx * 0.45);
-
-    points.push({ x: peg.x + dir * kick, y: peg.y - HIT_Y });
-
-    if (path[step] === 1) col += 1;
-
-    const nextPeg = getPegCenter(boardRow + 1, col);
-    if (nextPeg) {
-      points.push({ x: nextPeg.x, y: nextPeg.y - HIT_Y });
-    }
-  }
-
-  const last = points[points.length - 1];
-
-  let targetX = last.x;
-  if (Number.isInteger(targetBucketIndex)) {
-  targetX = clamp(getBucketCenterX(targetBucketIndex), minX, maxX); 
-  }
+  const targetX = clamp(
+    Number.isInteger(targetBucketIndex) ? getBucketCenterX(targetBucketIndex) : first.x,
+    minX,
+    maxX
+  );
 
   const boardRect = plinkoBoardEl.getBoundingClientRect();
   const bucketRect = plinkoBucketsEl.getBoundingClientRect();
-  const targetY = (bucketRect.top - boardRect.top) + (bucketRect.height * 0.35); // slightly above center
+  const targetY = (bucketRect.top - boardRect.top) + (bucketRect.height * 0.35);
+  const centerBucket = (PLINKO_BUCKETS - 1) / 2;
+  const fakeDir = (targetBucketIndex ?? centerBucket) >= centerBucket ? -1 : 1;
 
-  // ✅ funnel steps (prevents sudden jump)
-  const funnelSteps = 3;
-  for (let s = 1; s <= funnelSteps; s++) {
-  const t = s / (funnelSteps + 1);
-  points.push({
-    x: lerp(last.x, targetX, t),
-    y: lerp(last.y, targetY, t)
-      });
-    }
-    points.push({ x: targetX, y: targetY });
+  const points = [{ x: first.x + spawnJitterX(), y: Math.max(12, first.y - dx * 1.3) }];
 
-    // spawn jitter: tiny offset so spam-clicks don't look cloned
-    const jx = spawnJitterX();
-    setBallPosFor(ballEl, points[0].x + jx, points[0].y);
-    applyBallGlow(ballEl, 0);
+  for (let step = 0; step < rows; step++) {
+    const peg = getPegCenter(step, col);
+    if (!peg) continue;
 
-    let finalRenderedX = points[0].x;
+    if (path[step] === 1) col += 1;
 
-    for (let i = 0; i < points.length - 1; i++) {
+    const progress = (step + 1) / rows;
+    const chaosT = clamp((progress - 0.62) / 0.38, 0, 1);
+
+    // Guidance curve:
+    // 1) early rows stay mostly vertical/minimal lateral drift
+    // 2) last ~38% adds pronounced wobble/fakeout
+    // 3) final rows aggressively converge to preselected slot
+    const baseDrift = dx * (0.04 + 0.12 * progress);
+    const chaosWobble = Math.sin((step + 1) * 2.35 + (path[step] ? 0.7 : 2.1)) * dx * (0.14 + 0.72 * chaosT);
+    const fakeout = fakeDir * dx * 0.95 * Math.sin(chaosT * Math.PI);
+    const settleT = clamp((progress - 0.84) / 0.16, 0, 1);
+
+    let x = peg.x + (path[step] ? 1 : -1) * baseDrift + chaosWobble + fakeout;
+    x = lerp(x, targetX, Math.pow(settleT, 1.1));
+    x = clamp(x, minX, maxX);
+
+    const y = peg.y - (g?.pegR || 5) - (PLINKO_BALL_R - 1);
+    points.push({ x, y });
+  }
+
+  const last = points[points.length - 1] || { x: targetX, y: targetY - 22 };
+  points.push({ x: lerp(last.x, targetX, 0.55), y: lerp(last.y, targetY, 0.62) });
+  points.push({ x: targetX, y: targetY });
+
+  setBallPosFor(ballEl, points[0].x, points[0].y);
+  applyBallGlow(ballEl, 0);
+
+  let finalRenderedX = points[0].x;
+
+  for (let i = 0; i < points.length - 1; i++) {
     const a = points[i];
     const b = points[i + 1];
     const start = performance.now();
 
-    await new Promise(resolve => {
+    await new Promise((resolve) => {
       function frame(now) {
-      const t = Math.min(1, (now - start) / stepMs);
-      const e = easeOutCubic(t);
+        const t = Math.min(1, (now - start) / stepMs);
+        const e = t < 0.6 ? t * (1.25 - t * 0.35) : easeOutCubic(t);
 
-      const segmentsLeft = (points.length - 2) - i;
-      const wobbleFade = clamp(segmentsLeft / 4, 0, 1);
+        const y = lerp(a.y, b.y, e);
+        const progressY = clamp(y / boardH, 0, 1);
+        const chaosT = clamp((progressY - 0.6) / 0.4, 0, 1);
+        const micro = Math.sin((now * 0.02) + i * 1.7) * dx * 0.04 * chaosT;
+        const x = clamp(lerp(a.x, b.x, e) + micro, minX, maxX);
 
-      const rawX = lerp(a.x, b.x, e);
-      const bounce = Math.sin(e * Math.PI) * 1.8 * wobbleFade;
+        finalRenderedX = x;
+        setBallPosFor(ballEl, x, y);
+        applyBallGlow(ballEl, progressY);
 
-      const x = clamp(rawX, minX, maxX);
-      const y = lerp(a.y, b.y, e) - bounce;
-
-  // ✅ THIS WAS MISSING
-  finalRenderedX = x;
-  setBallPosFor(ballEl, x, y);
-
-  // glow decay based on vertical progress within the board
-  const tGlow = clamp(y / (plinkoGeom?.boardH || plinkoBoardEl.clientHeight || 500), 0, 1);
-  applyBallGlow(ballEl, tGlow);
-
-  if (t >= 1) return resolve();
-  requestAnimationFrame(frame);
-}
+        if (t >= 1) return resolve();
+        requestAnimationFrame(frame);
+      }
       requestAnimationFrame(frame);
     });
   }
 
- 
   setTimeout(() => ballEl.remove(), 250);
-
-  return finalRenderedX; // ✅ true rendered X at end
+  return finalRenderedX;
 }
 
 function highlightBucket(bucketIndex) {
