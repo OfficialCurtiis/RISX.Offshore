@@ -3706,11 +3706,16 @@ body.modal-open {
 
 #plinkoBall{
   position: absolute;
-  transform: translate(-50%, -50%);
   left: 0;
   top: 0;
+
+  /* JS will set these */
+  --bx: 0px;
+  --by: 0px;
+
+  /* keep any other transforms you want AFTER the translate */
+  transform: translate3d(var(--bx), var(--by), 0);
   will-change: transform;
-  z-index: 3;
 }
 
 /* Buckets pinned INSIDE board, always fits */
@@ -4590,3 +4595,5 @@ body.modal-open {
       0 8px var(--plinko-hood-blur) rgba(0,0,0,0.55);
   }
 }
+
+#plinkoBoard{ position: relative; }

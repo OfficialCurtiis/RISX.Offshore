@@ -1788,9 +1788,12 @@ function spawnPlinkoBall() {
 }
 
 function setBallPosFor(ballEl, x, y) {
-  const xr = Math.round(x * 2) / 2; // half-pixel
+  // half-pixel rounding to reduce shimmer
+  const xr = Math.round(x * 2) / 2;
   const yr = Math.round(y * 2) / 2;
-  ballEl.style.transform = `translate3d(${xr}px, ${yr}px, 0)`;
+
+  ballEl.style.setProperty("--bx", `${xr}px`);
+  ballEl.style.setProperty("--by", `${yr}px`);
 }
 
 // ---------- Plinko polish: spawn jitter + glow decay ----------
