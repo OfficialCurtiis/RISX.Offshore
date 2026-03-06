@@ -2015,7 +2015,7 @@ function lerp(a, b, t) {
 }
 
 async function animatePlinkoBall(ballEl, rows, path, options = {}) {
-  const stepMs = options.stepMs ?? 95; // slower cadence for more suspense
+  const stepMs = options.stepMs ?? 125; // slower cadence for more suspense
   const targetBucketIndex = options.targetBucketIndex;
   const g = plinkoGeom;
   const boardW = g?.boardW || plinkoBoardEl.clientWidth || 640;
@@ -2090,8 +2090,8 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
 
         const y = lerp(a.y, b.y, e);
         const progressY = clamp(y / boardH, 0, 1);
-        const chaosT = clamp((progressY - 0.6) / 0.4, 0, 1);
-        const micro = Math.sin((now * 0.02) + i * 1.7) * dx * 0.04 * chaosT;
+        const chaosT = clamp((progressY - 0.86) / 0.14, 0, 1);
+        const micro = 0;
         const x = clamp(lerp(a.x, b.x, e) + micro, minX, maxX);
 
         finalRenderedX = x;
