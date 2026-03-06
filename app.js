@@ -2015,7 +2015,7 @@ function lerp(a, b, t) {
 }
 
 async function animatePlinkoBall(ballEl, rows, path, options = {}) {
-  const stepMs = options.stepMs ?? 58; // fast casino-like drop cadence
+  const stepMs = options.stepMs ?? 95; // slower cadence for more suspense
   const targetBucketIndex = options.targetBucketIndex;
   const g = plinkoGeom;
   const boardW = g?.boardW || plinkoBoardEl.clientWidth || 640;
