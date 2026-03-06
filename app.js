@@ -1788,7 +1788,7 @@ function spawnPlinkoBall() {
 }
 
 function setBallPosFor(ballEl, x, y) {
-  // half-pixel rounding to reduce shimmer
+ if (!Number.isFinite(x) || !Number.isFinite(y)) return;
   const xr = Math.round(x * 2) / 2;
   const yr = Math.round(y * 2) / 2;
 
