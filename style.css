@@ -3707,6 +3707,9 @@ body.modal-open {
 #plinkoBall{
   position: absolute;
   transform: translate(-50%, -50%);
+  left: 0;
+  top: 0;
+  will-change: transform;
   z-index: 3;
 }
 

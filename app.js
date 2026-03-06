@@ -1788,8 +1788,9 @@ function spawnPlinkoBall() {
 }
 
 function setBallPosFor(ballEl, x, y) {
-  ballEl.style.left = `${x}px`;
-  ballEl.style.top  = `${y}px`;
+  const xr = Math.round(x * 2) / 2; // half-pixel
+  const yr = Math.round(y * 2) / 2;
+  ballEl.style.transform = `translate3d(${xr}px, ${yr}px, 0)`;
 }
 
 // ---------- Plinko polish: spawn jitter + glow decay ----------
@@ -2014,8 +2015,13 @@ function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
+function quadBezier(p0, p1, p2, t) {
+  const u = 1 - t;
+  return (u*u)*p0 + (2*u*t)*p1 + (t*t)*p2;
+}
+
 async function animatePlinkoBall(ballEl, rows, path, options = {}) {
-  const stepMs = options.stepMs ?? 125; // slower cadence for more suspense
+  const stepMs = options.stepMs ?? 145; // slower cadence for more suspense
   const targetBucketIndex = options.targetBucketIndex;
   const g = plinkoGeom;
   const boardW = g?.boardW || plinkoBoardEl.clientWidth || 640;
@@ -2088,11 +2094,48 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
         const t = Math.min(1, (now - start) / stepMs);
         const e = t < 0.6 ? t * (1.25 - t * 0.35) : easeOutCubic(t);
 
-        const y = lerp(a.y, b.y, e);
-        const progressY = clamp(y / boardH, 0, 1);
-        const chaosT = clamp((progressY - 0.86) / 0.14, 0, 1);
-        const micro = 0;
-        const x = clamp(lerp(a.x, b.x, e) + micro, minX, maxX);
+       // base linear
+      const yLin = lerp(a.y, b.y, e);
+      const xLin = lerp(a.x, b.x, e);
+
+      // curvature amount (stronger near the end for “impossible” feel)
+      const progressY = clamp(yLin / boardH, 0, 1);
+      const chaosT = clamp((progressY - 0.86) / 0.14, 0, 1);
+
+      // direction from a -> b
+      const dxSeg = (b.x - a.x);
+      const dySeg = (b.y - a.y);
+      const segLen = Math.max(1, Math.hypot(dxSeg, dySeg));
+
+      // perpendicular unit vector (for “rolling arc”)
+      const px = -dySeg / segLen;
+      const py =  dxSeg / segLen;
+
+      // arc strength: small normally, bigger only at the very end
+      const arc = dx * (0.08 + 0.22 * chaosT);
+
+      // control point offsets the mid of the segment
+      const mx = (a.x + b.x) * 0.5 + px * arc;
+      const my = (a.y + b.y) * 0.5 + py * arc;
+
+      // curved position (quadratic Bezier)
+      let x = quadBezier(a.x, mx, b.x, e);
+      let y = quadBezier(a.y, my, b.y, e);
+
+            // “impossible” orbit wobble only at the very end (smooth, not staticy)
+      if (chaosT > 0) {
+        const w = (now * 0.010); // slow angular speed
+        const orbit = dx * (0.04 + 0.10 * chaosT); // amplitude ramps
+        x += Math.sin(w) * orbit;
+        y += Math.cos(w * 1.1) * orbit * 0.35; // subtle vertical float
+      }
+
+      // clamp and render
+      x = clamp(x, minX, maxX);
+      finalRenderedX = x;
+
+      setBallPosFor(ballEl, x, y);
+      applyBallGlow(ballEl, progressY);
 
         finalRenderedX = x;
         setBallPosFor(ballEl, x, y);
