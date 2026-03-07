@@ -2226,10 +2226,15 @@ function getBucketIndexFromFinalX(finalXBoardSpace) {
 }
 
 async function dropPlinkoBall() {
+  console.trace("dropPlinkoBall called");
+  console.log("plinkoBallsInFlight:", plinkoBallsInFlight, "time:", Date.now());
 
-  // allow multiple balls; optionally cap spam
   const MAX_IN_FLIGHT = 8;
   if (plinkoBallsInFlight >= MAX_IN_FLIGHT) return;
+  plinkoBallsInFlight++;
+
+  const isFirst = (plinkoBallsInFlight === 1);
+  if (isFirst) plinkoOnBallDrop_LockIfNeeded?.();
 
   let ballEl = null;
 
@@ -2245,8 +2250,6 @@ async function dropPlinkoBall() {
 
     // charge bet immediately
     adjustBalance(-bet, { suppressChallengeChecks: true, suppressMercy: true });
-
-    plinkoOnBallDrop_LockIfNeeded?.();  // 🔒 locks settings, keeps drop enabled
 
     const rows = PLINKO_DECISION_ROWS;
 
@@ -2277,12 +2280,17 @@ async function dropPlinkoBall() {
   } catch (err) {
     console.error(err);
     if (plinkoMessageEl) plinkoMessageEl.textContent = `Plinko error: ${err?.message || err}`;
-  } finally {
-    plinkoOnBallResolved_UnlockIfDone?.(); // 🔓 unlocks only when last ball resolves
+ } finally {
+  if (ballEl?.isConnected) ballEl.remove();
+
+  plinkoBallsInFlight = Math.max(0, plinkoBallsInFlight - 1);
+
+  if (plinkoBallsInFlight === 0) {
+    plinkoOnBallResolved_UnlockIfDone?.();
     refreshChallengeHud();
     postRoundChecks?.();
   }
-}
+}}
 
 // -------------------------
 // PROVABLY FAIR PLINKO RNG
