@@ -4415,7 +4415,7 @@ body.modal-open {
 /* ---- TUNERS (edit these only) ---- */
 #game-plinko #plinkoBoard{
   --plinko-side-pad: 18px;      /* desktop glass inset basis (18–40) */
-  --plinko-x-nudge: -2px;        /* micro left/right (ex: 12px) */
+  --plinko-x-nudge: -1.5px;        /* micro left/right (ex: 12px) */
   --plinko-bucket-bottom: 12px;  /* base bucket lift */
 }
 
@@ -4461,7 +4461,7 @@ body.modal-open {
 
 @media (min-width: 981px){
   #game-plinko #plinkoBuckets{
-    bottom: 48px !important; /* desktop: lift buckets toward last peg row */
+    bottom: 44px !important; /* desktop: lift buckets toward last peg row */
   }
 }
 

@@ -2081,38 +2081,46 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
   const points = [{ x: first.x + spawnJitterX(), y: Math.max(12, first.y - dx * 1.3) }];
 
   for (let step = 0; step < rows; step++) {
-    const peg = getPegCenter(step, col);
-    if (!peg) continue;
+    for (let step = 0; step < rows; step++) {
+  // peg at current logical column
+  const pegA = getPegCenter(step, col);
+  if (!pegA) continue;
 
-    if (path[step] === 1) col += 1;
+  // direction this step
+  const dir = (path[step] === 1) ? 1 : -1;
 
-    const progress = (step + 1) / rows;
-    const chaosT = clamp((progress - 0.62) / 0.38, 0, 1);
+  // adjacent peg to define the GAP (lane) center
+  const pegB = getPegCenter(step, col + (dir === 1 ? 1 : -1));
 
-    // Guidance curve:
-    // 1) early rows stay mostly vertical/minimal lateral drift
-    // 2) last ~38% adds pronounced wobble/fakeout
-    // 3) final rows aggressively converge to preselected slot
-    const baseDrift = dx * (0.04 + 0.12 * progress);
-    const chaosWobble = Math.sin((step + 1) * 2.35 + (path[step] ? 0.7 : 2.1)) * dx * (0.14 + 0.72 * chaosT);
-    const fakeout = fakeDir * dx * 0.95 * Math.sin(chaosT * Math.PI);
-    const settleT = clamp((progress - 0.84) / 0.16, 0, 1);
+  // gap center (fallback if edge)
+  const gapX = pegB ? (pegA.x + pegB.x) * 0.5 : (pegA.x + dir * dx * 0.5);
 
-        // Push the path toward the spaces BETWEEN pegs instead of riding peg centers
-    const dir = path[step] ? 1 : -1;
-    const gapBias = dir * dx * (0.48 + 0.08 * progress); // ~0.42 lane shift, ramps slightly
+  // advance logical column AFTER we computed current row pegs
+  if (path[step] === 1) col += 1;
 
-    let x = peg.x
-      + gapBias
-      + dir * baseDrift
-      + chaosWobble
-      + fakeout;
+  const progress = (step + 1) / rows;
 
-    x = lerp(x, targetX, Math.pow(settleT, 1.1));
-    x = clamp(x, minX, maxX);
+  // push “crazy” to the very end so mid-board is clean
+  const chaosT = clamp((progress - 0.86) / 0.14, 0, 1);
 
-    const y = peg.y - (g?.pegR || 5) - (PLINKO_BALL_R - 1) + 2;
-    points.push({ x, y });
+  // toned-down flavor terms (now that we’re lane-centered)
+  const baseDrift = dx * (0.03 + 0.08 * progress);
+  const chaosWobble =
+    Math.sin((step + 1) * 2.35 + (path[step] ? 0.7 : 2.1)) * dx * (0.06 + 0.22 * chaosT);
+  const fakeout = fakeDir * dx * 0.55 * Math.sin(chaosT * Math.PI);
+
+  const settleT = clamp((progress - 0.90) / 0.10, 0, 1);
+
+  // lane-centered X (threads between pegs)
+  let x = gapX + dir * baseDrift + chaosWobble + fakeout;
+  x = lerp(x, targetX, Math.pow(settleT, 1.1));
+  x = clamp(x, minX, maxX);
+
+  // y based on peg row height (fine)
+  const y = pegA.y - (g?.pegR || 5) - (PLINKO_BALL_R - 1) + 2;
+
+  points.push({ x, y });
+}
   }
 
   const last = points[points.length - 1] || { x: targetX, y: targetY - 22 };
@@ -2152,7 +2160,9 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
       const py =  dxSeg / segLen;
 
       // arc strength: small normally, bigger only at the very end
-      const arc = dx * (0.08 + 0.22 * chaosT);
+      const arcRaw = dx * (0.07 + 0.16 * chaosT);
+      const arcMax = segLen * 0.22;          // never curve too hard on short hops
+      const arc = Math.min(arcRaw, arcMax);
 
       // control point offsets the mid of the segment
       const mx = (a.x + b.x) * 0.5 + px * arc;
@@ -2164,10 +2174,10 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
 
             // “impossible” orbit wobble only at the very end (smooth, not staticy)
       if (chaosT > 0) {
-        const w = (now * 0.010); // slow angular speed
-        const orbit = dx * (0.04 + 0.10 * chaosT); // amplitude ramps
+        const w = now * 0.010;
+        const orbit = Math.min(dx * (0.03 + 0.06 * chaosT), segLen * 0.10);
         x += Math.sin(w) * orbit;
-        y += Math.cos(w * 1.1) * orbit * 0.35; // subtle vertical float
+        y += Math.cos(w * 1.1) * orbit * 0.25;
       }
 
       // clamp and render
@@ -2176,10 +2186,6 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
 
       setBallPosFor(ballEl, x, y);
       applyBallGlow(ballEl, progressY);
-
-        finalRenderedX = x;
-        setBallPosFor(ballEl, x, y);
-        applyBallGlow(ballEl, progressY);
 
         if (t >= 1) return resolve();
         requestAnimationFrame(frame);
