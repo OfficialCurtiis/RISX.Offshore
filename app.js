@@ -2285,25 +2285,27 @@ console.trace(`[DROP] dropPlinkoBall call #${window.__plinkoDropCount}`);
       plinkoMessageEl.textContent = `+${formatCredits(payout)} (${mult}x)`;
     }
 
-  } catch (err) {
+    } catch (err) {
     console.error(err);
     if (plinkoMessageEl) plinkoMessageEl.textContent = `Plinko error: ${err?.message || err}`;
- } finally {
-  if (ballEl?.isConnected) ballEl.remove();
+  } finally {
+    if (ballEl?.isConnected) ballEl.remove();
 
-  plinkoBallsInFlight = Math.max(0, plinkoBallsInFlight - 1);
+    plinkoBallsInFlight = Math.max(0, plinkoBallsInFlight - 1);
 
-  if (plinkoBallsInFlight === 0) {
-    plinkoOnBallResolved_UnlockIfDone?.();
-    refreshChallengeHud();
-    postRoundChecks?.();
+    if (plinkoBallsInFlight === 0) {
+      plinkoOnBallResolved_UnlockIfDone?.();
+      refreshChallengeHud();
+      postRoundChecks?.();
 
-  if (window.__plinkoNeedsRelayout) {
-  window.__plinkoNeedsRelayout = false;
-  renderPlinkoBoard();
-  renderPlinkoBuckets();
+      if (window.__plinkoNeedsRelayout) {
+        window.__plinkoNeedsRelayout = false;
+        renderPlinkoBoard();
+        renderPlinkoBuckets();
+      }
+    }
   }
-}}
+}
 
 // -------------------------
 // PROVABLY FAIR PLINKO RNG
