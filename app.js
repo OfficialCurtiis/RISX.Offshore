@@ -2233,13 +2233,26 @@ function getBucketIndexFromFinalX(finalXBoardSpace) {
 }
 
 async function dropPlinkoBall(e) {
-
- window.__plinkoDropCount = (window.__plinkoDropCount || 0) + 1;
-console.log("[DROP]", window.__plinkoDropCount, "inFlight:", plinkoBallsInFlight, "ts:", Date.now());
-console.log("[DROP] trusted:", e?.isTrusted, "type:", e?.type);
-
+  if (e) {
+  e.preventDefault();
+  e.stopPropagation();
+}
   const MAX_IN_FLIGHT = 8;
   if (plinkoBallsInFlight >= MAX_IN_FLIGHT) return;
+
+window.__lastPlinkoClickTs = window.__lastPlinkoClickTs || 0;
+const now = Date.now();
+
+// ignore ultra-fast duplicate clicks (<120ms) which are almost never intentional
+if (now - window.__lastPlinkoClickTs < 120) return;
+window.__lastPlinkoClickTs = now;
+
+// debug
+window.__plinkoDropCount = (window.__plinkoDropCount || 0) + 1;
+console.log("[DROP]", window.__plinkoDropCount, "inFlight:", plinkoBallsInFlight, "ts:", Date.now());
+console.log("[DROP] trusted:", e?.isTrusted, "type:", e?.type);
+console.log("[DROP] detail:", e?.detail, "pointer:", e?.pointerType, "active:", document.activeElement?.id);
+
   plinkoBallsInFlight++;
 
   const isFirst = (plinkoBallsInFlight === 1);
