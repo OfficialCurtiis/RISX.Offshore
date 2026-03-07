@@ -2232,10 +2232,11 @@ function getBucketIndexFromFinalX(finalXBoardSpace) {
   );
 }
 
-async function dropPlinkoBall() {
+async function dropPlinkoBall(e) {
 
  window.__plinkoDropCount = (window.__plinkoDropCount || 0) + 1;
 console.log("[DROP]", window.__plinkoDropCount, "inFlight:", plinkoBallsInFlight, "ts:", Date.now());
+console.log("[DROP] trusted:", e?.isTrusted, "type:", e?.type);
 
   const MAX_IN_FLIGHT = 8;
   if (plinkoBallsInFlight >= MAX_IN_FLIGHT) return;
@@ -4005,7 +4006,7 @@ function initPlinko() {
   initPlinko._didBind = true;
 
   plinkoRiskEl?.addEventListener("change", renderPlinkoBuckets);
-  if (plinkoDropBtn) plinkoDropBtn.onclick = dropPlinkoBall;
+  if (plinkoDropBtn) plinkoDropBtn.onclick = (e) => dropPlinkoBall(e);
 }
 
 function init() {
