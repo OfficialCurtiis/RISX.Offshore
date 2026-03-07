@@ -2226,9 +2226,6 @@ function getBucketIndexFromFinalX(finalXBoardSpace) {
 }
 
 async function dropPlinkoBall() {
-  console.trace("dropPlinkoBall called");
-  console.log("plinkoBallsInFlight:", plinkoBallsInFlight, "time:", Date.now());
-
   const MAX_IN_FLIGHT = 8;
   if (plinkoBallsInFlight >= MAX_IN_FLIGHT) return;
   plinkoBallsInFlight++;
@@ -3990,7 +3987,7 @@ function initPlinko() {
   initPlinko._didBind = true;
 
   plinkoRiskEl?.addEventListener("change", renderPlinkoBuckets);
-  plinkoDropBtn?.addEventListener("click", () => withLock("plinkoDrop", dropPlinkoBall));
+  if (plinkoDropBtn) plinkoDropBtn.onclick = dropPlinkoBall;
 }
 
 function init() {
