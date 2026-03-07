@@ -38,13 +38,14 @@ let minesResultHideTimer = null;
 // PLINKO STATE
 let plinkoRows = 8;
 let plinkoBet = 10;
-let isPlinkoDropping = false;
 let lastPlinkoResult = null;
 
 let serverSeed = "CHANGE_ME_TO_RANDOM_LONG_SECRET"; // secret until reveal
 let clientSeed = "Guest"; // let player edit this
 let plinkoNonce = 0;
 let plinkoBallsInFlight = 0;
+let plinkoAutoplayEnabled = false;
+let plinkoDropDebugCalls = 0;
 
 // CRASH STATE
 let crashRoundActive = false;
@@ -1395,6 +1396,10 @@ if (challengeActive && !challengeCompleted && bal <= 0) {
   return;
 }
 
+  if (plinkoAutoplayEnabled === true) {
+    dropPlinkoBall?.();
+  }
+
   showChallengeResetIfNeeded?.();
 }
 
@@ -2225,12 +2230,18 @@ function getBucketIndexFromFinalX(finalXBoardSpace) {
 }
 
 async function dropPlinkoBall() {
+  console.trace("dropPlinkoBall called");
+  if (plinkoDropDebugCalls < 8) {
+    plinkoDropDebugCalls += 1;
+    console.log("inFlight", plinkoBallsInFlight, "source", new Error().stack);
+  }
 
-  // allow multiple balls; optionally cap spam
   const MAX_IN_FLIGHT = 8;
-  if (isPlinkoDropping) return;
   if (plinkoBallsInFlight >= MAX_IN_FLIGHT) return;
-  isPlinkoDropping = true;
+  plinkoBallsInFlight++;
+
+  const isFirst = (plinkoBallsInFlight === 1);
+  if (isFirst) plinkoOnBallDrop_LockIfNeeded?.();
 
   let ballEl = null;
 
@@ -2246,8 +2257,6 @@ async function dropPlinkoBall() {
 
     // charge bet immediately
     adjustBalance(-bet, { suppressChallengeChecks: true, suppressMercy: true });
-
-    plinkoOnBallDrop_LockIfNeeded?.();  // 🔒 locks settings, keeps drop enabled
 
     const rows = PLINKO_DECISION_ROWS;
 
@@ -2279,13 +2288,16 @@ async function dropPlinkoBall() {
     console.error(err);
     if (plinkoMessageEl) plinkoMessageEl.textContent = `Plinko error: ${err?.message || err}`;
   } finally {
-    if (ballEl?.isConnected) ballEl.remove();
-    isPlinkoDropping = false;
-    plinkoOnBallResolved_UnlockIfDone?.(); // 🔓 unlocks only when last ball resolves
+  if (ballEl?.isConnected) ballEl.remove();
+
+  plinkoBallsInFlight = Math.max(0, plinkoBallsInFlight - 1);
+
+  if (plinkoBallsInFlight === 0) {
+    plinkoOnBallResolved_UnlockIfDone?.();
     refreshChallengeHud();
     postRoundChecks?.();
   }
-}
+}}
 
 // -------------------------
 // PROVABLY FAIR PLINKO RNG
@@ -3985,7 +3997,13 @@ function initPlinko() {
   initPlinko._didBind = true;
 
   plinkoRiskEl?.addEventListener("change", renderPlinkoBuckets);
-  plinkoDropBtn?.addEventListener("click", () => withLock("plinkoDrop", dropPlinkoBall));
+  if (plinkoDropBtn) {
+    if (typeof plinkoDropBtn._plinkoDropHandler === "function") {
+      plinkoDropBtn.removeEventListener("click", plinkoDropBtn._plinkoDropHandler);
+    }
+    plinkoDropBtn._plinkoDropHandler = () => withLock("plinkoDrop", dropPlinkoBall);
+    plinkoDropBtn.addEventListener("click", plinkoDropBtn._plinkoDropHandler, { once: false });
+  }
 }
 
 function init() {
