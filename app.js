@@ -2234,8 +2234,8 @@ function getBucketIndexFromFinalX(finalXBoardSpace) {
 
 async function dropPlinkoBall() {
 
-  window.__plinkoDropCount = (window.__plinkoDropCount || 0) + 1;
-console.trace(`[DROP] dropPlinkoBall call #${window.__plinkoDropCount}`);
+ window.__plinkoDropCount = (window.__plinkoDropCount || 0) + 1;
+console.log("[DROP]", window.__plinkoDropCount, "inFlight:", plinkoBallsInFlight, "ts:", Date.now());
 
   const MAX_IN_FLIGHT = 8;
   if (plinkoBallsInFlight >= MAX_IN_FLIGHT) return;
