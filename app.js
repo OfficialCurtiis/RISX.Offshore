@@ -2003,14 +2003,21 @@ let plinkoResizeObs = null;
 
 function attachPlinkoResizeObserver() {
   if (!plinkoStageEl && !plinkoBoardEl) return;
-  if (plinkoResizeObs) return; // prevent double observers
+  if (plinkoResizeObs) return;
 
   let raf = 0;
   plinkoResizeObs = new ResizeObserver(() => {
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
-      renderPlinkoBoard();     // re-place pegs + update plinkoGeom
-      renderPlinkoBuckets();   // keeps buckets/grid synced after resize
+
+      // ✅ Don’t rebuild geometry mid-drop (causes wonky/off-board behavior)
+      if (plinkoBallsInFlight > 0) {
+        window.__plinkoNeedsRelayout = true;
+        return;
+      }
+
+      renderPlinkoBoard();
+      renderPlinkoBuckets();
     });
   });
 
@@ -2226,6 +2233,10 @@ function getBucketIndexFromFinalX(finalXBoardSpace) {
 }
 
 async function dropPlinkoBall() {
+
+  window.__plinkoDropCount = (window.__plinkoDropCount || 0) + 1;
+console.trace(`[DROP] dropPlinkoBall call #${window.__plinkoDropCount}`);
+
   const MAX_IN_FLIGHT = 8;
   if (plinkoBallsInFlight >= MAX_IN_FLIGHT) return;
   plinkoBallsInFlight++;
@@ -2286,6 +2297,11 @@ async function dropPlinkoBall() {
     plinkoOnBallResolved_UnlockIfDone?.();
     refreshChallengeHud();
     postRoundChecks?.();
+
+  if (window.__plinkoNeedsRelayout) {
+  window.__plinkoNeedsRelayout = false;
+  renderPlinkoBoard();
+  renderPlinkoBuckets();
   }
 }}
 
