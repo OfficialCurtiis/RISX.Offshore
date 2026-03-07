@@ -2100,18 +2100,18 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
 
         // Push the path toward the spaces BETWEEN pegs instead of riding peg centers
     const dir = path[step] ? 1 : -1;
-    const gapBias = dir * dx * (0.42 + 0.08 * progress); // ~0.42 lane shift, ramps slightly
+    const gapBias = dir * dx * (0.48 + 0.08 * progress); // ~0.42 lane shift, ramps slightly
 
     let x = peg.x
       + gapBias
       + dir * baseDrift
       + chaosWobble
       + fakeout;
-      
+
     x = lerp(x, targetX, Math.pow(settleT, 1.1));
     x = clamp(x, minX, maxX);
 
-    const y = peg.y - (g?.pegR || 5) - (PLINKO_BALL_R - 1);
+    const y = peg.y - (g?.pegR || 5) - (PLINKO_BALL_R - 1) + 2;
     points.push({ x, y });
   }
 
