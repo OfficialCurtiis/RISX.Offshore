@@ -38,7 +38,7 @@ let minesResultHideTimer = null;
 // PLINKO STATE
 let plinkoRows = 8;
 let plinkoBet = 10;
-let plinkoDropping = false;
+let isPlinkoDropping = false;
 let lastPlinkoResult = null;
 
 let serverSeed = "CHANGE_ME_TO_RANDOM_LONG_SECRET"; // secret until reveal
@@ -1866,14 +1866,14 @@ function renderPlinkoBoard() {
 
   plinkoBoardEl.querySelectorAll(".plinko-peg").forEach(n => n.remove());
 
-  if (ballNode && ballNode.parentElement !== plinkoBoardEl) {
+  if (!isPlinkoDropping && ballNode && ballNode.parentElement !== plinkoBoardEl) {
     plinkoBoardEl.appendChild(ballNode);
   }
   if (bucketsNode && bucketsNode.parentElement !== plinkoBoardEl) {
     plinkoBoardEl.appendChild(bucketsNode);
   }
 
-  if (ballNode) ballNode.classList.add("hidden");
+  if (!isPlinkoDropping && ballNode) ballNode.classList.add("hidden");
   plinkoPegCenters = new Map();
 
   const stageW = plinkoStageEl?.clientWidth || plinkoBoardEl.clientWidth || 640;
@@ -2194,7 +2194,6 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
     });
   }
 
-  setTimeout(() => ballEl.remove(), 250);
   return finalRenderedX;
 }
 
@@ -2229,7 +2228,9 @@ async function dropPlinkoBall() {
 
   // allow multiple balls; optionally cap spam
   const MAX_IN_FLIGHT = 8;
+  if (isPlinkoDropping) return;
   if (plinkoBallsInFlight >= MAX_IN_FLIGHT) return;
+  isPlinkoDropping = true;
 
   let ballEl = null;
 
@@ -2278,6 +2279,8 @@ async function dropPlinkoBall() {
     console.error(err);
     if (plinkoMessageEl) plinkoMessageEl.textContent = `Plinko error: ${err?.message || err}`;
   } finally {
+    if (ballEl?.isConnected) ballEl.remove();
+    isPlinkoDropping = false;
     plinkoOnBallResolved_UnlockIfDone?.(); // 🔓 unlocks only when last ball resolves
     refreshChallengeHud();
     postRoundChecks?.();
