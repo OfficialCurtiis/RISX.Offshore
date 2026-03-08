@@ -2057,6 +2057,10 @@ function easeOutCubic(t) {
   return 1 - Math.pow(1 - t, 3);
 }
 
+function smoothstep(t) {
+  return t * t * (3 - 2 * t);
+}
+
 function lerp(a, b, t) {
   return a + (b - a) * t;
 }
@@ -2068,7 +2072,7 @@ function quadBezier(p0, p1, p2, t) {
 
 async function animatePlinkoBall(ballEl, rows, path, options = {}) {
   ballEl.__plinkoAlive = true;
-  const stepMs = options.stepMs ?? 145; // slower cadence for more suspense
+  const stepMs = options.stepMs ?? 160; // slower cadence for more suspense
   const targetBucketIndex = options.targetBucketIndex;
   const g = plinkoGeom;
   const boardW = g?.boardW || plinkoBoardEl.clientWidth || 640;
@@ -2162,7 +2166,7 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
         }
 
         const t = Math.min(1, (now - start) / stepMs);
-        const e = t < 0.6 ? t * (1.25 - t * 0.35) : easeOutCubic(t);
+        const e = smoothstep(t);
 
         const dxSeg = (b.x - a.x);
         const dySeg = (b.y - a.y);
@@ -2175,7 +2179,7 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
         const chaosT = clamp((progressY - 0.86) / 0.14, 0, 1);
 
         const arcRaw = dx * (0.07 + 0.16 * chaosT);
-        const arcMax = segLen * 0.22;
+        const arcMax = segLen * 0.16;
         const arc = Math.min(arcRaw, arcMax);
 
         const mx = (a.x + b.x) * 0.5 + px * arc;
@@ -2186,7 +2190,7 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
 
         if (chaosT > 0) {
           const w = now * 0.010;
-          const orbit = Math.min(dx * (0.03 + 0.06 * chaosT), segLen * 0.10);
+          const orbit = Math.min(dx * (0.02 + 0.04 * chaosT), segLen * 0.06);
           x += Math.sin(w) * orbit;
           y += Math.cos(w * 1.1) * orbit * 0.25;
         }
