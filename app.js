@@ -1762,14 +1762,14 @@ function getBucketCenterX(bucketIndex) {
 
 function setPlinkoControlsLocked(locked) {
   const root = document.getElementById("game-plinko") || document;
+  const panel = root.querySelector(".control-panel") || root;
 
-  // lock ONLY inputs + selects (bet settings)
-  root.querySelectorAll('input, select').forEach(el => {
+  // lock ONLY bet settings inside control panel
+  panel.querySelectorAll('input, select').forEach(el => {
     el.disabled = locked;
   });
 
-  const panel = root.querySelector(".control-panel");
-  if (panel) panel.classList.toggle("locked", locked);
+  panel.classList.toggle("locked", locked);
 
   // ✅ NEVER lock Drop Ball
   if (plinkoDropBtn) {
@@ -2017,13 +2017,11 @@ function attachPlinkoResizeObserver() {
   plinkoResizeObs = new ResizeObserver(() => {
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
-
-      // ✅ Don’t rebuild geometry mid-drop (causes wonky/off-board behavior)
+      // Never rebuild mid-flight
       if (plinkoBallsInFlight > 0) {
         window.__plinkoNeedsRelayout = true;
         return;
       }
-
       renderPlinkoBoard();
       renderPlinkoBuckets();
     });
@@ -2072,7 +2070,7 @@ function quadBezier(p0, p1, p2, t) {
 
 async function animatePlinkoBall(ballEl, rows, path, options = {}) {
   ballEl.__plinkoAlive = true;
-  const stepMs = options.stepMs ?? 160; // slower cadence for more suspense
+  const stepMs = options.stepMs ?? 145; // slower cadence for more suspense
   const targetBucketIndex = options.targetBucketIndex;
   const g = plinkoGeom;
   const boardW = g?.boardW || plinkoBoardEl.clientWidth || 640;
@@ -2094,7 +2092,8 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
 
   const boardRect = plinkoBoardEl.getBoundingClientRect();
   const bucketRect = plinkoBucketsEl.getBoundingClientRect();
-  const targetY = (bucketRect.top - boardRect.top) + (bucketRect.height * 0.35);
+  const stripH = parseFloat(getComputedStyle(plinkoBoardEl).getPropertyValue("--bucket-strip-h")) || 32;
+  const targetY = boardH - stripH * 0.65; // tweak 0.60–0.75
   const centerBucket = (PLINKO_BUCKETS - 1) / 2;
   const fakeDir = (targetBucketIndex ?? centerBucket) >= centerBucket ? -1 : 1;
 
@@ -2267,6 +2266,7 @@ console.log("[DROP] trusted:", e?.isTrusted, "type:", e?.type);
 console.log("[DROP] detail:", e?.detail, "pointer:", e?.pointerType, "active:", document.activeElement?.id);
 
   plinkoBallsInFlight++;
+  if (plinkoBallsInFlight === 1) setPlinkoControlsLocked(true);
 
   const isFirst = (plinkoBallsInFlight === 1);
   if (isFirst) plinkoOnBallDrop_LockIfNeeded?.();
@@ -2324,6 +2324,7 @@ console.log("[DROP] detail:", e?.detail, "pointer:", e?.pointerType, "active:", 
       plinkoOnBallResolved_UnlockIfDone?.();
       refreshChallengeHud();
       postRoundChecks?.();
+      setPlinkoControlsLocked(false);
 
       if (window.__plinkoNeedsRelayout) {
         window.__plinkoNeedsRelayout = false;
