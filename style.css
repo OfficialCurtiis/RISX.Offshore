@@ -4501,7 +4501,7 @@ body.modal-open {
   #game-plinko .plinko-stage{
     aspect-ratio: 4 / 5;
     height: min(76vh, 780px);
-    min-height: 560px;
+    min-height: 0;
     margin: 0; /* no centering gutters */
     max-width: none;
   }
@@ -4552,14 +4552,10 @@ body.modal-open {
 @media (min-width: 981px){
   /* make Plinko stage match Crash/Mines scale */
   #game-plinko .plinko-stage{
-    height: min(70vh, 720px) !important; /* was ~76vh/780px */
-    min-height: 520px !important;        /* was 560px */
+    width: 100%;
+    height: clamp(420px, 60vh, 720px);
+    min-height: 0;         
     aspect-ratio: 4 / 5 !important;      /* keep the pyramid feel */
-  }
-}
-
-@media (min-width: 981px){
-  #game-plinko .plinko-stage{
     margin: 0 !important;      /* remove centering gutters */
     max-width: none !important;
   }
@@ -4603,6 +4599,4 @@ body.modal-open {
       0 8px var(--plinko-hood-blur) rgba(0,0,0,0.55);
   }
 }
-
-#plinkoBoard{ position: relative; }
 

@@ -2090,10 +2090,9 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
     maxX
   );
 
-  const boardRect = plinkoBoardEl.getBoundingClientRect();
-  const bucketRect = plinkoBucketsEl.getBoundingClientRect();
+
   const stripH = parseFloat(getComputedStyle(plinkoBoardEl).getPropertyValue("--bucket-strip-h")) || 32;
-  const targetY = boardH - stripH * 0.65; // tweak 0.60–0.75
+  const targetY = boardH - (stripH * 0.65) -6; // tweak 0.60–0.75
   const centerBucket = (PLINKO_BUCKETS - 1) / 2;
   const fakeDir = (targetBucketIndex ?? centerBucket) >= centerBucket ? -1 : 1;
 
