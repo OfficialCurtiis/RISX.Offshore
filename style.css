@@ -3667,13 +3667,6 @@ body.modal-open {
    DOM: #plinkoBoard, #plinkoBuckets, .plinko-peg, #plinkoBall
 ========================= */
 
-/* Layout for the 2 panels */
-#game-plinko .panel-row{
-  display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
-  gap: 16px;
-}
-
 @media (max-width: 980px){
   #game-plinko .panel-row{
     grid-template-columns: 1fr;
@@ -3752,13 +3745,6 @@ body.modal-open {
   text-align: center;
 }
 
-/* FINAL: plinko layout authority (kills rogue order/flex overrides) */
-#game-plinko .panel-row{
-  display: grid !important;
-  grid-template-columns: 360px minmax(0, 1fr) !important;
-  gap: 16px !important;
-}
-
 @media (max-width: 980px){
   #game-plinko .panel-row{
     display: grid !important;
@@ -3770,7 +3756,7 @@ body.modal-open {
 
 #plinkoBoard{
   padding-bottom: calc(var(--bucket-strip-h, 32px) + 28px) !important;
-  min-height: 360px !important; /* helps small widths + aspect-ratio combos */
+  min-height: 0 !important; /* helps small widths + aspect-ratio combos */
 }
 
 #plinkoBuckets{
@@ -4491,22 +4477,6 @@ body.modal-open {
 
 /* ---- Desktop polish ---- */
 @media (min-width: 981px){
-  /* tighten bet settings ↔ board gap */
-  #game-plinko .panel-row{
-    gap: 12px !important;
-    column-gap: 4px !important;
-  }
-
-  /* board size: keep the pyramid feeling perfect */
-  #game-plinko .plinko-stage{
-    aspect-ratio: 4 / 5;
-    height: min(76vh, 780px);
-    min-height: 0;
-    margin: 0; /* no centering gutters */
-    max-width: none;
-  }
-
-  /* If your glass inset is larger on desktop, set it here */
   #game-plinko #plinkoBoard{
     --plinko-side-pad: 34px; /* your current best value */
   }
@@ -4550,18 +4520,6 @@ body.modal-open {
 }
 
 @media (min-width: 981px){
-  /* make Plinko stage match Crash/Mines scale */
-  #game-plinko .plinko-stage{
-    width: 100%;
-    height: clamp(420px, 60vh, 720px);
-    min-height: 0;         
-    aspect-ratio: 4 / 5 !important;      /* keep the pyramid feel */
-    margin: 0 !important;      /* remove centering gutters */
-    max-width: none !important;
-  }
-}
-
-@media (min-width: 981px){
   /* Tuner */
   #plinkoBoard{
     --plinko-hood-h: 44px;     /* thickness of the top lip (try 36–60) */
@@ -4597,6 +4555,31 @@ body.modal-open {
     box-shadow:
       inset 0 -1px 0 rgba(255,255,255,0.06),
       0 8px var(--plinko-hood-blur) rgba(0,0,0,0.55);
+  }
+}
+
+@media (min-width: 981px){
+  #game-plinko .panel-row{
+    display: grid !important;
+    grid-template-columns: 360px minmax(0, 1fr) !important;
+    gap: 16px !important;
+    column-gap: 4px !important;
+    min-height: 0;
+    align-items: stretch;
+  }
+
+  #game-plinko .plinko-panel,
+  #game-plinko .plinko-stage{
+    min-height: 0;
+  }
+
+  #game-plinko .plinko-stage{
+    aspect-ratio: 4 / 5;
+    height: clamp(320px, 56vh, 650px);  /* ✅ shrinks vertically */
+    max-height: 70vh;
+    width: 100%;
+    margin: 0;
+    max-width: none;
   }
 }
 
