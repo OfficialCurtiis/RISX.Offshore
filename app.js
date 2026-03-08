@@ -1934,6 +1934,10 @@ function renderPlinkoBoard() {
 }
 
 requestAnimationFrame(() => {
+  if (plinkoBallsInFlight > 0) {
+    window.__plinkoNeedsRelayout = true;
+    return;
+  }
   renderPlinkoBoard();
   renderPlinkoBuckets();
 });
@@ -1975,6 +1979,10 @@ function renderPlinkoBuckets() {
   requestAnimationFrame(() => {
     const h = plinkoBucketsEl.getBoundingClientRect().height || 32;
     plinkoBoardEl?.style?.setProperty("--bucket-strip-h", `${h}px`);
+    if (plinkoBallsInFlight > 0) {
+      window.__plinkoNeedsRelayout = true;
+      return;
+    }
     // Now re-render pegs with correct bottomPad so they never overlap buckets
     renderPlinkoBoard();
   });
@@ -2059,6 +2067,7 @@ function quadBezier(p0, p1, p2, t) {
 }
 
 async function animatePlinkoBall(ballEl, rows, path, options = {}) {
+  ballEl.__plinkoAlive = true;
   const stepMs = options.stepMs ?? 145; // slower cadence for more suspense
   const targetBucketIndex = options.targetBucketIndex;
   const g = plinkoGeom;
@@ -2140,12 +2149,23 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
   let finalRenderedX = points[0].x;
 
   for (let i = 0; i < points.length - 1; i++) {
+    if (!ballEl.isConnected || !ballEl.__plinkoAlive) break;
     const a = points[i];
     const b = points[i + 1];
     const start = performance.now();
 
     await new Promise((resolve) => {
+      let rafId = 0;
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (rafId) cancelAnimationFrame(rafId);
+        resolve();
+      };
+
       function frame(now) {
+        if (!ballEl.isConnected || !ballEl.__plinkoAlive) return finish();
         const t = Math.min(1, (now - start) / stepMs);
         const e = t < 0.6 ? t * (1.25 - t * 0.35) : easeOutCubic(t);
 
@@ -2194,14 +2214,15 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
       setBallPosFor(ballEl, x, y);
       applyBallGlow(ballEl, progressY);
 
-        if (t >= 1) return resolve();
-        requestAnimationFrame(frame);
+        if (t >= 1) return finish();
+        rafId = requestAnimationFrame(frame);
       }
-      requestAnimationFrame(frame);
+      rafId = requestAnimationFrame(frame);
     });
   }
 
-  setTimeout(() => ballEl.remove(), 250);
+  ballEl.__plinkoAlive = false;
+  if (ballEl.isConnected) ballEl.remove();
   return finalRenderedX;
 }
 
@@ -3896,6 +3917,10 @@ function setupTabs() {
       if (target === "plinko") {
         requestAnimationFrame(() => {
           try {
+          if (plinkoBallsInFlight > 0) {
+            window.__plinkoNeedsRelayout = true;
+            return;
+          }
           renderPlinkoBoard();
           renderPlinkoBuckets();
           } catch (e) {
