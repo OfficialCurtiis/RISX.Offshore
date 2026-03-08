@@ -2097,8 +2097,7 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
   const points = [{ x: first.x + spawnJitterX(), y: Math.max(12, first.y - dx * 1.3) }];
 
   for (let step = 0; step < rows; step++) {
-    for (let step = 0; step < rows; step++) {
-  // peg at current logical column
+
   const pegA = getPegCenter(step, col);
   if (!pegA) continue;
 
@@ -2136,7 +2135,6 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
   const y = pegA.y - (g?.pegR || 5) - (PLINKO_BALL_R - 1) + 2;
 
   points.push({ x, y });
-}
   }
 
   const last = points[points.length - 1] || { x: targetX, y: targetY - 22 };
@@ -2146,7 +2144,7 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
   setBallPosFor(ballEl, points[0].x, points[0].y);
   applyBallGlow(ballEl, 0);
 
-  let finalRenderedX = points[0].x;
+    let finalRenderedX = points[0].x;
 
   for (let i = 0; i < points.length - 1; i++) {
     if (!ballEl.isConnected || !ballEl.__plinkoAlive) break;
@@ -2156,75 +2154,65 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
 
     await new Promise((resolve) => {
       let rafId = 0;
-      let settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        if (rafId) cancelAnimationFrame(rafId);
-        resolve();
-      };
 
       function frame(now) {
-        if (!ballEl.isConnected || !ballEl.__plinkoAlive) return finish();
+        if (!ballEl.isConnected || ballEl.__plinkoAlive !== true) {
+          if (rafId) cancelAnimationFrame(rafId);
+          return resolve();
+        }
+
         const t = Math.min(1, (now - start) / stepMs);
         const e = t < 0.6 ? t * (1.25 - t * 0.35) : easeOutCubic(t);
 
-       // base linear
-      const yLin = lerp(a.y, b.y, e);
-      const xLin = lerp(a.x, b.x, e);
+        const dxSeg = (b.x - a.x);
+        const dySeg = (b.y - a.y);
+        const segLen = Math.max(1, Math.hypot(dxSeg, dySeg));
+        const px = -dySeg / segLen;
+        const py =  dxSeg / segLen;
 
-      // curvature amount (stronger near the end for “impossible” feel)
-      const progressY = clamp(yLin / boardH, 0, 1);
-      const chaosT = clamp((progressY - 0.86) / 0.14, 0, 1);
+        const yLin = lerp(a.y, b.y, e);
+        const progressY = clamp(yLin / boardH, 0, 1);
+        const chaosT = clamp((progressY - 0.86) / 0.14, 0, 1);
 
-      // direction from a -> b
-      const dxSeg = (b.x - a.x);
-      const dySeg = (b.y - a.y);
-      const segLen = Math.max(1, Math.hypot(dxSeg, dySeg));
+        const arcRaw = dx * (0.07 + 0.16 * chaosT);
+        const arcMax = segLen * 0.22;
+        const arc = Math.min(arcRaw, arcMax);
 
-      // perpendicular unit vector (for “rolling arc”)
-      const px = -dySeg / segLen;
-      const py =  dxSeg / segLen;
+        const mx = (a.x + b.x) * 0.5 + px * arc;
+        const my = (a.y + b.y) * 0.5 + py * arc;
 
-      // arc strength: small normally, bigger only at the very end
-      const arcRaw = dx * (0.07 + 0.16 * chaosT);
-      const arcMax = segLen * 0.22;          // never curve too hard on short hops
-      const arc = Math.min(arcRaw, arcMax);
+        let x = quadBezier(a.x, mx, b.x, e);
+        let y = quadBezier(a.y, my, b.y, e);
 
-      // control point offsets the mid of the segment
-      const mx = (a.x + b.x) * 0.5 + px * arc;
-      const my = (a.y + b.y) * 0.5 + py * arc;
+        if (chaosT > 0) {
+          const w = now * 0.010;
+          const orbit = Math.min(dx * (0.03 + 0.06 * chaosT), segLen * 0.10);
+          x += Math.sin(w) * orbit;
+          y += Math.cos(w * 1.1) * orbit * 0.25;
+        }
 
-      // curved position (quadratic Bezier)
-      let x = quadBezier(a.x, mx, b.x, e);
-      let y = quadBezier(a.y, my, b.y, e);
+        x = clamp(x, minX, maxX);
 
-            // “impossible” orbit wobble only at the very end (smooth, not staticy)
-      if (chaosT > 0) {
-        const w = now * 0.010;
-        const orbit = Math.min(dx * (0.03 + 0.06 * chaosT), segLen * 0.10);
-        x += Math.sin(w) * orbit;
-        y += Math.cos(w * 1.1) * orbit * 0.25;
-      }
+        finalRenderedX = x;
+        setBallPosFor(ballEl, x, y);
+        applyBallGlow(ballEl, progressY);
 
-      // clamp and render
-      x = clamp(x, minX, maxX);
-      finalRenderedX = x;
+        if (t >= 1) {
+          if (rafId) cancelAnimationFrame(rafId);
+          return resolve();
+        }
 
-      setBallPosFor(ballEl, x, y);
-      applyBallGlow(ballEl, progressY);
-
-        if (t >= 1) return finish();
         rafId = requestAnimationFrame(frame);
       }
+
       rafId = requestAnimationFrame(frame);
     });
   }
 
   ballEl.__plinkoAlive = false;
-  if (ballEl.isConnected) ballEl.remove();
   return finalRenderedX;
 }
+
 
 function highlightBucket(bucketIndex) {
   if (!plinkoBucketsEl) return;
