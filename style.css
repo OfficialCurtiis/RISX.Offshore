@@ -3131,13 +3131,7 @@ body.modal-open {
 }
 
 /* =========================================================
-   FINAL MOBILE OVERRIDES 
-   Fixes:
-   - iPhone white halo / glow (html background)
-   - Tabs disappearing / not reachable
-   - Crash canvas going off the right edge
-   - Plinko buckets overlapping bet settings
-   - Modal / tier screen scroll & tap issues
+   FINAL MOBILE
 ========================================================= */
 @media (max-width: 768px) {
 
@@ -3165,7 +3159,6 @@ body.modal-open {
     padding-right: 12px !important;
   }
 
-  /* ---------------- Header + tabs (fix missing Plinko tab) ---------------- */
   .site-header--challenge,
   .site-header {
     width: 100% !important;
@@ -4408,24 +4401,30 @@ body.modal-open {
 @media (min-width: 981px){
   #game-plinko .panel-row{
     display: grid !important;
+    grid-template-areas: "controls board" !important;
     grid-template-columns: 360px minmax(0, 1fr) !important;
-    gap: 16px !important;
+    grid-auto-flow: row !important;
+    gap: 12px !important;
     column-gap: 4px !important;
     min-height: 0;
     align-items: stretch;
   }
 
-  #game-plinko .plinko-panel,
-  #game-plinko .plinko-stage{
-    min-height: 0;
+  #game-plinko .control-panel{
+    grid-area: controls !important;
+    order: 0 !important;
+   
   }
 
   #game-plinko .plinko-stage{
     aspect-ratio: 4 / 5;
     height: clamp(320px, 56vh, 650px);  /* ✅ shrinks vertically */
     max-height: 70vh;
+    grid-area: board !important;
     width: 100%;
     margin: 0;
     max-width: none;
+    min-height: 0;
+    order: 0 !important;
   }
 }
