@@ -991,11 +991,25 @@ window.RISX_completeReset = (tier) => {
 };
 
 const PAYOUT_ASSET_CHAINS = {
-  USDC: ["Solana", "Ethereum", "Polygon", "Arbitrum"],
+  USDC: ["Solana"],
   SOL: ["Solana"],
-  ETH: ["Ethereum", "Arbitrum", "Optimism", "Base"],
   BTC: ["Bitcoin"],
 };
+
+function getPayoutChainAckText(asset, chain) {
+  const a = String(asset || "").toUpperCase();
+  const c = String(chain || "");
+  if (a === "USDC") {
+    return "USDC claims are processed on Solana only. Use a Solana-compatible USDC receiving address.";
+  }
+  if (a === "SOL") {
+    return "SOL claims are processed on Solana only. Use your Solana wallet address.";
+  }
+  if (a === "BTC") {
+    return "BTC claims are processed on Bitcoin only. Use a Bitcoin address (bc1, 1, or 3).";
+  }
+  return `${a} claims are processed on ${c} only.`;
+}
 
 function risxConfirm({ title = "Confirm", body = "", okText = "OK", cancelText = "Cancel" } = {}) {
   return new Promise((resolve) => {
@@ -1065,7 +1079,7 @@ function validateAddressByAsset(asset, chain, address) {
   if ((normalizedAsset === "SOL" || normalizedChain === "solana") && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(raw)) {
     return "Solana address should be base58 (32-44 chars).";
   }
-  if ((normalizedAsset === "ETH" || normalizedAsset === "USDC" || ["ethereum", "arbitrum", "optimism", "base", "polygon"].includes(normalizedChain))
+  if ((normalizedAsset === "ETH" || ["ethereum", "arbitrum", "optimism", "base", "polygon"].includes(normalizedChain))
       && !/^0x[a-fA-F0-9]{40}$/.test(raw)) {
     return "EVM address should be 0x + 40 hex characters.";
   }
@@ -1204,15 +1218,25 @@ function openPayoutDetailsModal(options = {}) {
       return "";
     };
 
-    const submit = () => {
+    const submit = async () => {
       const msg = validate();
       if (msg) {
         if (risxPayoutError) risxPayoutError.textContent = msg;
         return;
       }
+      const asset = String(payoutAsset.value || "").toUpperCase();
+      const chain = String(payoutChain.value || "");
+      const acknowledged = await risxConfirm({
+        title: "Confirm Claim Network",
+        body: `${getPayoutChainAckText(asset, chain)}\n\nBy continuing, you confirm this address supports ${asset} on ${chain}.`,
+        okText: "I Understand",
+        cancelText: "Go Back",
+      });
+      if (!acknowledged) return;
+
       const payout = {
-        asset: String(payoutAsset.value || "").toUpperCase(),
-        chain: String(payoutChain.value || ""),
+        asset,
+        chain,
         address: String(payoutAddress.value || "").trim(),
       };
       const email = String(payoutEmail?.value || "").trim();
@@ -1237,7 +1261,7 @@ function openPayoutDetailsModal(options = {}) {
     const onChainChange = () => emitDraft();
     const onAddressInput = () => emitDraft();
     const onEmailInput = () => emitDraft();
-    const onConfirm = () => submit();
+    const onConfirm = () => { void submit(); };
     const onCancel = () => close(false);
     const onBackdrop = (e) => {
       if (e.target === risxPayoutModal || e.target?.matches?.("[data-risx-payout-close]")) close(false);
