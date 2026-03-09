@@ -1764,12 +1764,10 @@ function setPlinkoControlsLocked(locked) {
   const root = document.getElementById("game-plinko") || document;
   const panel = root.querySelector(".control-panel") || root;
 
-  // lock ONLY bet settings inside control panel
-  panel.querySelectorAll('input, select').forEach(el => {
-    el.disabled = locked;
-  });
+  // Single source of truth: lock all Plinko bet settings, keep Drop enabled.
+  lockBetSettings("plinko", !!locked);
 
-  panel.classList.toggle("locked", locked);
+  panel.classList.toggle("locked", !!locked);
 
   // ✅ NEVER lock Drop Ball
   if (plinkoDropBtn) {
@@ -2273,13 +2271,10 @@ window.__lastPlinkoClickTs = now;
 window.__plinkoDropCount = (window.__plinkoDropCount || 0) + 1;
 console.log("[DROP]", window.__plinkoDropCount, "inFlight:", plinkoBallsInFlight, "ts:", Date.now());
 console.log("[DROP] trusted:", e?.isTrusted, "type:", e?.type);
-console.log("[DROP] detail:", e?.detail, "pointer:", e?.pointerType, "active:", document.activeElement?.id);
+  console.log("[DROP] detail:", e?.detail, "pointer:", e?.pointerType, "active:", document.activeElement?.id);
 
   plinkoBallsInFlight++;
   if (plinkoBallsInFlight === 1) setPlinkoControlsLocked(true);
-
-  const isFirst = (plinkoBallsInFlight === 1);
-  if (isFirst) plinkoOnBallDrop_LockIfNeeded?.();
 
   let ballEl = null;
 
@@ -2331,7 +2326,6 @@ console.log("[DROP] detail:", e?.detail, "pointer:", e?.pointerType, "active:", 
     plinkoBallsInFlight = Math.max(0, plinkoBallsInFlight - 1);
 
     if (plinkoBallsInFlight === 0) {
-      plinkoOnBallResolved_UnlockIfDone?.();
       refreshChallengeHud();
       postRoundChecks?.();
       setPlinkoControlsLocked(false);
