@@ -264,13 +264,14 @@ function handleConfirmed(resp) {
     return;
   }
 
-  // Persist unlock (entry unlock token still useful)
-  localStorage.setItem("risx_unlock_token", resp.unlock_token);
-  localStorage.setItem("risx_unlock_tier", resp.tierKey);
-
   const pending = getPaymentSession();
   const intent = pending?.intent || "entry";
   const tierKey = pending?.tier || resp.tierKey;
+
+  // Persist unlock (entry unlock token still useful)
+  localStorage.setItem("risx_unlock_token", resp.unlock_token);
+  localStorage.setItem("risx_unlock_tier", resp.tierKey);
+  localStorage.setItem("risx_unlock_intent", intent);
 
   // mark UI unlocked/close modal first
   activeTierKey = tierKey;
