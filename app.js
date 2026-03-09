@@ -127,6 +127,7 @@ const risxInputConfirm = document.getElementById("risxInputConfirm");
 const risxPayoutModal = document.getElementById("risxPayoutModal");
 const payoutAsset = document.getElementById("payoutAsset");
 const payoutChain = document.getElementById("payoutChain");
+const payoutChainNotice = document.getElementById("payoutChainNotice");
 const payoutAddress = document.getElementById("payoutAddress");
 const payoutEmail = document.getElementById("payoutEmail");
 const payoutPasteBtn = document.getElementById("payoutPasteBtn");
@@ -991,24 +992,36 @@ window.RISX_completeReset = (tier) => {
 };
 
 const PAYOUT_ASSET_CHAINS = {
-  USDC: ["Solana"],
   SOL: ["Solana"],
+  LTC: ["Litecoin"],
   BTC: ["Bitcoin"],
+  TRX: ["Tron"],
 };
 
 function getPayoutChainAckText(asset, chain) {
   const a = String(asset || "").toUpperCase();
-  const c = String(chain || "");
-  if (a === "USDC") {
-    return "USDC claims are processed on Solana only. Use a Solana-compatible USDC receiving address.";
-  }
   if (a === "SOL") {
     return "SOL claims are processed on Solana only. Use your Solana wallet address.";
+  }
+  if (a === "LTC") {
+    return "LTC claims are processed on Litecoin only. Use a Litecoin wallet address.";
   }
   if (a === "BTC") {
     return "BTC claims are processed on Bitcoin only. Use a Bitcoin address (bc1, 1, or 3).";
   }
-  return `${a} claims are processed on ${c} only.`;
+  if (a === "TRX") {
+    return "TRX claims are processed on Tron only. Use a Tron wallet address starting with T.";
+  }
+  return `${a} claims are processed on ${String(chain || "")} only.`;
+}
+
+function getPayoutChainNoticeText(asset) {
+  const a = String(asset || "").toUpperCase();
+  if (a === "SOL") return "Network: Solana only.";
+  if (a === "LTC") return "Network: Litecoin only.";
+  if (a === "BTC") return "Network: Bitcoin only.";
+  if (a === "TRX") return "Network: Tron only.";
+  return "Use the supported network for this asset.";
 }
 
 function risxConfirm({ title = "Confirm", body = "", okText = "OK", cancelText = "Cancel" } = {}) {
@@ -1076,8 +1089,15 @@ function validateAddressByAsset(asset, chain, address) {
   if ((normalizedAsset === "BTC" || normalizedChain === "bitcoin") && !/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{20,}$/.test(raw)) {
     return "BTC address should start with bc1, 1, or 3.";
   }
+  if ((normalizedAsset === "LTC" || normalizedChain === "litecoin")
+      && !/^(ltc1[ac-hj-np-z02-9]{8,87}|[LM3][a-km-zA-HJ-NP-Z1-9]{26,33})$/.test(raw)) {
+    return "LTC address should start with ltc1, L, M, or 3.";
+  }
   if ((normalizedAsset === "SOL" || normalizedChain === "solana") && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(raw)) {
     return "Solana address should be base58 (32-44 chars).";
+  }
+  if ((normalizedAsset === "TRX" || normalizedChain === "tron") && !/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(raw)) {
+    return "TRX address should start with T and be 34 characters.";
   }
   if ((normalizedAsset === "ETH" || ["ethereum", "arbitrum", "optimism", "base", "polygon"].includes(normalizedChain))
       && !/^0x[a-fA-F0-9]{40}$/.test(raw)) {
@@ -1091,6 +1111,10 @@ function updatePayoutChains(asset) {
   if (!payoutChain) return;
   const chains = PAYOUT_ASSET_CHAINS[String(asset || "").toUpperCase()] || [];
   payoutChain.innerHTML = chains.map((chain) => `<option value="${escapeHtml(chain)}">${escapeHtml(chain)}</option>`).join("");
+  payoutChain.value = chains[0] || "";
+  if (payoutChainNotice) {
+    payoutChainNotice.textContent = getPayoutChainNoticeText(asset);
+  }
 }
 
 function risxInputPrompt({
@@ -1179,8 +1203,8 @@ function openPayoutDetailsModal(options = {}) {
     payoutAsset.innerHTML = Object.keys(PAYOUT_ASSET_CHAINS)
       .map((asset) => `<option value="${escapeHtml(asset)}">${escapeHtml(asset)}</option>`)
       .join("");
-    const initialAsset = String(savedForm.crypto || "USDC").toUpperCase();
-    payoutAsset.value = Object.prototype.hasOwnProperty.call(PAYOUT_ASSET_CHAINS, initialAsset) ? initialAsset : "USDC";
+    const initialAsset = String(savedForm.crypto || "SOL").toUpperCase();
+    payoutAsset.value = Object.prototype.hasOwnProperty.call(PAYOUT_ASSET_CHAINS, initialAsset) ? initialAsset : "SOL";
     updatePayoutChains(payoutAsset.value);
     const validChains = PAYOUT_ASSET_CHAINS[payoutAsset.value] || [];
     if (savedForm.chain && validChains.includes(savedForm.chain)) {
@@ -1247,7 +1271,7 @@ function openPayoutDetailsModal(options = {}) {
     const emitDraft = () => {
       onDraftChange?.({
         wallet: String(payoutAddress.value || "").trim(),
-        crypto: String(payoutAsset.value || "USDC").toUpperCase(),
+        crypto: String(payoutAsset.value || "SOL").toUpperCase(),
         chain: String(payoutChain.value || ""),
         email: String(payoutEmail?.value || "").trim(),
       });
@@ -1268,13 +1292,20 @@ function openPayoutDetailsModal(options = {}) {
     };
     const onEsc = (e) => { if (e.key === "Escape") close(false); };
     const onPaste = async () => {
+      let pasted = "";
       try {
-        const txt = await navigator.clipboard.readText();
-        if (txt) {
-          payoutAddress.value = txt.trim();
-          emitDraft();
-        }
+        pasted = String(await navigator.clipboard.readText() || "");
       } catch {}
+      if (!pasted) {
+        const manual = window.prompt("Paste your wallet address:");
+        if (!manual) return;
+        pasted = String(manual);
+      }
+      const next = pasted.trim();
+      if (!next) return;
+      payoutAddress.value = next;
+      if (risxPayoutError) risxPayoutError.textContent = "";
+      emitDraft();
     };
 
     const cleanup = () => {
@@ -1692,7 +1723,7 @@ function normalizeClaimForm(form) {
   const src = (form && typeof form === "object") ? form : {};
   return {
     wallet: String(src.wallet || "").trim(),
-    crypto: String(src.crypto || "USDC").toUpperCase(),
+    crypto: String(src.crypto || "SOL").toUpperCase(),
     chain: String(src.chain || ""),
     email: String(src.email || "").trim(),
   };
