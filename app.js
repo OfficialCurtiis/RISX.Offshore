@@ -332,16 +332,24 @@ async function applyUnlockFromAdminMint(resp = {}) {
   localStorage.setItem("risx_unlock_tier", tier);
   localStorage.setItem("risx_unlock_intent", restartRequiredNow() ? "restart" : "entry");
 
-  const verifyRes = await fetch("/api/verify-token", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token }),
-  });
-  const verifyJson = await verifyRes.json().catch(() => ({}));
-  const ok = !!(verifyRes.ok && verifyJson?.valid && verifyJson?.tierKey === tier);
-  if (!ok) {
-    setAdminSecurityOutput(adminMintOut, `Verify failed for tier:${tier}`);
-    if (adminMsg) adminMsg.textContent = "Minted token failed /api/verify-token.";
+  let verifyJson = {};
+  try {
+    const verifyRes = await fetch("/api/verify-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    verifyJson = await verifyRes.json().catch(() => ({}));
+    const ok = !!(verifyRes.ok && verifyJson?.valid && verifyJson?.tierKey === tier);
+    if (!ok) {
+      setAdminSecurityOutput(adminMintOut, `Verify failed for tier:${tier}`);
+      if (adminMsg) adminMsg.textContent = "Minted token failed /api/verify-token.";
+      return false;
+    }
+  } catch (err) {
+    const msg = `Mint verify error: ${String(err?.message || err || "unknown error")}`;
+    setAdminSecurityOutput(adminMintOut, msg);
+    if (adminMsg) adminMsg.textContent = msg;
     return false;
   }
 
@@ -356,7 +364,7 @@ async function applyUnlockFromAdminMint(resp = {}) {
   challengeTierSelected = tier;
   renderTierSummary?.();
   if (challengeMsg) challengeMsg.textContent = `Tier unlocked: ${tier.toUpperCase()} — press Start Challenge.`;
-  void refreshPostPaymentRecovery();
+  void refreshPostPaymentRecovery().catch(() => {});
   return true;
 }
 
@@ -378,20 +386,26 @@ async function checkAdminStatus() {
 async function mintAdminToken() {
   const tierKey = String(adminMintTier?.value || "beginner");
   setAdminSecurityOutput(adminMintOut, "Minting...");
-  const { ok, data } = await apiJson("/api/admin/mint", {
-    method: "POST",
-    body: JSON.stringify({ tierKey }),
-  });
-  if (!ok) {
-    setAdminSecurityOutput(adminMintOut, String(data?.error || "Mint failed."));
-    return;
-  }
-  const applied = await applyUnlockFromAdminMint(data);
-  if (!applied) return;
+  try {
+    const { ok, data } = await apiJson("/api/admin/mint", {
+      method: "POST",
+      body: JSON.stringify({ tierKey }),
+    });
+    if (!ok) {
+      setAdminSecurityOutput(adminMintOut, String(data?.error || "Mint failed."));
+      return;
+    }
+    const applied = await applyUnlockFromAdminMint(data);
+    if (!applied) return;
 
-  const mintedToken = String(data?.unlock_token || data?.token || "");
-  if (mintedToken && navigator?.clipboard?.writeText) {
-    try { await navigator.clipboard.writeText(mintedToken); } catch {}
+    const mintedToken = String(data?.unlock_token || data?.token || "");
+    if (mintedToken && navigator?.clipboard?.writeText) {
+      try { await navigator.clipboard.writeText(mintedToken); } catch {}
+    }
+  } catch (err) {
+    const msg = `Mint failed: ${String(err?.message || err || "unknown error")}`;
+    setAdminSecurityOutput(adminMintOut, msg);
+    if (adminMsg) adminMsg.textContent = msg;
   }
 }
 
