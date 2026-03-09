@@ -330,7 +330,9 @@ async function applyUnlockFromAdminMint(resp = {}) {
 
   localStorage.setItem("risx_unlock_token", token);
   localStorage.setItem("risx_unlock_tier", tier);
-  localStorage.setItem("risx_unlock_intent", restartRequiredNow() ? "restart" : "entry");
+  const resetExpiresAt = Number(localStorage.getItem("risx_reset_expires_at") || 0);
+  const isRestartIntent = localStorage.getItem("risx_restart_required") === "1" && resetExpiresAt > Date.now();
+  localStorage.setItem("risx_unlock_intent", isRestartIntent ? "restart" : "entry");
 
   let verifyJson = {};
   try {
