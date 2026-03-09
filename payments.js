@@ -13,12 +13,12 @@
   const checkBtn     = document.getElementById("payCheckBtn");
   const unlockedBox  = document.getElementById("payUnlocked");
 
-  const PENDING_KEY = "risx_pending_payment"; // stores payment_id + tier + amount + address
+  const PAYMENT_SESSION_KEY = "risx_payment_session";
+  const LEGACY_PENDING_KEY = "risx_pending_payment";
 
-      // NEW: Payment ID + Resume
+  // NEW: Payment ID + Resume
   const payIdEl       = document.getElementById("payPaymentId");
   const payIdCopyBtn  = document.getElementById("payPaymentIdCopyBtn");
-  const resumeBtn     = document.getElementById("payResumeBtn");
 
   // NEW: Paid-but-not-unlocked support box
   const manualIdInput  = document.getElementById("payManualId");
@@ -62,18 +62,89 @@
     window.scrollTo(0, y);
     }
 
-  function setPendingPayment(payload) {
-    localStorage.setItem(PENDING_KEY, JSON.stringify(payload));
-    }
+  function normalizePaymentSession(raw) {
+    if (!raw || typeof raw !== "object") return null;
 
-  function getPendingPayment() {
-    try { return JSON.parse(localStorage.getItem(PENDING_KEY) || "null"); }
-    catch { return null; }
-    }
+    const status = String(raw.status || "").toLowerCase();
+    const intent = String(raw.intent || "entry").toLowerCase();
+    const tier = String(raw.tier || raw.tierKey || "").trim();
+    const paymentId = String(raw.paymentId || raw.payment_id || raw.invoiceId || "").trim();
 
-  function clearPendingPayment() {
-    localStorage.removeItem(PENDING_KEY);
+    if (!["pending", "paid", "expired", "cancelled"].includes(status)) return null;
+    if (!["entry", "restart"].includes(intent)) return null;
+    if (!tier) return null;
+    if (!paymentId && status === "pending") return null;
+
+    return {
+      status,
+      intent,
+      tier,
+      invoiceId: String(raw.invoiceId || paymentId),
+      paymentId,
+      amount: Number(raw.amount ?? raw.pay_amount ?? 0) || 0,
+      currency: String(raw.currency || raw.pay_currency || "").toUpperCase(),
+      payAddress: String(raw.payAddress || raw.pay_address || ""),
+      createdAt: Number(raw.createdAt || Date.now()),
+    };
+  }
+
+  function setPaymentSession(payload) {
+    const normalized = normalizePaymentSession(payload);
+    if (!normalized) return;
+
+    localStorage.setItem(PAYMENT_SESSION_KEY, JSON.stringify(normalized));
+    if (normalized.status === "pending") {
+      localStorage.setItem(LEGACY_PENDING_KEY, JSON.stringify({
+        intent: normalized.intent,
+        tierKey: normalized.tier,
+        payment_id: normalized.paymentId,
+        pay_amount: normalized.amount,
+        pay_currency: normalized.currency,
+        pay_address: normalized.payAddress,
+        createdAt: normalized.createdAt,
+      }));
+    } else {
+      localStorage.removeItem(LEGACY_PENDING_KEY);
     }
+    window.RISX_renderRecoveryCtas?.();
+  }
+
+  function getPaymentSession() {
+    try {
+      const direct = normalizePaymentSession(JSON.parse(localStorage.getItem(PAYMENT_SESSION_KEY) || "null"));
+      if (direct) return direct;
+    } catch {}
+
+    try {
+      const legacy = JSON.parse(localStorage.getItem(LEGACY_PENDING_KEY) || "null");
+      if (!legacy || typeof legacy !== "object") return null;
+      const migrated = normalizePaymentSession({
+        status: "pending",
+        intent: legacy.intent || "entry",
+        tier: legacy.tierKey,
+        paymentId: legacy.payment_id,
+        amount: legacy.pay_amount,
+        currency: legacy.pay_currency,
+        payAddress: legacy.pay_address,
+        createdAt: legacy.createdAt,
+      });
+      if (migrated) {
+        localStorage.setItem(PAYMENT_SESSION_KEY, JSON.stringify(migrated));
+      }
+      return migrated;
+    } catch {
+      return null;
+    }
+  }
+
+  function updatePaymentSessionStatus(status) {
+    const current = getPaymentSession();
+    if (!current) return;
+    setPaymentSession({
+      ...current,
+      status: String(status || "").toLowerCase(),
+    });
+  }
 
   function enableLeaveWarning() {
       window.onbeforeunload = (e) => {
@@ -113,18 +184,24 @@ function openModal(tierKey, intent = "entry") {
   modal.style.display = "block";
   lockBodyScroll();
 
-  // ✅ Restore pending payment for this tier after refresh
-  const pending = getPendingPayment();
-if (pending && pending.tierKey === tierKey && pending.payment_id) {
-  activePaymentId = pending.payment_id;
-  localStorage.setItem("risx_last_payment_id", pending.payment_id); 
+  // Restore only the same pending payment session for this tier/intent.
+  const pending = getPaymentSession();
+if (
+  pending &&
+  pending.status === "pending" &&
+  pending.tier === tierKey &&
+  pending.intent === intent &&
+  pending.paymentId
+) {
+  activePaymentId = pending.paymentId;
+  localStorage.setItem("risx_last_payment_id", pending.paymentId); 
   window.updateSupportIdPill?.();
 
   setCreateButtonLabel(true);
   step2.style.display = "block";
-  amountEl.textContent = `${pending.pay_amount} ${String(pending.pay_currency).toUpperCase()}`;
-  addressEl.textContent = pending.pay_address;
-  if (payIdEl) payIdEl.textContent = pending.payment_id;
+  amountEl.textContent = `${pending.amount} ${String(pending.currency).toUpperCase()}`;
+  addressEl.textContent = pending.payAddress || "—";
+  if (payIdEl) payIdEl.textContent = pending.paymentId;
 
   statusEl.textContent = "Status: restoring… (checking every 2.5s)";
   enableLeaveWarning();
@@ -147,7 +224,7 @@ function stopPolling() {
   function setUnlocked(tierKey) {
     unlockedBox.style.display = "block";
     statusEl.textContent = "✅ Confirmed";
-    clearPendingPayment();
+    updatePaymentSessionStatus("paid");
     disableLeaveWarning();
     stopPolling();
   }
@@ -191,9 +268,9 @@ function handleConfirmed(resp) {
   localStorage.setItem("risx_unlock_token", resp.unlock_token);
   localStorage.setItem("risx_unlock_tier", resp.tierKey);
 
-  const pending = getPendingPayment();
+  const pending = getPaymentSession();
   const intent = pending?.intent || "entry";
-  const tierKey = pending?.tierKey || resp.tierKey;
+  const tierKey = pending?.tier || resp.tierKey;
 
   // mark UI unlocked/close modal first
   activeTierKey = tierKey;
@@ -220,7 +297,14 @@ function startPolling(paymentId) {
         statusEl.textContent = `Status: ${status || "waiting"} (auto-checking)`;
 
        if (status === "confirmed" || status === "finished") {
+        updatePaymentSessionStatus("paid");
         handleConfirmed(s);
+        return;
+        }
+       if (status === "expired" || status === "cancelled") {
+        updatePaymentSessionStatus(status);
+        disableLeaveWarning();
+        stopPolling();
         return;
         }
       } catch (e) {
@@ -256,16 +340,18 @@ function startPolling(paymentId) {
       if (payIdEl) payIdEl.textContent = data.payment_id;
       setCreateButtonLabel(true);
 
-        setPendingPayment({
-          intent,
-          tierKey: activeTierKey,
-          payment_id: data.payment_id,
-          pay_amount: data.pay_amount,
-          pay_currency: data.pay_currency || payCurrency,
-          pay_address: data.pay_address,
-          createdAt: Date.now()
-        });
-        enableLeaveWarning();
+      setPaymentSession({
+        status: "pending",
+        intent,
+        tier: activeTierKey,
+        invoiceId: data.invoice_id || data.payment_id,
+        paymentId: data.payment_id,
+        amount: data.pay_amount,
+        currency: data.pay_currency || payCurrency,
+        payAddress: data.pay_address,
+        createdAt: Date.now()
+      });
+      enableLeaveWarning();
 
       step2.style.display = "block";
       amountEl.textContent = `${data.pay_amount} ${String(data.pay_currency || payCurrency).toUpperCase()}`;
@@ -291,8 +377,8 @@ function startPolling(paymentId) {
 
 checkBtn?.addEventListener("click", async () => {
   // Pull from active id, or pending storage (refresh-safe)
-  const pending = getPendingPayment();
-  const pid = activePaymentId || pending?.payment_id;
+  const pending = getPaymentSession();
+  const pid = activePaymentId || pending?.paymentId;
 
   if (!pid) {
     alert("Create a payment first.");
@@ -308,7 +394,14 @@ checkBtn?.addEventListener("click", async () => {
     statusEl.textContent = `Status: ${status || "unknown"}`;
 
     if (status === "confirmed" || status === "finished") {
+      updatePaymentSessionStatus("paid");
       handleConfirmed(s);
+      return;
+    }
+    if (status === "expired" || status === "cancelled") {
+      updatePaymentSessionStatus(status);
+      disableLeaveWarning();
+      stopPolling();
       return;
     }
 
@@ -349,17 +442,23 @@ checkBtn?.addEventListener("click", async () => {
       activePaymentId = pid;
       if (payIdEl) payIdEl.textContent = pid;
 
-      setPendingPayment({
+      setPaymentSession({
+        status: "paid",
         intent: "entry",
-        tierKey: activeTierKey,
-        payment_id: pid,
-        pay_amount: s.pay_amount || "—",
-        pay_currency: s.pay_currency || "—",
-        pay_address: s.pay_address || "—",
+        tier: activeTierKey,
+        invoiceId: pid,
+        paymentId: pid,
+        amount: s.pay_amount || 0,
+        currency: s.pay_currency || "",
+        payAddress: s.pay_address || "",
         createdAt: Date.now()
       });
 
       handleConfirmed(s);
+      return;
+    }
+    if (status === "expired" || status === "cancelled") {
+      updatePaymentSessionStatus(status);
     }
   } catch (e) {
     if (manualMsgEl) manualMsgEl.textContent = "Could not verify that payment_id. Double-check and try again.";

@@ -70,6 +70,10 @@ const challengeStartBtn = document.getElementById("challengeStartBtn");
 const challengeMsg = document.getElementById("challengeMsg");
 const tierSummary = document.getElementById("tierSummary");
 const challengeResetBtn = document.getElementById("challengeResetBtn");
+const challengeRecoveryCtas = document.getElementById("challengeRecoveryCtas");
+const resumePaymentBtn = document.getElementById("resumePaymentBtn");
+const resumeClaimBtn = document.getElementById("resumeClaimBtn");
+const winReturnHomeBtn = document.getElementById("winReturnHomeBtn");
 
 // =========================
 // DOM REFS (declare only once)
@@ -91,6 +95,8 @@ const RUN_TIER_KEY    = "risx_run_tier";
 const RUN_STATUS_KEY  = "risx_run_status";
 const RUN_START_KEY   = "risx_run_started_at";
 const RUN_END_KEY     = "risx_run_ended_at";
+const PAYMENT_SESSION_KEY = "risx_payment_session";
+const CLAIM_STATE_KEY = "risx_claim_state";
 
 function debounce(fn, delay = 150) {
   let t;
@@ -502,33 +508,55 @@ const pfLastRoundEl        = document.getElementById("pfLastRound");
 ////////////////////////////////////
 ////////TRIGGER WIN/FAIL////////
 
-function triggerChallengeWin() {
+function triggerChallengeWin(payload = {}) {
+  const tierId = String(payload?.tier || CHALLENGE.tier || challengeTierSelected || "beginner");
+  const tier = CHALLENGE_TIERS[tierId] || getTier();
+  const target = Number(payload?.target ?? tier?.goalCredits ?? 0);
+  const achieved = Number(payload?.achieved ?? target);
+  const payout = Number(payload?.payout ?? tier?.prizeUsd ?? 0);
+  const run = getRun?.() || {};
+  const winRunId = String(run.id || localStorage.getItem(RUN_ID_KEY) || "");
 
-  challengeState.status = "completed";
-  CHALLENGE.active = false;
-  challengeActive = false;
+  challengeState.status = "won";
+  challengeCompleted = true;
+  saveChallengeCompleted?.(true);
+  setChallengeStatus?.("won");
+  endRun?.("won");
+
+  // Recovery metadata is allowed; active access tokens are burned so this run cannot be replayed.
+  burnChallengeAccessState({ clearResetFlags: true });
+
+  setClaimRecoveryState({
+    status: "available",
+    winId: winRunId,
+    sessionId: winRunId,
+    amount: payout,
+    createdAt: Date.now(),
+    form: normalizeClaimForm(null),
+  });
+
+  const claimBtn = document.getElementById("submitClaimBtn");
+  if (claimBtn) {
+    claimBtn.disabled = false;
+    claimBtn.textContent = "Claim Reward";
+  }
 
   lockAppUI?.(true);
 
-  const tierId = CHALLENGE.tier;
-  const tier = getTier();
+  document.getElementById("winTarget").textContent = `${target.toLocaleString()} credits`;
+  document.getElementById("winAchieved").textContent = `${achieved.toLocaleString()} credits`;
+  document.getElementById("winPayout").textContent = `$${payout.toLocaleString()} USD`;
 
-  document.getElementById("winTarget").textContent =
-    `${Number(tier.goalCredits).toLocaleString()} credits`;
-
-  document.getElementById("winAchieved").textContent =
-    `${Number(tier.goalCredits).toLocaleString()} credits`;
-
-  document.getElementById("winPayout").textContent =
-    `$${Number(tier.prizeUsd).toLocaleString()} USD`;
-
+  showChallengeResetIfNeeded?.();
+  refreshChallengeHud?.();
   openModal?.(document.getElementById("winModal"));
+  renderRecoveryCtas?.();
 }
 
 window.triggerChallengeWin = triggerChallengeWin;
 
 let challengeState = {
-  status: "inactive", // inactive | active | failed | completed | pending
+  status: "inactive", // inactive | active | failed | won | pending
   resetExpiresAt: null
 };
 
@@ -863,7 +891,7 @@ function refreshChallengeHud() {
 }
 
   // Not in a live challenge
-  if (!challengeActive || status === "" ) {
+  if (!challengeActive && status === "") {
     setChallengeHud({
       state: "ready",
       text: "READY",
@@ -1094,20 +1122,28 @@ function risxInputPrompt({
   });
 }
 
-function openPayoutDetailsModal() {
+function openPayoutDetailsModal(options = {}) {
   return new Promise((resolve) => {
     if (!risxPayoutModal || !payoutAsset || !payoutChain || !payoutAddress || !risxPayoutConfirm || !risxPayoutCancel) {
       resolve({ confirmed: false, payout: null });
       return;
     }
 
+    const savedForm = normalizeClaimForm(options?.draft);
+    const onDraftChange = (typeof options?.onDraftChange === "function") ? options.onDraftChange : null;
+
     payoutAsset.innerHTML = Object.keys(PAYOUT_ASSET_CHAINS)
       .map((asset) => `<option value="${escapeHtml(asset)}">${escapeHtml(asset)}</option>`)
       .join("");
-    payoutAsset.value = "USDC";
+    const initialAsset = String(savedForm.crypto || "USDC").toUpperCase();
+    payoutAsset.value = Object.prototype.hasOwnProperty.call(PAYOUT_ASSET_CHAINS, initialAsset) ? initialAsset : "USDC";
     updatePayoutChains(payoutAsset.value);
-    payoutAddress.value = "";
-    payoutEmail && (payoutEmail.value = "");
+    const validChains = PAYOUT_ASSET_CHAINS[payoutAsset.value] || [];
+    if (savedForm.chain && validChains.includes(savedForm.chain)) {
+      payoutChain.value = savedForm.chain;
+    }
+    payoutAddress.value = savedForm.wallet || "";
+    payoutEmail && (payoutEmail.value = savedForm.email || "");
     risxPayoutError && (risxPayoutError.textContent = "");
 
     let closed = false;
@@ -1154,10 +1190,23 @@ function openPayoutDetailsModal() {
       close(true, payout);
     };
 
+    const emitDraft = () => {
+      onDraftChange?.({
+        wallet: String(payoutAddress.value || "").trim(),
+        crypto: String(payoutAsset.value || "USDC").toUpperCase(),
+        chain: String(payoutChain.value || ""),
+        email: String(payoutEmail?.value || "").trim(),
+      });
+    };
+
     const onAssetChange = () => {
       updatePayoutChains(payoutAsset.value);
       if (risxPayoutError) risxPayoutError.textContent = "";
+      emitDraft();
     };
+    const onChainChange = () => emitDraft();
+    const onAddressInput = () => emitDraft();
+    const onEmailInput = () => emitDraft();
     const onConfirm = () => submit();
     const onCancel = () => close(false);
     const onBackdrop = (e) => {
@@ -1167,12 +1216,18 @@ function openPayoutDetailsModal() {
     const onPaste = async () => {
       try {
         const txt = await navigator.clipboard.readText();
-        if (txt) payoutAddress.value = txt.trim();
+        if (txt) {
+          payoutAddress.value = txt.trim();
+          emitDraft();
+        }
       } catch {}
     };
 
     const cleanup = () => {
       payoutAsset.removeEventListener("change", onAssetChange);
+      payoutChain.removeEventListener("change", onChainChange);
+      payoutAddress.removeEventListener("input", onAddressInput);
+      payoutEmail?.removeEventListener("input", onEmailInput);
       risxPayoutConfirm.removeEventListener("click", onConfirm);
       risxPayoutCancel.removeEventListener("click", onCancel);
       payoutPasteBtn?.removeEventListener("click", onPaste);
@@ -1181,6 +1236,9 @@ function openPayoutDetailsModal() {
     };
 
     payoutAsset.addEventListener("change", onAssetChange);
+    payoutChain.addEventListener("change", onChainChange);
+    payoutAddress.addEventListener("input", onAddressInput);
+    payoutEmail?.addEventListener("input", onEmailInput);
     risxPayoutConfirm.addEventListener("click", onConfirm);
     risxPayoutCancel.addEventListener("click", onCancel);
     payoutPasteBtn?.addEventListener("click", onPaste);
@@ -1340,7 +1398,7 @@ function adjustBalance(delta, opts = {}) {
 
       challengeActive = false;
       saveChallengeActive?.(false);
-      setChallengeStatus?.("completed");
+      setChallengeStatus?.("won");
 
       triggerChallengeWin?.({
         tier: CHALLENGE.tier,
@@ -1396,10 +1454,7 @@ function challengeFail(reason) {
   endRun("failed");
 
   toast?.(`Challenge failed — ${reason}`);
-
-  challengeActive = false;
-  CHALLENGE.active = false;
-  saveChallengeActive?.(false);
+  burnChallengeAccessState({ clearResetFlags: false });
 
   challengeState.status = "failed";
 
@@ -1410,6 +1465,7 @@ function challengeFail(reason) {
   refreshChallengeHud();
   openModal?.(failModal);
   startResetTimer();
+  renderRecoveryCtas?.();
 
   lockAppUI?.(true);
 }
@@ -1566,6 +1622,162 @@ function clearRun() {
   localStorage.removeItem(RUN_START_KEY);
   localStorage.removeItem(RUN_END_KEY);
 }
+
+function readStoredObject(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return (parsed && typeof parsed === "object") ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeClaimForm(form) {
+  const src = (form && typeof form === "object") ? form : {};
+  return {
+    wallet: String(src.wallet || "").trim(),
+    crypto: String(src.crypto || "USDC").toUpperCase(),
+    chain: String(src.chain || ""),
+    email: String(src.email || "").trim(),
+  };
+}
+
+function normalizePaymentSession(raw) {
+  if (!raw || typeof raw !== "object") return null;
+
+  const status = String(raw.status || "").toLowerCase();
+  const intent = String(raw.intent || "entry").toLowerCase();
+  const tier = String(raw.tier || raw.tierKey || "").trim();
+  const invoiceId = String(raw.invoiceId || "").trim();
+  const paymentId = String(raw.paymentId || raw.payment_id || invoiceId).trim();
+
+  if (!["pending", "paid", "expired", "cancelled"].includes(status)) return null;
+  if (!["entry", "restart"].includes(intent)) return null;
+  if (!tier) return null;
+  if (!paymentId && status === "pending") return null;
+
+  return {
+    status,
+    intent,
+    tier,
+    invoiceId: invoiceId || paymentId,
+    paymentId,
+    amount: Number(raw.amount ?? raw.pay_amount ?? 0) || 0,
+    currency: String(raw.currency || raw.pay_currency || "").toUpperCase(),
+    payAddress: String(raw.payAddress || raw.pay_address || ""),
+    createdAt: Number(raw.createdAt || Date.now()),
+  };
+}
+
+function getPaymentSessionState() {
+  const direct = normalizePaymentSession(readStoredObject(PAYMENT_SESSION_KEY));
+  if (direct) return direct;
+
+  const legacy = readStoredObject("risx_pending_payment");
+  return normalizePaymentSession(legacy ? {
+    status: "pending",
+    intent: legacy.intent || "entry",
+    tier: legacy.tierKey,
+    paymentId: legacy.payment_id,
+    amount: legacy.pay_amount,
+    currency: legacy.pay_currency,
+    payAddress: legacy.pay_address,
+    createdAt: legacy.createdAt,
+  } : null);
+}
+
+function normalizeClaimRecoveryState(raw) {
+  if (!raw || typeof raw !== "object") return null;
+
+  const status = String(raw.status || "").toLowerCase();
+  if (!["available", "started", "submitted", "paid"].includes(status)) return null;
+
+  const winId = String(raw.winId || "").trim();
+  const sessionId = String(raw.sessionId || "").trim();
+  if (!winId && !sessionId) return null;
+
+  return {
+    status,
+    winId,
+    sessionId: sessionId || winId,
+    amount: Number(raw.amount || 0) || 0,
+    createdAt: Number(raw.createdAt || Date.now()),
+    submittedAt: raw.submittedAt ? Number(raw.submittedAt) : null,
+    form: normalizeClaimForm(raw.form),
+  };
+}
+
+function claimStateMatchesAuthoritativeRun(state) {
+  if (!state) return false;
+  if (state.status !== "available" && state.status !== "started") return true;
+
+  const run = getRun?.() || {};
+  const runId = String(run.id || "");
+  if (String(run.status || "") !== "won") return false;
+  if (!runId) return false;
+  return (runId === state.winId || runId === state.sessionId);
+}
+
+function getClaimRecoveryState() {
+  const state = normalizeClaimRecoveryState(readStoredObject(CLAIM_STATE_KEY));
+  if (!state) return null;
+
+  if (!claimStateMatchesAuthoritativeRun(state)) {
+    localStorage.removeItem(CLAIM_STATE_KEY);
+    return null;
+  }
+  return state;
+}
+
+function setClaimRecoveryState(nextState) {
+  const normalized = normalizeClaimRecoveryState(nextState);
+  if (!normalized) {
+    localStorage.removeItem(CLAIM_STATE_KEY);
+    renderRecoveryCtas?.();
+    return;
+  }
+  localStorage.setItem(CLAIM_STATE_KEY, JSON.stringify(normalized));
+  renderRecoveryCtas?.();
+}
+
+function burnChallengeAccessState({ clearResetFlags = false } = {}) {
+  challengeActive = false;
+  CHALLENGE.active = false;
+  saveChallengeActive?.(false);
+
+  localStorage.removeItem("risx_unlock_token");
+  localStorage.removeItem("risx_unlock_tier");
+  localStorage.removeItem("risx_payment_intent");
+
+  if (clearResetFlags) {
+    localStorage.removeItem("risx_restart_required");
+    localStorage.removeItem("risx_reset_expires_at");
+    CHALLENGE.resetExpiresAt = null;
+  }
+}
+
+function renderRecoveryCtas() {
+  if (!challengeRecoveryCtas) return;
+
+  const paymentSession = getPaymentSessionState();
+  const claimState = getClaimRecoveryState();
+  const showPayment = paymentSession?.status === "pending";
+  const showClaim = !!claimState && (claimState.status === "available" || claimState.status === "started");
+
+  challengeRecoveryCtas.style.display = (showPayment || showClaim) ? "flex" : "none";
+
+  if (resumePaymentBtn) {
+    resumePaymentBtn.style.display = showPayment ? "inline-flex" : "none";
+  }
+  if (resumeClaimBtn) {
+    resumeClaimBtn.style.display = showClaim ? "inline-flex" : "none";
+    resumeClaimBtn.textContent = (claimState?.status === "started") ? "Resume Claim" : "Claim Reward";
+  }
+}
+
+window.RISX_renderRecoveryCtas = renderRecoveryCtas;
 
 /*===============================
      Challenge UI locking
@@ -4021,7 +4233,11 @@ function init() {
   // ---- restore challenge state FIRST ----
   loadChallengeState(); 
 
-  const status = getChallengeStatus();
+  let status = getChallengeStatus();
+  if (status === "completed") {
+    status = "won";
+    setChallengeStatus("won");
+  }
 
   // If last run ended, do NOT auto-resume.
   if (status === "failed" || status === "won") {
@@ -4037,9 +4253,19 @@ function init() {
   lockAppUI(false);
   closeModal(challengeModal);
 } else {
-  // no challenge yet → lock and show tier modal
+  const paymentRecovery = getPaymentSessionState();
+  const claimRecovery = getClaimRecoveryState();
+  const hasRecoveryCta =
+    paymentRecovery?.status === "pending" ||
+    (claimRecovery && (claimRecovery.status === "available" || claimRecovery.status === "started"));
+
+  // no live challenge → lock controls; only force tier modal when no recoverable flow exists
   lockAppUI(true);
-  openModal(challengeModal);
+  if (hasRecoveryCta) {
+    closeModal(challengeModal);
+  } else {
+    openModal(challengeModal);
+  }
   renderTierSummary?.();
 }
 
@@ -4354,6 +4580,7 @@ function startChallengeNow(tier) {
   refreshChallengeHud();
   closeModal(challengeModal);
   lockAppUI(false);
+  renderRecoveryCtas?.();
 }
 
   window.RISX_startChallengeFromPayment = async (tier) => {
@@ -4498,51 +4725,144 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
   // -----------------------------
   const submitClaimBtn = document.getElementById("submitClaimBtn");
 
+  async function submitClaimFromRecovery({ closeWinModal = false } = {}) {
+    const claimState = getClaimRecoveryState();
+    if (!claimState || !["available", "started"].includes(claimState.status)) {
+      await risxAlert({
+        title: "Claim unavailable",
+        body: "No active claim was found for this finalized run.",
+        okText: "OK",
+      });
+      return;
+    }
+
+    const nextState = {
+      ...claimState,
+      status: "started",
+      form: normalizeClaimForm(claimState.form),
+    };
+    setClaimRecoveryState(nextState);
+
+    if (closeWinModal) {
+      closeModal?.(document.getElementById("winModal"));
+    }
+
+    const payoutRes = await openPayoutDetailsModal({
+      draft: nextState.form,
+      onDraftChange: (form) => {
+        const active = getClaimRecoveryState();
+        if (!active || !["available", "started"].includes(active.status)) return;
+        setClaimRecoveryState({
+          ...active,
+          status: "started",
+          form: normalizeClaimForm(form),
+        });
+      },
+    });
+    if (!payoutRes.confirmed || !payoutRes.payout) return;
+
+    const run = getRun?.() || {};
+    const activeClaimState = getClaimRecoveryState();
+    const runId = String(run.id || "");
+    if (
+      String(run.status || "") !== "won" ||
+      !activeClaimState ||
+      !runId ||
+      !(runId === activeClaimState.winId || runId === activeClaimState.sessionId)
+    ) {
+      await risxAlert({
+        title: "Claim unavailable",
+        body: "This claim is no longer attached to an eligible winning run.",
+        okText: "OK",
+      });
+      return;
+    }
+
+    const payout = payoutRes.payout;
+    const tierId = CHALLENGE.tier;
+    const tier = getTier();
+    const supportId = localStorage.getItem("risx_last_payment_id") || "—";
+
+    const claim = {
+      id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+      runId: runId || localStorage.getItem("risx_run_id") || "",
+      tier: tierId,
+      prizeUsd: Number(tier.prizeUsd || 0),
+      goalCredits: Number(tier.goalCredits || 0),
+      payout,
+      address: payout.address,
+      email: payout.email || "",
+      asset: payout.asset,
+      chain: payout.chain,
+      supportId,
+      status: "PENDING",
+      createdAt: Date.now()
+    };
+
+    const list = readList(claimsKey);
+    list.unshift(claim);
+    writeList(claimsKey, list);
+
+    setClaimRecoveryState({
+      ...activeClaimState,
+      status: "submitted",
+      submittedAt: Date.now(),
+      form: normalizeClaimForm({
+        wallet: payout.address,
+        crypto: payout.asset,
+        chain: payout.chain,
+        email: payout.email || "",
+      }),
+    });
+
+    if (submitClaimBtn) {
+      submitClaimBtn.disabled = true;
+      submitClaimBtn.textContent = "Claim Submitted";
+    }
+
+    void risxAlert({
+      title: "Claim Submitted",
+      body: "Manual review + payout is typically completed within 24h.",
+      okText: "Done",
+    });
+  }
+
   if (submitClaimBtn && !submitClaimBtn._bound) {
     submitClaimBtn._bound = true;
+    submitClaimBtn.addEventListener("click", () => {
+      void submitClaimFromRecovery({ closeWinModal: true });
+    });
+  }
 
-   submitClaimBtn.addEventListener("click", async () => {
-  const winModalEl = document.getElementById("winModal");
-  closeModal?.(winModalEl);
+  if (resumeClaimBtn && !resumeClaimBtn._bound) {
+    resumeClaimBtn._bound = true;
+    resumeClaimBtn.addEventListener("click", () => {
+      void submitClaimFromRecovery({ closeWinModal: false });
+    });
+  }
 
-  const payoutRes = await openPayoutDetailsModal();
-  if (!payoutRes.confirmed || !payoutRes.payout) return;
-  const payout = payoutRes.payout;
+  if (resumePaymentBtn && !resumePaymentBtn._bound) {
+    resumePaymentBtn._bound = true;
+    resumePaymentBtn.addEventListener("click", () => {
+      const paymentSession = getPaymentSessionState();
+      if (!paymentSession || paymentSession.status !== "pending") return;
+      localStorage.setItem("risx_payment_intent", paymentSession.intent || "entry");
+      window.RISX_openPayModalForTier?.(paymentSession.tier);
+    });
+  }
 
-  const tierId = CHALLENGE.tier;
-  const tier = getTier();
-  const run = getRun?.() || {};
-  const supportId = localStorage.getItem("risx_last_payment_id") || "—";
-
-  const claim = {
-    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-    runId: run.id || localStorage.getItem("risx_run_id") || "",
-    tier: tierId,
-    prizeUsd: Number(tier.prizeUsd || 0),
-    goalCredits: Number(tier.goalCredits || 0),
-    payout,
-    address: payout.address,
-    email: payout.email || "",
-    asset: payout.asset,
-    chain: payout.chain,
-    supportId,
-    status: "PENDING",
-    createdAt: Date.now()
-  };
-
-  const list = readList(claimsKey);
-  list.unshift(claim);
-  writeList(claimsKey, list);
-
-  submitClaimBtn.disabled = true;
-  submitClaimBtn.textContent = "Claim Submitted";
-
-  void risxAlert({
-    title: "Claim Submitted",
-    body: "Manual review + payout is typically completed within 24h.",
-    okText: "Done",
-  });
-});
+  if (winReturnHomeBtn && !winReturnHomeBtn._bound) {
+    winReturnHomeBtn._bound = true;
+    winReturnHomeBtn.addEventListener("click", () => {
+      closeModal?.(document.getElementById("winModal"));
+      lockAppUI?.(true);
+      openModal?.(challengeModal);
+      if (challengeMsg) {
+        challengeMsg.textContent = "Run finalized. Claim remains available in Resume Claim.";
+      }
+      renderTierSummary?.();
+      renderRecoveryCtas?.();
+    });
   }
 
   // -----------------------------
@@ -4577,6 +4897,7 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
 
   renderChallengeParams();
   refreshChallengeHud();
+  renderRecoveryCtas?.();
   window.updateSupportIdPill?.();
 
 

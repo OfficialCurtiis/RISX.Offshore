@@ -52,6 +52,10 @@
       </div>
 
       <div id="challengeToast" class="hint small" style="margin-top:10px;"></div>
+      <div id="challengeRecoveryCtas" style="display:none; margin-top:8px; gap:8px; flex-wrap:wrap;">
+        <button id="resumePaymentBtn" class="btn secondary small" type="button" style="display:none;">Resume Payment</button>
+        <button id="resumeClaimBtn" class="btn primary small" type="button" style="display:none;">Claim Reward</button>
+      </div>
     </div>
 
     <!-- Keep the rest of your wallet DOM below (currency select/user/actions)
@@ -153,7 +157,6 @@
     <div class="game-footer">
       <div class="game-footer-left">
         <span class="game-footer-risx">RISX</span>
-        <span class="game-footer-zero-edge">Zero Edge</span>
       </div>
       <button class="plinko-chip plinko-chip-btn game-footer-pf-btn" data-open-pf type="button">
         Provably Fair
@@ -1016,6 +1019,9 @@
 
     <button id="submitClaimBtn" class="submit-claim-btn">
       Claim Reward
+    </button>
+    <button id="winReturnHomeBtn" class="btn secondary" type="button" style="margin-top:10px; width:100%;">
+      Return Home
     </button>
   </div>
 </div>
