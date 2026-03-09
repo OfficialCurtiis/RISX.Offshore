@@ -3489,14 +3489,6 @@ function openModal(modalEl) {
   modalEl.classList.add("open");
   modalEl.setAttribute("aria-hidden", "false");
 
-  if (modalEl.id === "winModal") {
-    console.log("[winModal] openModal", {
-      ariaHidden: modalEl.getAttribute("aria-hidden"),
-      classOpen: modalEl.classList.contains("open"),
-      display: modalEl.style.display
-    });
-  }
-
   lockBodyScroll();
 }
 
@@ -3511,14 +3503,6 @@ function closeModal(modalEl) {
   modalEl.classList.remove("open");
   modalEl.style.display = "none";
   modalEl.setAttribute("aria-hidden", "true");
-
-  if (modalEl.id === "winModal") {
-    console.log("[winModal] closeModal", {
-      ariaHidden: modalEl.getAttribute("aria-hidden"),
-      classOpen: modalEl.classList.contains("open"),
-      display: modalEl.style.display
-    });
-  }
 
   unlockBodyScroll();
 }
@@ -4518,10 +4502,7 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
     submitClaimBtn._bound = true;
 
    submitClaimBtn.addEventListener("click", async () => {
-  console.log("[winModal] Claim Reward click");
-
   const winModalEl = document.getElementById("winModal");
-  console.log("[winModal] claim -> closeModal(winModal)");
   closeModal?.(winModalEl);
 
   const payoutRes = await openPayoutDetailsModal();
