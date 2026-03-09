@@ -4391,6 +4391,8 @@ function init() {
   const paymentRecovery = getPaymentSessionState();
   const claimRecovery = getClaimRecoveryState();
   const hasRecoveryCta =
+    !!localStorage.getItem("risx_unlock_token") ||
+    paymentRecovery?.status === "paid" ||
     paymentRecovery?.status === "pending" ||
     (claimRecovery && (claimRecovery.status === "available" || claimRecovery.status === "started"));
 

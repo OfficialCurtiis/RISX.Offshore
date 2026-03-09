@@ -4182,16 +4182,6 @@ body.modal-open {
     0 0 26px rgba(29,242,127,0.18);
 }
 
-#risxPayoutModal input,
-#risxPayoutModal select {
-  color: #ffffff;
-  caret-color: #ffffff;
-}
-
-#risxPayoutModal input::placeholder {
-  color: rgba(255, 255, 255, 0.62);
-}
-
 #winModal .modal-card{
   text-align: center;
 }
