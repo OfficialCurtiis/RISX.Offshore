@@ -522,7 +522,7 @@ function triggerChallengeWin() {
   document.getElementById("winPayout").textContent =
     `$${Number(tier.prizeUsd).toLocaleString()} USD`;
 
-  document.getElementById("winModal").classList.add("open");
+  openModal?.(document.getElementById("winModal"));
 }
 
 window.triggerChallengeWin = triggerChallengeWin;
@@ -799,11 +799,7 @@ function openChallengeTierModal() {
   const modal = document.getElementById("challengeModal"); // <-- YOUR ID
   if (!modal) return;
 
-  document.documentElement.classList.add("modal-open");
-  document.body.classList.add("modal-open");
-
-  modal.classList.add("open");
-  modal.setAttribute("aria-hidden", "false");
+  openModal?.(modal);
 
   // YOUR scroller is .modal-body
   const scroller = modal.querySelector(".modal-body") || modal;
@@ -814,11 +810,7 @@ function closeChallengeTierModal() {
   const modal = document.getElementById("challengeModal");
   if (!modal) return;
 
-  modal.classList.remove("open");
-  modal.setAttribute("aria-hidden", "true");
-
-  document.documentElement.classList.remove("modal-open");
-  document.body.classList.remove("modal-open");
+  closeModal?.(modal);
 }
 
 function setChallengeGoalUI(value) {
@@ -966,11 +958,7 @@ function risxConfirm({ title = "Confirm", body = "", okText = "OK", cancelText =
     canBtn.textContent = cancelText;
 
     const close = (val) => {
-      if (modal.contains(document.activeElement)) {
-        document.activeElement.blur();
-      }
-      modal.classList.remove("open");
-      modal.setAttribute("aria-hidden", "true");
+      closeModal?.(modal);
       cleanup();
       resolve(val);
     };
@@ -996,8 +984,7 @@ function risxConfirm({ title = "Confirm", body = "", okText = "OK", cancelText =
     canBtn.addEventListener("click", onCancel);
     document.addEventListener("keydown", onEsc);
 
-    modal.classList.add("open");
-    modal.setAttribute("aria-hidden", "false");
+    openModal?.(modal);
     okBtn.focus();
   });
 }
@@ -2385,15 +2372,11 @@ function setupProvablyFairDrawer() {
   if (!modal) return;
 
   const close = () => {
-    modal.classList.remove("open");
-    modal.setAttribute("aria-hidden", "true");
-    document.body.style.overflow = "";
+    closeModal?.(modal);
   };
 
   const open = () => {
-    modal.classList.add("open");
-    modal.setAttribute("aria-hidden", "false");
-    document.body.style.overflow = "hidden";
+    openModal?.(modal);
   };
 
   document.querySelectorAll("[data-open-pf]").forEach((btn) => {
@@ -3501,17 +3484,42 @@ function unlockBodyScroll() {
 
 function openModal(modalEl) {
   if (!modalEl) return;
-  modalEl.setAttribute("aria-hidden", "false");
-  modalEl.classList.add("open");
+
   modalEl.style.display = "block";
+  modalEl.classList.add("open");
+  modalEl.setAttribute("aria-hidden", "false");
+
+  if (modalEl.id === "winModal") {
+    console.log("[winModal] openModal", {
+      ariaHidden: modalEl.getAttribute("aria-hidden"),
+      classOpen: modalEl.classList.contains("open"),
+      display: modalEl.style.display
+    });
+  }
+
   lockBodyScroll();
 }
 
 function closeModal(modalEl) {
   if (!modalEl) return;
-  modalEl.setAttribute("aria-hidden", "true");
+
+  const active = document.activeElement;
+  if (active && modalEl.contains(active)) {
+    active.blur();
+  }
+
   modalEl.classList.remove("open");
   modalEl.style.display = "none";
+  modalEl.setAttribute("aria-hidden", "true");
+
+  if (modalEl.id === "winModal") {
+    console.log("[winModal] closeModal", {
+      ariaHidden: modalEl.getAttribute("aria-hidden"),
+      classOpen: modalEl.classList.contains("open"),
+      display: modalEl.style.display
+    });
+  }
+
   unlockBodyScroll();
 }
 
@@ -4510,6 +4518,12 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
     submitClaimBtn._bound = true;
 
    submitClaimBtn.addEventListener("click", async () => {
+  console.log("[winModal] Claim Reward click");
+
+  const winModalEl = document.getElementById("winModal");
+  console.log("[winModal] claim -> closeModal(winModal)");
+  closeModal?.(winModalEl);
+
   const payoutRes = await openPayoutDetailsModal();
   if (!payoutRes.confirmed || !payoutRes.payout) return;
   const payout = payoutRes.payout;
@@ -4541,9 +4555,6 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
 
   submitClaimBtn.disabled = true;
   submitClaimBtn.textContent = "Claim Submitted";
-
-  // keep UX clean
-  document.getElementById("winModal")?.classList.remove("open");
 
   void risxAlert({
     title: "Claim Submitted",
