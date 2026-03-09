@@ -321,7 +321,6 @@ async function applyUnlockFromAdminMint(resp = {}) {
 
   localStorage.setItem("risx_unlock_token", token);
   localStorage.setItem("risx_unlock_tier", tier);
-  if (DEBUG) console.log("[RISX][mint-debug] saved unlock token", { key: "risx_unlock_token", tier });
 
   const verifyRes = await fetch("/api/verify-token", {
     method: "POST",
@@ -333,7 +332,6 @@ async function applyUnlockFromAdminMint(resp = {}) {
   if (!ok) {
     setAdminSecurityOutput(adminMintOut, `Verify failed for tier:${tier}`);
     if (adminMsg) adminMsg.textContent = "Minted token failed /api/verify-token.";
-    if (DEBUG) console.log("[RISX][mint-debug] verify failed", verifyJson);
     return false;
   }
 
@@ -342,7 +340,6 @@ async function applyUnlockFromAdminMint(resp = {}) {
     tier,
     exp: Number(verifyJson?.exp || resp?.exp || 0),
   });
-  if (DEBUG) console.log("[RISX][mint-debug] verify ok", { tier: verifyJson?.tierKey, exp: verifyJson?.exp });
 
   // Refresh local unlock UX immediately; mirrors payment flow outcome without requiring reload.
   if (challengeTier) challengeTier.value = tier;
@@ -515,8 +512,6 @@ function triggerChallengeWin() {
 
   const tierId = CHALLENGE.tier;
   const tier = getTier();
-
-  console.log("🏆 CHALLENGE WON", tierId, tier);
 
   document.getElementById("winTarget").textContent =
     `${Number(tier.goalCredits).toLocaleString()} credits`;
@@ -1323,7 +1318,7 @@ function challengeToast(msg) {
 // lightweight toast using the walletStatus line (no prompts)
 function toast(msg) {
   const el = document.getElementById("walletStatus");
-  if (!el) { console.log("[RISX]", msg); return; }
+  if (!el) return;
   const prev = el.textContent;
   el.textContent = String(msg);
   clearTimeout(toast._t);
@@ -1786,10 +1781,7 @@ function spawnPlinkoBall() {
 }
 
 function setBallPosFor(ballEl, x, y) {
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    console.warn("[plinko] setBallPosFor received NaN", { x, y, ballEl });
-    return;
-  }
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
 
   // guarantee ball lives inside the board before animating
   if (plinkoBoardEl && ballEl?.parentElement !== plinkoBoardEl) {
@@ -1801,25 +1793,6 @@ function setBallPosFor(ballEl, x, y) {
 
   ballEl.style.setProperty("--bx", `${xr}px`);
   ballEl.style.setProperty("--by", `${yr}px`);
-
-  // lightweight debug: first 10 frames per ball
-  const dbgCount = ballEl.__dbgFramesLogged || 0;
-  if (dbgCount < 10) {
-    const parent = ballEl.parentElement;
-    const cs = getComputedStyle(ballEl);
-    const rect = ballEl.getBoundingClientRect();
-    console.debug("[plinko] ball frame", dbgCount + 1, {
-      parentId: parent?.id,
-      parentClass: parent?.className,
-      x, y, xr, yr,
-      left: cs.left,
-      top: cs.top,
-      transform: cs.transform,
-      rectLeft: rect.left,
-      rectTop: rect.top
-    });
-    ballEl.__dbgFramesLogged = dbgCount + 1;
-  }
 }
 
 // ---------- Plinko polish: spawn jitter + glow decay ----------
@@ -2266,12 +2239,6 @@ const now = Date.now();
 // ignore ultra-fast duplicate clicks (<120ms) which are almost never intentional
 if (now - window.__lastPlinkoClickTs < 120) return;
 window.__lastPlinkoClickTs = now;
-
-// debug
-window.__plinkoDropCount = (window.__plinkoDropCount || 0) + 1;
-console.log("[DROP]", window.__plinkoDropCount, "inFlight:", plinkoBallsInFlight, "ts:", Date.now());
-console.log("[DROP] trusted:", e?.isTrusted, "type:", e?.type);
-  console.log("[DROP] detail:", e?.detail, "pointer:", e?.pointerType, "active:", document.activeElement?.id);
 
   plinkoBallsInFlight++;
   if (plinkoBallsInFlight === 1) setPlinkoControlsLocked(true);
@@ -2841,8 +2808,6 @@ function resetSessionStats() {
   // Update UI
   updateSessionStats?.();
   updateSessionTimer?.();
-
-  console.log("Session stats reset");
 }
 
 // =========================
@@ -3746,9 +3711,7 @@ async function adminMark(id, kind, status) {
       { id, kind, status, wallet: list[idx].wallet, amount: list[idx].amount, currency: list[idx].currency },
       null
     );
-  } catch (e) {
-    console.warn("[RISX] submitRequest failed (ignored):", e);
-  }
+  } catch (e) {}
 
   renderAdmin?.();
 }
@@ -3895,7 +3858,6 @@ function setupTabs() {
     const targetSection = document.getElementById(`game-${target}`);
 
     if (!targetSection) {
-      console.warn(`[RISX] Missing section: #game-${target}`);
       // Fallback to mines so you never go blank
       return show("mines");
     }
