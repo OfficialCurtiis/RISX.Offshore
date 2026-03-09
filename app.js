@@ -72,6 +72,7 @@ const tierSummary = document.getElementById("tierSummary");
 const challengeResetBtn = document.getElementById("challengeResetBtn");
 const challengeRecoveryCtas = document.getElementById("challengeRecoveryCtas");
 const resumePaymentBtn = document.getElementById("resumePaymentBtn");
+const startChallengeRecoveryBtn = document.getElementById("startChallengeRecoveryBtn");
 const resumeClaimBtn = document.getElementById("resumeClaimBtn");
 const winReturnHomeBtn = document.getElementById("winReturnHomeBtn");
 
@@ -97,6 +98,8 @@ const RUN_START_KEY   = "risx_run_started_at";
 const RUN_END_KEY     = "risx_run_ended_at";
 const PAYMENT_SESSION_KEY = "risx_payment_session";
 const CLAIM_STATE_KEY = "risx_claim_state";
+let recoveryUnlockTier = "";
+let recoveryUnlockIntent = "entry";
 
 function debounce(fn, delay = 150) {
   let t;
@@ -352,6 +355,7 @@ async function applyUnlockFromAdminMint(resp = {}) {
   challengeTierSelected = tier;
   renderTierSummary?.();
   if (challengeMsg) challengeMsg.textContent = `Tier unlocked: ${tier.toUpperCase()} — press Start Challenge.`;
+  void refreshPostPaymentRecovery();
   return true;
 }
 
@@ -1688,6 +1692,127 @@ function getPaymentSessionState() {
   } : null);
 }
 
+function setPaymentSessionState(nextState) {
+  const normalized = normalizePaymentSession(nextState);
+  if (!normalized) {
+    localStorage.removeItem(PAYMENT_SESSION_KEY);
+    localStorage.removeItem("risx_pending_payment");
+    renderRecoveryCtas?.();
+    return;
+  }
+
+  localStorage.setItem(PAYMENT_SESSION_KEY, JSON.stringify(normalized));
+  if (normalized.status === "pending") {
+    localStorage.setItem("risx_pending_payment", JSON.stringify({
+      intent: normalized.intent,
+      tierKey: normalized.tier,
+      payment_id: normalized.paymentId,
+      pay_amount: normalized.amount,
+      pay_currency: normalized.currency,
+      pay_address: normalized.payAddress,
+      createdAt: normalized.createdAt,
+    }));
+  } else {
+    localStorage.removeItem("risx_pending_payment");
+  }
+  renderRecoveryCtas?.();
+}
+
+async function verifyLocalUnlockToken() {
+  const token = String(localStorage.getItem("risx_unlock_token") || "");
+  if (!token) return null;
+
+  try {
+    const r = await fetch("/api/verify-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j?.valid && j?.tierKey) {
+      return { tier: String(j.tierKey), intent: getPaymentSessionState()?.intent || "entry" };
+    }
+  } catch {}
+
+  localStorage.removeItem("risx_unlock_token");
+  localStorage.removeItem("risx_unlock_tier");
+  return null;
+}
+
+async function recoverUnlockFromPaymentSession() {
+  const session = getPaymentSessionState();
+  if (!session || !session.paymentId) return null;
+  if (!["pending", "paid"].includes(session.status)) return null;
+
+  try {
+    const r = await fetch(`/api/verify-payment?payment_id=${encodeURIComponent(session.paymentId)}`);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return null;
+
+    const status = String(j?.payment_status || "").toLowerCase();
+    if (status === "confirmed" || status === "finished") {
+      if (j?.unlock_token && j?.tierKey) {
+        localStorage.setItem("risx_unlock_token", String(j.unlock_token));
+        localStorage.setItem("risx_unlock_tier", String(j.tierKey));
+      }
+      setPaymentSessionState({
+        ...session,
+        status: "paid",
+        tier: String(j?.tierKey || session.tier),
+      });
+      return verifyLocalUnlockToken();
+    }
+
+    if (status === "expired" || status === "cancelled") {
+      setPaymentSessionState({
+        ...session,
+        status,
+      });
+    }
+  } catch {}
+
+  return null;
+}
+
+async function refreshPostPaymentRecovery() {
+  if (challengeActive) {
+    recoveryUnlockTier = "";
+    recoveryUnlockIntent = "entry";
+    renderRecoveryCtas?.();
+    return;
+  }
+
+  let unlock = await verifyLocalUnlockToken();
+  if (!unlock) {
+    unlock = await recoverUnlockFromPaymentSession();
+  }
+
+  recoveryUnlockTier = String(unlock?.tier || "");
+  recoveryUnlockIntent = String(unlock?.intent || "entry");
+
+  if (recoveryUnlockTier && challengeTier) {
+    challengeTier.value = recoveryUnlockTier;
+    challengeTierSelected = recoveryUnlockTier;
+    CHALLENGE.tier = recoveryUnlockTier;
+    renderTierSummary?.();
+  }
+
+  const paymentSession = getPaymentSessionState();
+  const claimState = getClaimRecoveryState();
+  const hasAnyRecovery =
+    !!recoveryUnlockTier ||
+    paymentSession?.status === "pending" ||
+    !!(claimState && (claimState.status === "available" || claimState.status === "started"));
+
+  if (!challengeActive && challengeModal) {
+    const modalOpen = challengeModal.classList.contains("open") || challengeModal.style.display === "block";
+    if (hasAnyRecovery && modalOpen) closeModal(challengeModal);
+    if (!hasAnyRecovery && !modalOpen) openModal(challengeModal);
+  }
+
+  renderRecoveryCtas?.();
+}
+
 function normalizeClaimRecoveryState(raw) {
   if (!raw || typeof raw !== "object") return null;
 
@@ -1746,6 +1871,8 @@ function burnChallengeAccessState({ clearResetFlags = false } = {}) {
   challengeActive = false;
   CHALLENGE.active = false;
   saveChallengeActive?.(false);
+  recoveryUnlockTier = "";
+  recoveryUnlockIntent = "entry";
 
   localStorage.removeItem("risx_unlock_token");
   localStorage.removeItem("risx_unlock_tier");
@@ -1764,12 +1891,17 @@ function renderRecoveryCtas() {
   const paymentSession = getPaymentSessionState();
   const claimState = getClaimRecoveryState();
   const showPayment = paymentSession?.status === "pending";
+  const showStart = !challengeActive && !!recoveryUnlockTier;
   const showClaim = !!claimState && (claimState.status === "available" || claimState.status === "started");
 
-  challengeRecoveryCtas.style.display = (showPayment || showClaim) ? "flex" : "none";
+  challengeRecoveryCtas.style.display = (showPayment || showStart || showClaim) ? "flex" : "none";
 
   if (resumePaymentBtn) {
     resumePaymentBtn.style.display = showPayment ? "inline-flex" : "none";
+  }
+  if (startChallengeRecoveryBtn) {
+    startChallengeRecoveryBtn.style.display = showStart ? "inline-flex" : "none";
+    startChallengeRecoveryBtn.textContent = (recoveryUnlockIntent === "restart") ? "Resume Entry" : "Start Challenge";
   }
   if (resumeClaimBtn) {
     resumeClaimBtn.style.display = showClaim ? "inline-flex" : "none";
@@ -1777,7 +1909,10 @@ function renderRecoveryCtas() {
   }
 }
 
-window.RISX_renderRecoveryCtas = renderRecoveryCtas;
+window.RISX_renderRecoveryCtas = () => {
+  renderRecoveryCtas();
+  void refreshPostPaymentRecovery();
+};
 
 /*===============================
      Challenge UI locking
@@ -4851,6 +4986,28 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
     });
   }
 
+  if (startChallengeRecoveryBtn && !startChallengeRecoveryBtn._bound) {
+    startChallengeRecoveryBtn._bound = true;
+    startChallengeRecoveryBtn.addEventListener("click", async () => {
+      startChallengeRecoveryBtn.disabled = true;
+      try {
+        await refreshPostPaymentRecovery();
+        const tier = String(recoveryUnlockTier || "");
+        if (!tier) {
+          toast?.("Unlock not ready yet. If you just paid, please wait for confirmation.");
+          return;
+        }
+        if (challengeTier) challengeTier.value = tier;
+        challengeTierSelected = tier;
+        CHALLENGE.tier = tier;
+        renderTierSummary?.();
+        await window.RISX_startChallengeFromPayment?.(tier);
+      } finally {
+        startChallengeRecoveryBtn.disabled = false;
+      }
+    });
+  }
+
   if (winReturnHomeBtn && !winReturnHomeBtn._bound) {
     winReturnHomeBtn._bound = true;
     winReturnHomeBtn.addEventListener("click", () => {
@@ -4898,7 +5055,13 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
   renderChallengeParams();
   refreshChallengeHud();
   renderRecoveryCtas?.();
+  void refreshPostPaymentRecovery();
   window.updateSupportIdPill?.();
+
+  window.addEventListener("focus", () => { void refreshPostPaymentRecovery(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void refreshPostPaymentRecovery();
+  });
 
 
   document.documentElement.classList.remove("booting");
