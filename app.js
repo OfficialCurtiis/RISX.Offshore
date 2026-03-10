@@ -3094,6 +3094,12 @@ function isProbablyAddress(s) {
 // UTILS
 // =========================
 
+function isRestartRequired() {
+  const required = String(localStorage.getItem("risx_restart_required") || "").toLowerCase() === "true";
+  const expiresAt = Number(localStorage.getItem("risx_reset_expires_at") || 0);
+  return required && (!expiresAt || Date.now() < expiresAt);
+}
+
 function wireBetMultButtons(gameKey, inputEl, halfBtn, twoXBtn, maxBtn) {
   if (!inputEl || inputEl._wiredMults) return;
   inputEl._wiredMults = true;
