@@ -1946,6 +1946,10 @@ async function refreshPostPaymentRecovery() {
   recoveryUnlockTier = String(unlock?.tier || "");
   recoveryUnlockIntent = String(unlock?.intent || "entry");
 
+  if (recoveryUnlockTier && !restartRequiredNow()) {
+    recoveryUnlockIntent = "entry";
+  }
+
   if (recoveryUnlockTier && challengeTier) {
     challengeTier.value = recoveryUnlockTier;
     challengeTierSelected = recoveryUnlockTier;
@@ -2065,7 +2069,7 @@ function renderRecoveryCtas() {
   }
   if (startChallengeRecoveryBtn) {
     startChallengeRecoveryBtn.style.display = showStart ? "inline-flex" : "none";
-    startChallengeRecoveryBtn.textContent = (recoveryUnlockIntent === "restart") ? "Resume Restart" : "Start Challenge";
+    startChallengeRecoveryBtn.textContent = restartRequiredNow() ? "Resume Restart" : "Start Challenge";
   }
   if (resumeClaimBtn) {
     resumeClaimBtn.style.display = showClaim ? "inline-flex" : "none";
@@ -5785,27 +5789,70 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
     });
   }
 
-  if (startChallengeRecoveryBtn && !startChallengeRecoveryBtn._bound) {
-    startChallengeRecoveryBtn._bound = true;
-    startChallengeRecoveryBtn.addEventListener("click", async () => {
-      startChallengeRecoveryBtn.disabled = true;
-      try {
-        await refreshPostPaymentRecovery();
-        const tier = String(recoveryUnlockTier || "");
-        if (!tier) {
-          toast?.("Unlock not ready yet. If you just paid, please wait for confirmation.");
-          return;
-        }
-        if (challengeTier) challengeTier.value = tier;
-        challengeTierSelected = tier;
-        CHALLENGE.tier = tier;
-        renderTierSummary?.();
-        await window.RISX_startChallengeFromPayment?.(tier);
-      } finally {
-        startChallengeRecoveryBtn.disabled = false;
+ if (startChallengeRecoveryBtn && !startChallengeRecoveryBtn._bound) {
+  startChallengeRecoveryBtn._bound = true;
+  startChallengeRecoveryBtn.addEventListener("click", async () => {
+    startChallengeRecoveryBtn.disabled = true;
+    try {
+      await refreshPostPaymentRecovery();
+
+      const tier = String(
+        recoveryUnlockTier ||
+        challengeTier?.value ||
+        challengeTierSelected ||
+        CHALLENGE.tier ||
+        "beginner"
+      );
+
+      if (!tier) {
+        toast?.("Unlock not ready yet. If you just paid, please wait for confirmation.");
+        return;
       }
-    });
-  }
+
+      const unlockOk = await hasValidUnlockForTier(tier);
+      const restartNeeded = restartRequiredNow();
+
+      if (challengeTier) challengeTier.value = tier;
+      challengeTierSelected = tier;
+      CHALLENGE.tier = tier;
+      renderTierSummary?.();
+
+      console.log("[RISX][RecoveryCTA] click", {
+        tier,
+        recoveryUnlockTier,
+        recoveryUnlockIntent,
+        unlockOk,
+        restartNeeded,
+        paymentIntent: localStorage.getItem("risx_payment_intent"),
+      });
+
+      // Real restart flow only if restart is actually required
+      if (restartNeeded) {
+        recoveryUnlockIntent = "restart";
+        localStorage.setItem("risx_payment_intent", "restart");
+        window.RISX_openPayModalForTier?.(tier);
+        return;
+      }
+
+      // Valid unlock + no restart required = start immediately
+      if (unlockOk) {
+        recoveryUnlockIntent = "entry";
+        localStorage.removeItem("risx_payment_intent");
+        localStorage.removeItem("risx_pending_payment");
+        closeModal?.(challengeModal);
+        startChallengeNow(tier);
+        return;
+      }
+
+      // No unlock yet = send to normal entry flow
+      recoveryUnlockIntent = "entry";
+      localStorage.setItem("risx_payment_intent", "entry");
+      openModal?.(challengeModal);
+    } finally {
+      startChallengeRecoveryBtn.disabled = false;
+    }
+  });
+}
 
   if (winReturnHomeBtn && !winReturnHomeBtn._bound) {
     winReturnHomeBtn._bound = true;
