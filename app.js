@@ -985,7 +985,7 @@ function refreshChallengeHud() {
   });
 }
 
-  function completeReset() {
+  async function completeReset() {
     if (challengeState.status !== "failed") return;
 
     CHALLENGE.resetExpiresAt = null;
@@ -997,16 +997,17 @@ function refreshChallengeHud() {
     closeModal?.(failModal);
     lockAppUI?.(false);
 
-    startChallengeNow(CHALLENGE.tier);
+    await startChallengeNow(CHALLENGE.tier);
   }
 
-window.RISX_completeReset = (tier) => {
+window.RISX_completeReset = async (tier) => {
   if (tier) {
-    challengeTierSelected = String(tier);
-    CHALLENGE.tier = String(tier);
-    if (challengeTier) challengeTier.value = String(tier);
+    const tierKey = String(tier).toLowerCase();
+    challengeTierSelected = tierKey;
+    CHALLENGE.tier = tierKey;
+    if (challengeTier) challengeTier.value = tierKey;
   }
-  completeReset();
+  await completeReset();
 };
 
 const PAYOUT_ASSET_CHAINS = {
@@ -1852,7 +1853,9 @@ async function verifyLocalUnlockToken() {
     if (r.ok && j?.valid && j?.tierKey) {
       const storedIntent =
         String(localStorage.getItem("risx_unlock_intent") || getPaymentSessionState()?.intent || "entry").toLowerCase();
-      return { tier: String(j.tierKey), intent: (storedIntent === "restart" ? "restart" : "entry") };
+      const tierKey = String(j.tierKey || "").toLowerCase();
+      localStorage.setItem("risx_unlock_tier", tierKey);
+      return { tier: tierKey, intent: (storedIntent === "restart" ? "restart" : "entry") };
     }
   } catch {}
 
@@ -1873,12 +1876,13 @@ async function recoverUnlockFromPaymentSession() {
     if (!r.ok) return null;
 
     const status = String(j?.payment_status || "").toLowerCase();
+    const tierKey = String(j?.tierKey || session.tier || "").toLowerCase();
     if (status === "confirmed" || status === "finished") {
       const record = upsertPaymentRecord({
         paymentId: session.paymentId,
         wallet: auditWallet(),
         email: auditEmail(),
-        tier: String(j?.tierKey || session.tier || ""),
+        tier: tierKey,
         amount: Number(session.amount || j?.pay_amount || 0),
         currency: String(session.currency || j?.pay_currency || ""),
         status: "paid",
@@ -1886,20 +1890,20 @@ async function recoverUnlockFromPaymentSession() {
       });
       if (j?.unlock_token && j?.tierKey) {
         localStorage.setItem("risx_unlock_token", String(j.unlock_token));
-        localStorage.setItem("risx_unlock_tier", String(j.tierKey));
+        localStorage.setItem("risx_unlock_tier", tierKey);
         localStorage.setItem("risx_unlock_intent", session.intent || "entry");
       }
       createRunFromPayment({
         paymentId: session.paymentId,
         wallet: record?.wallet || auditWallet(),
         email: record?.email || auditEmail(),
-        tier: String(j?.tierKey || session.tier || ""),
+        tier: tierKey,
         amount: Number(session.amount || j?.pay_amount || 0),
         currency: String(session.currency || j?.pay_currency || ""),
         status: "paid",
         paidAt: Date.now(),
       }, {
-        tier: String(j?.tierKey || session.tier || ""),
+        tier: tierKey,
         tokenId: String(j?.unlock_token || localStorage.getItem("risx_unlock_token") || "").slice(0, 24),
         intent: session.intent || "entry",
         failedRunId: String(localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || ""),
@@ -1907,7 +1911,7 @@ async function recoverUnlockFromPaymentSession() {
       setPaymentSessionState({
         ...session,
         status: "paid",
-        tier: String(j?.tierKey || session.tier),
+        tier: tierKey,
       });
       return verifyLocalUnlockToken();
     }
@@ -1943,7 +1947,7 @@ async function refreshPostPaymentRecovery() {
     unlock = await recoverUnlockFromPaymentSession();
   }
 
-  recoveryUnlockTier = String(unlock?.tier || "");
+  recoveryUnlockTier = String(unlock?.tier || "").toLowerCase();
   recoveryUnlockIntent = String(unlock?.intent || "entry");
 
   if (recoveryUnlockTier && !isRestartRequired()) {
@@ -5414,6 +5418,9 @@ async function hasValidUnlockForTier(tier) {
   const token = localStorage.getItem("risx_unlock_token");
   if (!token) return false;
 
+  const tierKey = String(tier || "").toLowerCase();
+  if (!tierKey) return false;
+
   try {
     const r = await fetch("/api/verify-token", {
       method: "POST",
@@ -5421,16 +5428,16 @@ async function hasValidUnlockForTier(tier) {
       body: JSON.stringify({ token }),
     });
 
-  const j = await r.json().catch(() => ({}));
-  const ok = !!(r.ok && j.valid && j.tierKey === tier);
-  return ok;
+    const j = await r.json().catch(() => ({}));
+    const ok = !!(r.ok && j.valid && String(j.tierKey || "").toLowerCase() === tierKey);
+    return ok;
   } catch {
     return false;
   }
 }
 
 challengeTier?.addEventListener("change", () => {
-  challengeTierSelected = challengeTier.value;
+  challengeTierSelected = String(challengeTier.value || "").toLowerCase();
   renderTierSummary(); // this already calls renderChallengeParams()
 });
 
@@ -5442,10 +5449,83 @@ function consumeUnlockForStartedRun() {
   setPaymentSessionState(null);
 }
 
-function startChallengeNow(tier) {
+async function ensureReadyRunForTier(tier) {
+  const tierKey = String(tier || "").toLowerCase();
+  if (!tierKey) return null;
+
+  const runs = readRunRecords();
+  const startable = new Set(["ready", "active", "resumed"]);
+  const existing = runs.find((r) => r.tier && r.tier.toLowerCase() === tierKey && startable.has(String(r.status || "")));
+  if (existing) return existing.runId;
+
+  const token = String(localStorage.getItem("risx_unlock_token") || "");
+  const unlockOk = token && await hasValidUnlockForTier(tierKey);
+  if (!unlockOk) return null;
+
+  const session = getPaymentSessionState?.();
+  const sessionTier = String(session?.tier || "").toLowerCase();
+
+  if (session && session.status === "paid" && sessionTier === tierKey && session.paymentId) {
+    const run = createRunFromPayment({
+      paymentId: session.paymentId,
+      wallet: auditWallet(),
+      email: auditEmail(),
+      tier: session.tier,
+      amount: Number(session.amount || 0),
+      currency: String(session.currency || ""),
+      status: "paid",
+      paidAt: Date.now(),
+      createdAt: session.createdAt || Date.now(),
+    }, {
+      tier: session.tier,
+      tokenId: token.slice(0, 24),
+      intent: session.intent || "entry",
+      failedRunId: localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "",
+    });
+
+    if (run?.runId) return run.runId;
+  }
+
+  // Fallback: token-only unlocks (admin/airdrop) — create a ready run once.
+  const existingTokenRun = runs.find((r) => r.tokenId && r.tokenId === token.slice(0, 24));
+  if (existingTokenRun) return existingTokenRun.runId;
+
+  const adminRun = {
+    runId: newRunId(),
+    paymentId: "",
+    wallet: auditWallet(),
+    email: auditEmail(),
+    tier: tierKey,
+    tokenId: token.slice(0, 24),
+    status: "ready",
+    startedAt: null,
+    endedAt: null,
+    resumedAt: null,
+    failReason: "",
+    finalScore: null,
+    finalProgress: null,
+    finalStep: null,
+    finalMultiplier: null,
+    finalState: null,
+    durationMs: 0,
+    resetRequired: false,
+    restartPaymentId: "",
+    claimId: "",
+    adminNotes: "",
+    adminGranted: true,
+    createdAt: Date.now(),
+    events: [{ type: "token_granted", tokenId: token.slice(0, 24), ts: Date.now() }],
+  };
+
+  writeRunRecords([adminRun, ...runs]);
+  return adminRun.runId;
+}
+
+async function startChallengeNow(tier) {
   // set selected tier first (so getTier() always matches)
-  challengeTierSelected = tier;
-  CHALLENGE.tier = tier;
+  const tierKey = String(tier || "").toLowerCase() || "beginner";
+  challengeTierSelected = tierKey;
+  CHALLENGE.tier = tierKey;
 
   const t = getTier();
 
@@ -5458,13 +5538,21 @@ function startChallengeNow(tier) {
     return;
   }
 
-  const runId = startRun(tier);
+  const preparedRunId = await ensureReadyRunForTier(tierKey);
+  if (!preparedRunId) {
+    toast?.("Unlock found but no startable run. Resume payment or try again.");
+    renderRecoveryCtas?.();
+    return;
+  }
+
+  const runId = startRun(tierKey);
   if (!runId) {
     challengeActive = false;
     CHALLENGE.active = false;
     saveChallengeActive?.(false);
     lockAppUI?.(true);
-    openModal?.(challengeModal);
+    toast?.("Unlock detected but no startable run. Resume payment or contact support.");
+    renderRecoveryCtas?.();
     return;
   }
 
@@ -5502,7 +5590,7 @@ function startChallengeNow(tier) {
   setDefaultBetsIfEmpty();
   renderChallengeParams();
 
-  if (challengeMsg) challengeMsg.textContent = `Challenge started: ${tier.toUpperCase()}`;
+  if (challengeMsg) challengeMsg.textContent = `Challenge started: ${tierKey.toUpperCase()}`;
 
   refreshChallengeHud();
   closeModal(challengeModal);
@@ -5513,22 +5601,24 @@ function startChallengeNow(tier) {
   window.RISX_startChallengeFromPayment = async (tier) => {
   closeModal(challengeModal);
 
-  const ok = await hasValidUnlockForTier(tier);
+  const tierKey = String(tier || "beginner").toLowerCase();
+
+  const ok = await hasValidUnlockForTier(tierKey);
   if (ok) {
-    startChallengeNow(tier);
+    await startChallengeNow(tierKey);
     return;
   }
 
   // Restart payment is required only when no valid unlock exists yet.
   if (isRestartRequired()) {
     localStorage.setItem("risx_payment_intent", "restart");
-    window.RISX_openPayModalForTier?.(tier);
+    window.RISX_openPayModalForTier?.(tierKey);
     return;
   }
 
   if (!ok) {
     localStorage.setItem("risx_payment_intent", "entry");
-    window.RISX_openPayModalForTier?.(tier);
+    window.RISX_openPayModalForTier?.(tierKey);
     return;
   }
 };
@@ -5537,11 +5627,11 @@ function startChallengeNow(tier) {
   challengeStartBtn._bound = true;
   
   challengeStartBtn?.addEventListener("click", async () => {
-  const tier = challengeTier?.value || "beginner";
+  const tier = String(challengeTier?.value || "beginner").toLowerCase();
 
   const ok = await hasValidUnlockForTier(tier);
   if (ok) {
-    startChallengeNow(tier);
+    await startChallengeNow(tier);
     return;
   }
 
@@ -5802,13 +5892,13 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
     try {
       await refreshPostPaymentRecovery();
 
-      const tier = String(
+      let tier = String(
         recoveryUnlockTier ||
         challengeTier?.value ||
         challengeTierSelected ||
         CHALLENGE.tier ||
         "beginner"
-      );
+      ).toLowerCase();
 
       if (!tier) {
         toast?.("Unlock not ready yet. If you just paid, please wait for confirmation.");
@@ -5846,7 +5936,7 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
         localStorage.removeItem("risx_payment_intent");
         localStorage.removeItem("risx_pending_payment");
         closeModal?.(challengeModal);
-        startChallengeNow(tier);
+        await startChallengeNow(tier);
         return;
       }
 
