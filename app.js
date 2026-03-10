@@ -1946,7 +1946,7 @@ async function refreshPostPaymentRecovery() {
   recoveryUnlockTier = String(unlock?.tier || "");
   recoveryUnlockIntent = String(unlock?.intent || "entry");
 
-  if (recoveryUnlockTier && !risRestartRequired()) {
+  if (recoveryUnlockTier && !isRestartRequired()) {
     recoveryUnlockIntent = "entry";
   }
 
