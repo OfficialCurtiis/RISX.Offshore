@@ -1946,7 +1946,7 @@ async function refreshPostPaymentRecovery() {
   recoveryUnlockTier = String(unlock?.tier || "");
   recoveryUnlockIntent = String(unlock?.intent || "entry");
 
-  if (recoveryUnlockTier && !restartRequiredNow()) {
+  if (recoveryUnlockTier && !risRestartRequired()) {
     recoveryUnlockIntent = "entry";
   }
 
@@ -2069,7 +2069,7 @@ function renderRecoveryCtas() {
   }
   if (startChallengeRecoveryBtn) {
     startChallengeRecoveryBtn.style.display = showStart ? "inline-flex" : "none";
-    startChallengeRecoveryBtn.textContent = restartRequiredNow() ? "Resume Restart" : "Start Challenge";
+    startChallengeRecoveryBtn.textContent = isRestartRequired() ? "Resume Restart" : "Start Challenge";
   }
   if (resumeClaimBtn) {
     resumeClaimBtn.style.display = showClaim ? "inline-flex" : "none";
@@ -5520,7 +5520,7 @@ function startChallengeNow(tier) {
   }
 
   // Restart payment is required only when no valid unlock exists yet.
-  if (restartRequiredNow()) {
+  if (isRestartRequired()) {
     localStorage.setItem("risx_payment_intent", "restart");
     window.RISX_openPayModalForTier?.(tier);
     return;
@@ -5546,7 +5546,7 @@ function startChallengeNow(tier) {
   }
 
   // Restart payment is required only when no valid unlock exists yet.
-  if (restartRequiredNow()) {
+  if (isRestartRequired()) {
     closeModal(challengeModal);
     localStorage.setItem("risx_payment_intent", "restart");
     window.RISX_openPayModalForTier?.(tier);
@@ -5586,7 +5586,7 @@ if (resetBtn && !resetBtn._bound) {
   });
 }
 
-function restartRequiredNow() {
+function isRestartRequired() {
   const required = localStorage.getItem("risx_restart_required") === "1";
   const expiresAt = Number(localStorage.getItem("risx_reset_expires_at") || CHALLENGE.resetExpiresAt || 0);
   const stillInWindow = expiresAt && Date.now() <= expiresAt;
@@ -5816,7 +5816,7 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
       }
 
       const unlockOk = await hasValidUnlockForTier(tier);
-      const restartNeeded = restartRequiredNow();
+      const restartNeeded = isRestartRequired();
 
       if (challengeTier) challengeTier.value = tier;
       challengeTierSelected = tier;
