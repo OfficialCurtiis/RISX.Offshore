@@ -96,6 +96,7 @@ const RUN_TIER_KEY    = "risx_run_tier";
 const RUN_STATUS_KEY  = "risx_run_status";
 const RUN_START_KEY   = "risx_run_started_at";
 const RUN_END_KEY     = "risx_run_ended_at";
+const RESTART_FAILED_RUN_ID_KEY = "risx_restart_failed_run_id";
 const PAYMENT_SESSION_KEY = "risx_payment_session";
 const CLAIM_STATE_KEY = "risx_claim_state";
 let recoveryUnlockTier = "";
@@ -158,6 +159,7 @@ const adminViewWithdrawals = document.getElementById("adminViewWithdrawals");
 const adminViewUsers = document.getElementById("adminViewUsers");
 const adminRefreshBtn = document.getElementById("adminRefreshBtn");
 const adminPendingOnly = document.getElementById("adminPendingOnly");
+const adminStatusFilter = document.getElementById("adminStatusFilter");
 const adminSearch = document.getElementById("adminSearch");
 const adminMsg = document.getElementById("adminMsg");
 const adminMintTier = document.getElementById("adminMintTier");
@@ -536,31 +538,45 @@ function triggerChallengeWin(payload = {}) {
   const target = Number(payload?.target ?? tier?.goalCredits ?? 0);
   const achieved = Number(payload?.achieved ?? target);
   const payout = Number(payload?.payout ?? tier?.prizeUsd ?? 0);
-  const run = getRun?.() || {};
-  const winRunId = String(run.id || localStorage.getItem(RUN_ID_KEY) || "");
 
   challengeState.status = "won";
   challengeCompleted = true;
   saveChallengeCompleted?.(true);
   setChallengeStatus?.("won");
   endRun?.("won");
+  const finalizedRun = markRunWon?.({
+    finalScore: Number(payload?.finalScore ?? achieved),
+    finalProgress: payload?.finalProgress ?? achieved,
+    finalStep: payload?.finalStep ?? null,
+    finalMultiplier: payload?.finalMultiplier ?? null,
+    finalState: payload?.finalState ?? "won",
+    achieved,
+    target,
+    payout,
+  });
+  const winRunId = String(finalizedRun?.runId || localStorage.getItem(RUN_ID_KEY) || "");
 
   // Recovery metadata is allowed; active access tokens are burned so this run cannot be replayed.
   burnChallengeAccessState({ clearResetFlags: true });
 
-  setClaimRecoveryState({
-    status: "available",
-    winId: winRunId,
-    sessionId: winRunId,
-    amount: payout,
-    createdAt: Date.now(),
-    form: normalizeClaimForm(null),
-  });
+  if (finalizedRun && String(finalizedRun.status || "") === "won" && winRunId) {
+    setClaimRecoveryState({
+      status: "available",
+      winId: winRunId,
+      sessionId: winRunId,
+      amount: payout,
+      createdAt: Date.now(),
+      form: normalizeClaimForm(null),
+    });
+  } else {
+    setClaimRecoveryState(null);
+  }
 
   const claimBtn = document.getElementById("submitClaimBtn");
   if (claimBtn) {
-    claimBtn.disabled = false;
-    claimBtn.textContent = "Claim Reward";
+    const claimAvailable = !!(finalizedRun && String(finalizedRun.status || "") === "won");
+    claimBtn.disabled = !claimAvailable;
+    claimBtn.textContent = claimAvailable ? "Claim Reward" : "Claim Unavailable";
   }
 
   lockAppUI?.(true);
@@ -571,6 +587,8 @@ function triggerChallengeWin(payload = {}) {
 
   showChallengeResetIfNeeded?.();
   refreshChallengeHud?.();
+  clearRun();
+  localStorage.removeItem(RESTART_FAILED_RUN_ID_KEY);
   openModal?.(document.getElementById("winModal"));
   renderRecoveryCtas?.();
 }
@@ -1537,6 +1555,11 @@ function challengeFail(reason) {
 
   setChallengeStatus?.("failed");
   endRun("failed");
+  const failedRun = markRunFailed?.(reason);
+  const failedRunId = String(failedRun?.runId || localStorage.getItem(RUN_ID_KEY) || "");
+  if (failedRunId) {
+    localStorage.setItem(RESTART_FAILED_RUN_ID_KEY, failedRunId);
+  }
 
   toast?.(`Challenge failed — ${reason}`);
   burnChallengeAccessState({ clearResetFlags: false });
@@ -1553,6 +1576,7 @@ function challengeFail(reason) {
   renderRecoveryCtas?.();
 
   lockAppUI?.(true);
+  clearRun();
 }
 
 let _mercyOn = false;
@@ -1671,10 +1695,6 @@ function setActiveWallet(w) {
 // RUN LIFECYCLE (local only for now)
 // =============================
 
-function makeRunId() {
-  return `run_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
 function getRun() {
   return {
     id: localStorage.getItem(RUN_ID_KEY),
@@ -1686,11 +1706,19 @@ function getRun() {
 }
 
 function startRun(tier) {
-  const id = makeRunId();
+  const t = String(tier || "");
+  const session = getPaymentSessionState?.();
+  const paymentId = (session && session.tier === t) ? String(session.paymentId || "") : "";
+  const run = markRunStarted?.({ tier: t, paymentId });
+  if (!run?.runId) {
+    toast?.("Challenge could not start because no valid run was found.");
+    return null;
+  }
+  const id = String(run.runId);
   localStorage.setItem(RUN_ID_KEY, id);
-  localStorage.setItem(RUN_TIER_KEY, tier);
-  localStorage.setItem(RUN_STATUS_KEY, "active");
-  localStorage.setItem(RUN_START_KEY, String(Date.now()));
+  localStorage.setItem(RUN_TIER_KEY, t);
+  localStorage.setItem(RUN_STATUS_KEY, String(run?.status || "active"));
+  localStorage.setItem(RUN_START_KEY, String(run?.startedAt || Date.now()));
   localStorage.removeItem(RUN_END_KEY);
   return id;
 }
@@ -1698,6 +1726,17 @@ function startRun(tier) {
 function endRun(status /* "won" | "failed" | "reset" */) {
   localStorage.setItem(RUN_STATUS_KEY, status);
   localStorage.setItem(RUN_END_KEY, String(Date.now()));
+}
+
+function finalizeActiveRunLocalState(status, runId, endedAt) {
+  const localRunId = String(localStorage.getItem(RUN_ID_KEY) || "");
+  const targetRunId = String(runId || "");
+  if (!localRunId || (targetRunId && localRunId !== targetRunId)) return;
+  localStorage.removeItem(RUN_ID_KEY);
+  if (status) localStorage.setItem(RUN_STATUS_KEY, String(status));
+  else localStorage.removeItem(RUN_STATUS_KEY);
+  if (endedAt) localStorage.setItem(RUN_END_KEY, String(Number(endedAt) || Date.now()));
+  else localStorage.setItem(RUN_END_KEY, String(Date.now()));
 }
 
 function clearRun() {
@@ -1835,11 +1874,36 @@ async function recoverUnlockFromPaymentSession() {
 
     const status = String(j?.payment_status || "").toLowerCase();
     if (status === "confirmed" || status === "finished") {
+      const record = upsertPaymentRecord({
+        paymentId: session.paymentId,
+        wallet: auditWallet(),
+        email: auditEmail(),
+        tier: String(j?.tierKey || session.tier || ""),
+        amount: Number(session.amount || j?.pay_amount || 0),
+        currency: String(session.currency || j?.pay_currency || ""),
+        status: "paid",
+        paidAt: Date.now(),
+      });
       if (j?.unlock_token && j?.tierKey) {
         localStorage.setItem("risx_unlock_token", String(j.unlock_token));
         localStorage.setItem("risx_unlock_tier", String(j.tierKey));
         localStorage.setItem("risx_unlock_intent", session.intent || "entry");
       }
+      createRunFromPayment({
+        paymentId: session.paymentId,
+        wallet: record?.wallet || auditWallet(),
+        email: record?.email || auditEmail(),
+        tier: String(j?.tierKey || session.tier || ""),
+        amount: Number(session.amount || j?.pay_amount || 0),
+        currency: String(session.currency || j?.pay_currency || ""),
+        status: "paid",
+        paidAt: Date.now(),
+      }, {
+        tier: String(j?.tierKey || session.tier || ""),
+        tokenId: String(j?.unlock_token || localStorage.getItem("risx_unlock_token") || "").slice(0, 24),
+        intent: session.intent || "entry",
+        failedRunId: String(localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || ""),
+      });
       setPaymentSessionState({
         ...session,
         status: "paid",
@@ -1849,6 +1913,13 @@ async function recoverUnlockFromPaymentSession() {
     }
 
     if (status === "expired" || status === "cancelled") {
+      upsertPaymentRecord({
+        paymentId: session.paymentId,
+        tier: session.tier,
+        amount: Number(session.amount || 0),
+        currency: String(session.currency || ""),
+        status,
+      });
       setPaymentSessionState({
         ...session,
         status,
@@ -1923,11 +1994,17 @@ function claimStateMatchesAuthoritativeRun(state) {
   if (!state) return false;
   if (state.status !== "available" && state.status !== "started") return true;
 
-  const run = getRun?.() || {};
-  const runId = String(run.id || "");
-  if (String(run.status || "") !== "won") return false;
-  if (!runId) return false;
-  return (runId === state.winId || runId === state.sessionId);
+  const stateRunId = String(state.winId || state.sessionId || "");
+  if (!stateRunId) return false;
+
+  const runRecord = getRunById(stateRunId);
+  if (runRecord) return String(runRecord.status || "") === "won";
+
+  const localRun = getRun?.() || {};
+  const localRunId = String(localRun.id || "");
+  if (!localRunId) return false;
+  if (String(localRun.status || "") !== "won") return false;
+  return (localRunId === state.winId || localRunId === state.sessionId);
 }
 
 function getClaimRecoveryState() {
@@ -1967,6 +2044,7 @@ function burnChallengeAccessState({ clearResetFlags = false } = {}) {
   if (clearResetFlags) {
     localStorage.removeItem("risx_restart_required");
     localStorage.removeItem("risx_reset_expires_at");
+    localStorage.removeItem(RESTART_FAILED_RUN_ID_KEY);
     CHALLENGE.resetExpiresAt = null;
   }
 }
@@ -3973,6 +4051,445 @@ async function switchUser() {
 const depositsKey   = `${RISX_SAVE_KEY}::deposits`;
 const withdrawalsKey= `${RISX_SAVE_KEY}::withdrawals`;
 const claimsKey = `${RISX_SAVE_KEY}::claims`;
+const paymentRecordsKey = `${RISX_SAVE_KEY}::challenge_payments`;
+const runsKey = `${RISX_SAVE_KEY}::challenge_runs`;
+const playerWalletKey = `${RISX_SAVE_KEY}::player_wallet`;
+const playerEmailKey = `${RISX_SAVE_KEY}::player_email`;
+
+function auditWallet() {
+  const stored = String(localStorage.getItem(playerWalletKey) || "").trim();
+  if (stored) return stored;
+  if (currentWallet && currentWallet !== CHALLENGE_WALLET_ID) return String(currentWallet);
+  const activeWallet = String(localStorage.getItem(WALLET_KEY) || "").trim();
+  return activeWallet && activeWallet !== CHALLENGE_WALLET_ID ? activeWallet : "";
+}
+
+function auditEmail() {
+  return String(localStorage.getItem(playerEmailKey) || "").trim();
+}
+
+function normalizePaymentStatus(status) {
+  const s = String(status || "").toLowerCase();
+  if (["pending", "paid", "expired", "cancelled", "failed"].includes(s)) return s;
+  if (s === "finished" || s === "confirmed") return "paid";
+  return "pending";
+}
+
+function normalizeClaimStatus(status) {
+  const s = String(status || "").toLowerCase();
+  if (["pending", "approved", "paid", "void"].includes(s)) return s;
+  if (s === "pending_review") return "pending";
+  if (s === "paid" || s === "void") return s;
+  return "pending";
+}
+
+function normalizeRunStatus(status) {
+  const s = String(status || "").toLowerCase();
+  if (["created", "ready", "active", "resumed", "failed", "won", "claimed", "paid", "void"].includes(s)) return s;
+  return "created";
+}
+
+function inferAssetChainFromCurrency(cur) {
+  const v = String(cur || "").toLowerCase();
+  if (v.includes("btc")) return { asset: "BTC", chain: "Bitcoin" };
+  if (v.includes("ltc")) return { asset: "LTC", chain: "Litecoin" };
+  if (v.includes("trx")) return { asset: "TRX", chain: "Tron" };
+  if (v.includes("sol")) {
+    if (v.includes("usdc")) return { asset: "USDC", chain: "Solana" };
+    if (v.includes("usdt")) return { asset: "USDT", chain: "Solana" };
+    return { asset: "SOL", chain: "Solana" };
+  }
+  return { asset: String(cur || "UNKNOWN").toUpperCase(), chain: "" };
+}
+
+function newRunId() {
+  return `run_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+}
+
+function newClaimId() {
+  return crypto.randomUUID ? crypto.randomUUID() : `claim_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function readPaymentRecords() {
+  return readList(paymentRecordsKey).filter(Boolean).map((p) => {
+    const inferred = inferAssetChainFromCurrency(p.asset || p.currency || "");
+    return {
+      paymentId: String(p.paymentId || p.payment_id || p.id || ""),
+      wallet: String(p.wallet || ""),
+      email: String(p.email || ""),
+      tier: String(p.tier || p.tierKey || ""),
+      amount: Number(p.amount || 0),
+      asset: String(p.asset || inferred.asset || ""),
+      chain: String(p.chain || inferred.chain || ""),
+      status: normalizePaymentStatus(p.status),
+      createdAt: Number(p.createdAt || Date.now()),
+      paidAt: p.paidAt ? Number(p.paidAt) : null,
+    };
+  }).filter((p) => !!p.paymentId);
+}
+
+function writePaymentRecords(list) {
+  writeList(paymentRecordsKey, list || []);
+}
+
+function upsertPaymentRecord(payload = {}) {
+  const paymentId = String(payload.paymentId || payload.payment_id || "").trim();
+  if (!paymentId) return null;
+
+  const inferred = inferAssetChainFromCurrency(payload.asset || payload.currency || "");
+  const list = readPaymentRecords();
+  const idx = list.findIndex((p) => p.paymentId === paymentId);
+  const prev = idx >= 0 ? list[idx] : null;
+  const next = {
+    paymentId,
+    wallet: String(payload.wallet || prev?.wallet || auditWallet() || ""),
+    email: String(payload.email || prev?.email || auditEmail() || ""),
+    tier: String(payload.tier || prev?.tier || ""),
+    amount: Number(payload.amount ?? prev?.amount ?? 0),
+    asset: String(payload.asset || prev?.asset || inferred.asset || ""),
+    chain: String(payload.chain || prev?.chain || inferred.chain || ""),
+    status: normalizePaymentStatus(payload.status || prev?.status || "pending"),
+    createdAt: Number(payload.createdAt || prev?.createdAt || Date.now()),
+    paidAt: payload.paidAt ? Number(payload.paidAt) : (prev?.paidAt || null),
+  };
+  if (next.status === "paid" && !next.paidAt) next.paidAt = Date.now();
+  if (idx >= 0) list[idx] = next; else list.unshift(next);
+  writePaymentRecords(list);
+  return next;
+}
+
+function getPaymentRecordById(paymentId) {
+  const id = String(paymentId || "");
+  if (!id) return null;
+  return readPaymentRecords().find((p) => p.paymentId === id) || null;
+}
+
+function readRunRecords() {
+  return readList(runsKey).filter(Boolean).map((r) => {
+    const events = Array.isArray(r.events) ? r.events : [];
+    return {
+      runId: String(r.runId || r.id || ""),
+      paymentId: String(r.paymentId || ""),
+      wallet: String(r.wallet || ""),
+      email: String(r.email || ""),
+      tier: String(r.tier || ""),
+      tokenId: String(r.tokenId || r.unlockToken || ""),
+      status: normalizeRunStatus(r.status),
+      startedAt: r.startedAt ? Number(r.startedAt) : null,
+      endedAt: r.endedAt ? Number(r.endedAt) : null,
+      resumedAt: r.resumedAt ? Number(r.resumedAt) : null,
+      failReason: r.failReason ? String(r.failReason) : "",
+      finalScore: r.finalScore ?? null,
+      finalProgress: r.finalProgress ?? null,
+      finalStep: r.finalStep ?? null,
+      finalMultiplier: r.finalMultiplier ?? null,
+      finalState: r.finalState ?? null,
+      durationMs: Number(r.durationMs || 0),
+      resetRequired: !!r.resetRequired,
+      restartPaymentId: String(r.restartPaymentId || ""),
+      claimId: String(r.claimId || ""),
+      adminNotes: String(r.adminNotes || ""),
+      adminGranted: !!r.adminGranted,
+      createdAt: Number(r.createdAt || Date.now()),
+      events: events.map((e) => ({ ...e, ts: Number(e?.ts || Date.now()) })),
+    };
+  }).filter((r) => !!r.runId);
+}
+
+function writeRunRecords(list) {
+  writeList(runsKey, list || []);
+}
+
+function appendRunEvent(run, event) {
+  if (!run) return;
+  if (!Array.isArray(run.events)) run.events = [];
+  run.events.push({ ts: Date.now(), ...event });
+}
+
+function runHasEvent(run, type, matcher = null) {
+  const list = Array.isArray(run?.events) ? run.events : [];
+  return list.some((evt) => {
+    if (String(evt?.type || "") !== String(type || "")) return false;
+    return typeof matcher === "function" ? !!matcher(evt) : true;
+  });
+}
+
+function getRunById(runId) {
+  const id = String(runId || "");
+  if (!id) return null;
+  return readRunRecords().find((r) => r.runId === id) || null;
+}
+
+function getRunByPaymentId(paymentId) {
+  const id = String(paymentId || "");
+  if (!id) return null;
+  return readRunRecords().find((r) => r.paymentId === id) || null;
+}
+
+function createRunFromPayment(paymentPayload = {}, opts = {}) {
+  const payment = upsertPaymentRecord(paymentPayload);
+  if (!payment) return null;
+
+  const list = readRunRecords();
+  let run = list.find((r) => r.paymentId === payment.paymentId);
+  if (!run) {
+    run = {
+      runId: newRunId(),
+      paymentId: payment.paymentId,
+      wallet: payment.wallet || auditWallet(),
+      email: payment.email || auditEmail(),
+      tier: payment.tier || String(opts.tier || ""),
+      tokenId: String(opts.tokenId || ""),
+      status: payment.status === "paid" ? "ready" : "created",
+      startedAt: null,
+      endedAt: null,
+      resumedAt: null,
+      failReason: "",
+      finalScore: null,
+      finalProgress: null,
+      finalStep: null,
+      finalMultiplier: null,
+      finalState: null,
+      durationMs: 0,
+      resetRequired: false,
+      restartPaymentId: "",
+      claimId: "",
+      adminNotes: "",
+      adminGranted: !!opts.adminGranted,
+      createdAt: Date.now(),
+      events: [],
+    };
+    list.unshift(run);
+  }
+
+  run.wallet = run.wallet || payment.wallet || auditWallet();
+  run.email = run.email || payment.email || auditEmail();
+  run.tier = run.tier || payment.tier || String(opts.tier || "");
+  if (opts.tokenId) run.tokenId = String(opts.tokenId);
+  if (opts.adminGranted) run.adminGranted = true;
+  if (payment.status === "paid" && run.status === "created") run.status = "ready";
+
+  if (
+    payment.status === "paid" &&
+    !runHasEvent(run, "payment_confirmed", (evt) => String(evt?.paymentId || "") === payment.paymentId)
+  ) {
+    appendRunEvent(run, { type: "payment_confirmed", paymentId: payment.paymentId });
+  }
+  if (
+    run.tokenId &&
+    !runHasEvent(run, "token_granted", (evt) => String(evt?.tokenId || "") === String(run.tokenId))
+  ) {
+    appendRunEvent(run, { type: "token_granted", tokenId: run.tokenId, paymentId: payment.paymentId });
+  }
+
+  if (String(opts.intent || "").toLowerCase() === "restart") {
+    const explicitFailedRunId = String(opts.failedRunId || localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "");
+    if (explicitFailedRunId) {
+      const failedRun = list.find((x) => x.runId === explicitFailedRunId && x.status === "failed");
+      if (failedRun) {
+        failedRun.restartPaymentId = payment.paymentId;
+      }
+    }
+  }
+
+  writeRunRecords(list);
+  return run;
+}
+
+function markRunStarted({ tier, paymentId } = {}) {
+  const list = readRunRecords();
+  const isStartableStatus = (r) => ["ready", "active", "resumed"].includes(String(r?.status || "").toLowerCase());
+  const byPayment = paymentId ? list.find((r) => r.paymentId === String(paymentId)) : null;
+  const byLocalRunId = list.find((r) => r.runId === String(localStorage.getItem(RUN_ID_KEY) || ""));
+  const byTier = list
+    .filter((r) => r.tier === String(tier || "") && isStartableStatus(r) && !r.claimId)
+    .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0] || null;
+  const run = [byPayment, byLocalRunId, byTier].find((r) => r && isStartableStatus(r)) || null;
+  if (!run) return null;
+  const status = String(run.status || "").toLowerCase();
+
+  if (status === "ready") {
+    run.status = "active";
+    if (!run.startedAt) run.startedAt = Date.now();
+    appendRunEvent(run, { type: "challenge_started" });
+  } else {
+    run.status = "resumed";
+    if (!run.startedAt) run.startedAt = Date.now();
+    run.resumedAt = Date.now();
+    appendRunEvent(run, { type: "challenge_resumed" });
+  }
+  run.endedAt = null;
+  run.resetRequired = false;
+  run.failReason = "";
+
+  writeRunRecords(list);
+  return run;
+}
+
+function markRunResumed(runId) {
+  const id = String(runId || "");
+  if (!id) return null;
+  const list = readRunRecords();
+  const run = list.find((r) => r.runId === id);
+  if (!run) return null;
+  if (!run.startedAt) return markRunStarted({ tier: run.tier, paymentId: run.paymentId });
+  if (run.status === "won" || run.status === "failed" || run.status === "claimed" || run.status === "paid" || run.status === "void") {
+    return run;
+  }
+  run.status = "resumed";
+  run.resumedAt = Date.now();
+  appendRunEvent(run, { type: "challenge_resumed" });
+  writeRunRecords(list);
+  return run;
+}
+
+function markRunFailed(reason = "") {
+  const runId = String(localStorage.getItem(RUN_ID_KEY) || "");
+  if (!runId) return null;
+  const list = readRunRecords();
+  const run = list.find((r) => r.runId === runId);
+  if (!run) return null;
+
+  run.status = "failed";
+  run.failReason = String(reason || "");
+  run.resetRequired = true;
+  run.endedAt = Date.now();
+  if (run.startedAt) run.durationMs = Math.max(0, run.endedAt - run.startedAt);
+  appendRunEvent(run, { type: "challenge_failed", reason: run.failReason });
+  writeRunRecords(list);
+  finalizeActiveRunLocalState("failed", run.runId, run.endedAt);
+  return run;
+}
+
+function markRunWon(summary = {}) {
+  const runId = String(localStorage.getItem(RUN_ID_KEY) || "");
+  if (!runId) return null;
+  const list = readRunRecords();
+  const run = list.find((r) => r.runId === runId);
+  if (!run) return null;
+
+  const payment = getPaymentRecordById(run.paymentId);
+  const hasValidPayment = !!(payment && payment.status === "paid");
+  const hasAdminGrant = !!run.adminGranted;
+  if (!hasValidPayment && !hasAdminGrant) {
+    run.status = "void";
+    run.endedAt = Date.now();
+    if (run.startedAt) run.durationMs = Math.max(0, run.endedAt - run.startedAt);
+    run.adminNotes = "Auto-voided: missing paid payment link for win.";
+    appendRunEvent(run, { type: "challenge_won_blocked", reason: "missing_paid_payment_link" });
+    writeRunRecords(list);
+    finalizeActiveRunLocalState("void", run.runId, run.endedAt);
+    return null;
+  }
+
+  run.status = "won";
+  run.endedAt = Date.now();
+  if (run.startedAt) run.durationMs = Math.max(0, run.endedAt - run.startedAt);
+  run.finalScore = summary.finalScore ?? summary.achieved ?? null;
+  run.finalProgress = summary.finalProgress ?? null;
+  run.finalStep = summary.finalStep ?? null;
+  run.finalMultiplier = summary.finalMultiplier ?? null;
+  run.finalState = summary.finalState ?? null;
+  appendRunEvent(run, { type: "challenge_won", summary: { ...summary } });
+  writeRunRecords(list);
+  finalizeActiveRunLocalState("won", run.runId, run.endedAt);
+  return run;
+}
+
+function markRunClaimState(runId, status, extra = {}) {
+  const id = String(runId || "");
+  if (!id) return null;
+  const list = readRunRecords();
+  const run = list.find((r) => r.runId === id);
+  if (!run) return null;
+
+  if (status) run.status = normalizeRunStatus(status);
+  if (extra.claimId) run.claimId = String(extra.claimId);
+  if (extra.restartPaymentId) run.restartPaymentId = String(extra.restartPaymentId);
+  if (extra.adminNotes) run.adminNotes = String(extra.adminNotes);
+
+  if (extra.eventType) appendRunEvent(run, { type: extra.eventType, ...extra.eventPayload });
+  writeRunRecords(list);
+  if (["claimed", "paid", "void"].includes(String(run.status || "").toLowerCase())) {
+    const endedAt = run.endedAt || Date.now();
+    if (!run.endedAt) {
+      run.endedAt = endedAt;
+      writeRunRecords(list);
+    }
+    finalizeActiveRunLocalState(run.status, run.runId, endedAt);
+  }
+  return run;
+}
+
+function validateClaimAgainstRun(runId) {
+  const id = String(runId || "");
+  if (!id) return { ok: false, msg: "Missing runId." };
+  const run = getRunById(id);
+  if (!run) return { ok: false, msg: "Run not found." };
+  if (run.status !== "won") return { ok: false, msg: "Run is not in won status." };
+
+  const existing = readList(claimsKey).find((c) => String(c.runId || "") === id);
+  if (existing || run.claimId) return { ok: false, msg: "A claim already exists for this run." };
+
+  return { ok: true, run };
+}
+
+function createClaimForRun({ run, payout, amount }) {
+  const check = validateClaimAgainstRun(run?.runId);
+  if (!check.ok) return { ok: false, msg: check.msg };
+  const claimId = newClaimId();
+
+  const claim = {
+    claimId,
+    id: claimId,
+    runId: run.runId,
+    paymentId: run.paymentId || "",
+    wallet: run.wallet || auditWallet(),
+    email: payout?.email || run.email || auditEmail(),
+    tier: run.tier || "",
+    amount: Number(amount || 0),
+    payout,
+    address: payout?.address || "",
+    asset: payout?.asset || "",
+    chain: payout?.chain || "",
+    status: "pending",
+    submittedAt: Date.now(),
+    reviewedAt: null,
+    paidAt: null,
+    txid: "",
+    adminNotes: "",
+    createdAt: Date.now(),
+    supportId: run.paymentId || "—",
+  };
+
+  const list = readList(claimsKey);
+  list.unshift(claim);
+  writeList(claimsKey, list);
+
+  const updatedRun = markRunClaimState(run.runId, "claimed", {
+    claimId: claim.claimId,
+    eventType: "claim_submitted",
+    eventPayload: { claimId: claim.claimId },
+  });
+
+  if (claim.email) {
+    localStorage.setItem(playerEmailKey, claim.email);
+  }
+  if (claim.wallet) {
+    localStorage.setItem(playerWalletKey, claim.wallet);
+  }
+
+  return { ok: true, claim, run: updatedRun };
+}
+
+function getRunRecordForClaim(claim) {
+  const runId = String(claim?.runId || "");
+  if (!runId) return null;
+  return getRunById(runId);
+}
+
+window.RISX_upsertPaymentRecord = upsertPaymentRecord;
+window.RISX_createRunFromPayment = createRunFromPayment;
 
 // Admin
 let adminTab = "deposits";
@@ -4070,24 +4587,96 @@ function renderClaimsList(list){
     <div class="admin-row">
       <div class="admin-col">
         <div class="admin-title">
-          ${escapeHtml(c.tier || "—")} • $${Number(c.prizeUsd || 0).toFixed(2)}
-          <span style="opacity:.7; font-size:12px; margin-left:8px;">(${escapeHtml(c.status || "")})</span>
+          ${escapeHtml(c.tier || "—")} • $${Number(c.amount || c.prizeUsd || 0).toFixed(2)}
+          <span style="opacity:.7; font-size:12px; margin-left:8px;">(${escapeHtml(c.status || "pending")})</span>
+          ${!c.runId ? `<span style="opacity:.7; font-size:11px; margin-left:6px;">legacy</span>` : ""}
         </div>
-        <div class="admin-sub">Run: ${escapeHtml(c.runId || "—")} • PaymentID: ${escapeHtml(c.supportId || "—")}</div>
-        <div class="admin-sub">${new Date(c.createdAt).toLocaleString()}</div>
+        <div class="admin-sub">ClaimID: ${escapeHtml(c.claimId || c.id || "—")} • Run: ${escapeHtml(c.runId || "—")} • PaymentID: ${escapeHtml(c.paymentId || c.supportId || "—")}</div>
+        <div class="admin-sub">Wallet: ${escapeHtml(c.wallet || "—")} ${(c.email ? `• Email: ${escapeHtml(c.email)}` : "")}</div>
+        <div class="admin-sub">Submitted: ${new Date(c.submittedAt || c.createdAt || Date.now()).toLocaleString()}</div>
         <div class="admin-sub">To: <b>${escapeHtml(c.payout?.address || c.address || "")}</b></div>
         <div class="admin-sub">Asset/Chain: ${escapeHtml(c.payout?.asset || c.asset || "—")} • ${escapeHtml(c.payout?.chain || c.chain || "—")}</div>
-        ${(c.payout?.email || c.email) ? `<div class="admin-sub">Email: ${escapeHtml(c.payout?.email || c.email)}</div>` : ""}
-        ${c.note ? `<div class="admin-sub">Note: ${escapeHtml(c.note)}</div>` : ""}
         ${c.txid ? `<div class="admin-sub">Tx: ${escapeHtml(c.txid)}</div>` : ""}
+        ${(c.adminNotes || c.note) ? `<div class="admin-sub">Admin Notes: ${escapeHtml(c.adminNotes || c.note)}</div>` : ""}
       </div>
 
       <div class="admin-actions">
-        <button class="btn small primary" data-claim-mark="${escapeHtml(c.id)}" data-claim-status="PAID">PAID</button>
-        <button class="btn small secondary" data-claim-mark="${escapeHtml(c.id)}" data-claim-status="VOID">VOID</button>
+        ${normalizeClaimStatus(c.status) === "pending" ? `
+          <button class="btn small primary" data-claim-mark="${escapeHtml(c.claimId || c.id)}" data-claim-status="approved">APPROVE</button>
+          <button class="btn small secondary" data-claim-mark="${escapeHtml(c.claimId || c.id)}" data-claim-status="void">VOID</button>
+        ` : ""}
+        ${normalizeClaimStatus(c.status) === "approved" ? `
+          <button class="btn small primary" data-claim-mark="${escapeHtml(c.claimId || c.id)}" data-claim-status="paid">PAID</button>
+          <button class="btn small secondary" data-claim-mark="${escapeHtml(c.claimId || c.id)}" data-claim-status="void">VOID</button>
+        ` : ""}
       </div>
     </div>
   `).join("");
+}
+
+function formatDurationMs(startAt, endAt) {
+  const start = Number(startAt || 0);
+  const end = Number(endAt || 0);
+  if (!start || !end || end <= start) return "—";
+  const ms = end - start;
+  const sec = Math.floor(ms / 1000);
+  const min = Math.floor(sec / 60);
+  const remSec = sec % 60;
+  return `${min}m ${String(remSec).padStart(2, "0")}s`;
+}
+
+function renderRunEvents(events) {
+  const list = Array.isArray(events) ? events : [];
+  if (!list.length) return `<div class="admin-sub">No events.</div>`;
+  return list.map((e) => `
+    <div class="admin-sub">
+      ${new Date(Number(e.ts || Date.now())).toLocaleString()} • <b>${escapeHtml(e.type || "event")}</b>
+      ${escapeHtml(JSON.stringify(Object.fromEntries(Object.entries(e).filter(([k]) => k !== "type" && k !== "ts"))))}
+    </div>
+  `).join("");
+}
+
+function renderRunsList(list) {
+  if (!list.length) return `<div class="redeem-empty">No challenge runs yet.</div>`;
+  return list.map((r) => `
+    <div class="admin-row">
+      <div class="admin-col">
+        <div class="admin-title">
+          ${escapeHtml(r.runId)} • ${escapeHtml(r.status)}
+          <span style="opacity:.7; font-size:12px; margin-left:8px;">tier:${escapeHtml(r.tier || "—")}</span>
+        </div>
+        <div class="admin-sub">PaymentID: ${escapeHtml(r.paymentId || "—")} • Claim: ${escapeHtml(r.claimId || "—")}</div>
+        <div class="admin-sub">Wallet: ${escapeHtml(r.wallet || "—")} ${(r.email ? `• Email: ${escapeHtml(r.email)}` : "")}</div>
+        <div class="admin-sub">Started: ${r.startedAt ? new Date(r.startedAt).toLocaleString() : "—"} • Ended: ${r.endedAt ? new Date(r.endedAt).toLocaleString() : "—"} • Duration: ${formatDurationMs(r.startedAt, r.endedAt)}</div>
+        <div class="admin-sub">Result: score=${escapeHtml(r.finalScore ?? "—")} progress=${escapeHtml(r.finalProgress ?? "—")} step=${escapeHtml(r.finalStep ?? "—")} mult=${escapeHtml(r.finalMultiplier ?? "—")} state=${escapeHtml(r.finalState ?? "—")}</div>
+        <div class="admin-sub">Reset Required: ${r.resetRequired ? "yes" : "no"} ${r.restartPaymentId ? `• RestartPaymentID: ${escapeHtml(r.restartPaymentId)}` : ""}</div>
+        ${(r.failReason) ? `<div class="admin-sub">Fail Reason: ${escapeHtml(r.failReason)}</div>` : ""}
+        <details style="margin-top:6px;">
+          <summary class="admin-sub" style="cursor:pointer;">Run timeline</summary>
+          ${renderRunEvents(r.events)}
+        </details>
+      </div>
+    </div>
+  `).join("");
+}
+
+function statusFilterMatch(record, kind, filterValue) {
+  const f = String(filterValue || "all").toLowerCase();
+  if (f === "all") return true;
+
+  const status = String(record?.status || "").toLowerCase();
+  if (f === "pending_review") {
+    if (kind === "claims") return status === "pending";
+    if (kind === "runs") return ["created", "ready", "active", "resumed"].includes(status);
+    return status === "pending";
+  }
+  if (f === "active") return kind === "runs" && ["active", "resumed"].includes(status);
+  if (f === "failed") return kind === "runs" && status === "failed";
+  if (f === "won") return kind === "runs" && status === "won";
+  if (f === "claimed") return kind === "runs" && status === "claimed";
+  if (f === "paid") return status === "paid";
+  if (f === "void") return status === "void";
+  return status === f;
 }
 
 async function adminMark(id, kind, status) {
@@ -4161,37 +4750,64 @@ function renderAdmin() {
 
   const q = (adminSearch?.value || "").trim().toLowerCase();
   const pendingOnly = !!adminPendingOnly?.checked;
+  const statusFilter = String(adminStatusFilter?.value || "all");
 
-  const claims = readList(claimsKey);
+  const claims = readList(claimsKey).map((c) => ({
+    ...c,
+    claimId: String(c.claimId || c.id || ""),
+    runId: String(c.runId || ""),
+    paymentId: String(c.paymentId || c.supportId || ""),
+    status: normalizeClaimStatus(c.status),
+  }));
   const deposits = readList(depositsKey);
   const withdrawals = readList(withdrawalsKey);
+  const runs = readRunRecords();
+  const payments = readPaymentRecords();
 
   // counts
-  adminCountClaims && (adminCountClaims.textContent = String(claims.filter(c => c.status === "PENDING").length));
-  adminCountDeposits && (adminCountDeposits.textContent = String(deposits.filter(d => d.status === "PENDING").length));
-  adminCountWithdrawals && (adminCountWithdrawals.textContent = String(withdrawals.filter(d => d.status === "PENDING").length));
+  adminCountClaims && (adminCountClaims.textContent = String(claims.filter(c => c.status === "pending").length));
+  adminCountDeposits && (adminCountDeposits.textContent = String(deposits.filter(d => String(d.status || "").toUpperCase() === "PENDING").length));
+  adminCountWithdrawals && (adminCountWithdrawals.textContent = String(withdrawals.filter(d => String(d.status || "").toUpperCase() === "PENDING").length));
   if (adminCountUsers) {
-    const users = new Set([...deposits, ...withdrawals].map(x => x.wallet));
-    adminCountUsers.textContent = String(users.size);
+    adminCountUsers.textContent = String(runs.length);
   }
 
   if (adminTab === "deposits") {
     const list = deposits
-      .filter(r => !pendingOnly || r.status === "PENDING")
+      .map((r) => ({ ...r, status: String(r.status || "").toLowerCase() }))
+      .filter(r => !pendingOnly || r.status === "pending")
+      .filter(r => statusFilterMatch(r, "deposits", statusFilter))
       .filter(r => !q || JSON.stringify(r).toLowerCase().includes(q));
     adminViewDeposits.innerHTML = renderAdminList(list, "deposit");
   } else if (adminTab === "claims") {
   const list = claims
-    .filter(r => !pendingOnly || r.status === "PENDING")
-    .filter(r => !q || JSON.stringify(r).toLowerCase().includes(q));
+    .filter(r => !pendingOnly || r.status === "pending")
+    .filter(r => statusFilterMatch(r, "claims", statusFilter))
+    .filter(r => !q || `${JSON.stringify(r).toLowerCase()} ${String(r.paymentId || "")} ${String(r.runId || "")} ${String(r.claimId || "")}`.includes(q));
   adminViewClaims.innerHTML = renderClaimsList(list);
   } else if (adminTab === "withdrawals") {
     const list = withdrawals
-      .filter(r => !pendingOnly || r.status === "PENDING")
+      .map((r) => ({ ...r, status: String(r.status || "").toLowerCase() }))
+      .filter(r => !pendingOnly || r.status === "pending")
+      .filter(r => statusFilterMatch(r, "withdrawals", statusFilter))
       .filter(r => !q || JSON.stringify(r).toLowerCase().includes(q));
     adminViewWithdrawals.innerHTML = renderAdminList(list, "withdraw");
   } else {
-    adminViewUsers.innerHTML = `<div class="redeem-empty">Users view (later).</div>`;
+    const list = runs
+      .filter(r => !pendingOnly || ["created", "ready", "active", "resumed"].includes(String(r.status || "").toLowerCase()))
+      .filter(r => statusFilterMatch(r, "runs", statusFilter))
+      .filter(r => {
+        if (!q) return true;
+        const linkedClaim = claims.find((c) => String(c.runId || "") === String(r.runId || ""));
+        const payment = payments.find((p) => String(p.paymentId || "") === String(r.paymentId || ""));
+        const blob = [
+          r.runId, r.paymentId, r.wallet, r.email, r.tier, r.status, r.claimId,
+          linkedClaim?.claimId, linkedClaim?.paymentId, linkedClaim?.wallet, linkedClaim?.email,
+          payment?.paymentId, payment?.wallet, payment?.email
+        ].join(" ").toLowerCase();
+        return blob.includes(q);
+      });
+    adminViewUsers.innerHTML = renderRunsList(list);
   }
 
   adminMsg && (adminMsg.textContent = "");
@@ -4220,42 +4836,78 @@ async function adminMarkClaim(id, status) {
   if (!(await requireAdminSession())) return;
 
   const list = readList(claimsKey);
-  const idx = list.findIndex(x => String(x.id) === String(id));
+  const idx = list.findIndex(x => String(x.claimId || x.id) === String(id));
   if (idx < 0) return;
 
-  // prevent double-finalizing
-  const prev = String(list[idx].status || "");
-  if (prev === "PAID" || prev === "VOID") return;
+  const claim = list[idx];
+  claim.claimId = String(claim.claimId || claim.id || id);
+  claim.id = claim.claimId;
+  claim.status = normalizeClaimStatus(claim.status);
 
-  if (status === "PAID") {
+  const nextStatus = normalizeClaimStatus(status);
+  if (["paid", "void"].includes(claim.status)) return;
+
+  if ((nextStatus === "approved" || nextStatus === "paid")) {
+    const run = getRunRecordForClaim(claim);
+    if (!run || run.runId !== String(claim.runId || "")) {
+      adminMsg && (adminMsg.textContent = "Claim cannot be approved/paid without a valid linked runId.");
+      return;
+    }
+  }
+
+  if (nextStatus === "paid") {
     const { confirmed, value } = await risxInputPrompt({
       title: "Payout Reference",
       description: "Optional: add txid or payout reference before marking claim as paid.",
       label: "TxID / Reference",
-      value: list[idx].txid || "",
+      value: claim.txid || "",
       placeholder: "Optional",
       confirmText: "Save + Mark Paid",
       cancelText: "Cancel",
       required: false,
     });
     if (!confirmed) return;
-    if (value) list[idx].txid = value.trim();
-    list[idx].paidAt = Date.now();
+    if (value) claim.txid = value.trim();
+    claim.paidAt = Date.now();
   }
 
-  const markRes = await apiJson("/api/admin/claims/markPaid", {
-    method: "POST",
-    body: JSON.stringify({ claimId: id, status, txid: list[idx].txid || "" }),
-  });
-  if (!markRes.ok) {
-    adminMsg && (adminMsg.textContent = String(markRes.data?.error || "Claim update rejected."));
-    return;
+  if (nextStatus === "paid" || nextStatus === "void") {
+    const markRes = await apiJson("/api/admin/claims/markPaid", {
+      method: "POST",
+      body: JSON.stringify({ claimId: claim.claimId, status: nextStatus.toUpperCase(), txid: claim.txid || "" }),
+    });
+    if (!markRes.ok) {
+      adminMsg && (adminMsg.textContent = String(markRes.data?.error || "Claim update rejected."));
+      return;
+    }
   }
 
-  if (status === "VOID") list[idx].voidAt = Date.now();
+  if (nextStatus === "approved") claim.reviewedAt = Date.now();
+  if (nextStatus === "void") claim.reviewedAt = Date.now();
+  if (nextStatus === "void") claim.voidAt = Date.now();
 
-  list[idx].status = status;
+  claim.status = nextStatus;
   writeList(claimsKey, list);
+
+  const runId = String(claim.runId || "");
+  if (runId) {
+    if (nextStatus === "paid") {
+      markRunClaimState(runId, "paid", {
+        eventType: "claim_paid",
+        eventPayload: { claimId: claim.claimId, txid: claim.txid || "" },
+      });
+    } else if (nextStatus === "void") {
+      markRunClaimState(runId, "void", {
+        eventType: "claim_void",
+        eventPayload: { claimId: claim.claimId },
+      });
+    } else if (nextStatus === "approved") {
+      markRunClaimState(runId, "claimed", {
+        eventType: "claim_approved",
+        eventPayload: { claimId: claim.claimId },
+      });
+    }
+  }
 
   renderAdmin?.();
 }
@@ -4465,14 +5117,32 @@ function init() {
   challengeActive = false;
   CHALLENGE.active = false;
   saveChallengeActive(false);
+  clearRun();
   }
 
   if (challengeActive) {
   // already in a live challenge
-  setActiveWallet(CHALLENGE_WALLET_ID);
-  setChallengeWalletUI?.();
-  lockAppUI(false);
-  closeModal(challengeModal);
+  const existingRunId = String(localStorage.getItem(RUN_ID_KEY) || "");
+  const resumed = existingRunId ? markRunResumed?.(existingRunId) : null;
+  if (!existingRunId || !resumed?.runId) {
+    challengeActive = false;
+    CHALLENGE.active = false;
+    saveChallengeActive(false);
+    clearRun();
+    lockAppUI(true);
+    openModal(challengeModal);
+    renderTierSummary?.();
+  } else {
+    localStorage.setItem(RUN_ID_KEY, String(resumed.runId));
+    localStorage.setItem(RUN_TIER_KEY, String(resumed.tier || challengeTierSelected || "beginner"));
+    localStorage.setItem(RUN_STATUS_KEY, String(resumed.status || "resumed"));
+    localStorage.setItem(RUN_START_KEY, String(resumed.startedAt || Date.now()));
+    localStorage.removeItem(RUN_END_KEY);
+    setActiveWallet(CHALLENGE_WALLET_ID);
+    setChallengeWalletUI?.();
+    lockAppUI(false);
+    closeModal(challengeModal);
+  }
 } else {
   const paymentRecovery = getPaymentSessionState();
   const claimRecovery = getClaimRecoveryState();
@@ -4655,6 +5325,7 @@ function init() {
 
   adminRefreshBtn?.addEventListener("click", renderAdmin);
   adminPendingOnly?.addEventListener("change", renderAdmin);
+  adminStatusFilter?.addEventListener("change", renderAdmin);
   adminSearch?.addEventListener("input", debounce(renderAdmin, 150));
 
   // Modal close buttons
@@ -4762,8 +5433,6 @@ function consumeUnlockForStartedRun() {
 }
 
 function startChallengeNow(tier) {
-  startRun(tier);
-
   // set selected tier first (so getTier() always matches)
   challengeTierSelected = tier;
   CHALLENGE.tier = tier;
@@ -4776,6 +5445,16 @@ function startChallengeNow(tier) {
       body: "This tier is currently invite only.",
       okText: "Close",
     });
+    return;
+  }
+
+  const runId = startRun(tier);
+  if (!runId) {
+    challengeActive = false;
+    CHALLENGE.active = false;
+    saveChallengeActive?.(false);
+    lockAppUI?.(true);
+    openModal?.(challengeModal);
     return;
   }
 
@@ -4806,6 +5485,7 @@ function startChallengeNow(tier) {
   consumeUnlockForStartedRun();
   localStorage.removeItem("risx_restart_required");
   localStorage.removeItem("risx_reset_expires_at");
+  localStorage.removeItem(RESTART_FAILED_RUN_ID_KEY);
   CHALLENGE.resetExpiresAt = null;
 
   showChallengeResetIfNeeded();
@@ -4900,6 +5580,13 @@ function restartRequiredNow() {
   const required = localStorage.getItem("risx_restart_required") === "1";
   const expiresAt = Number(localStorage.getItem("risx_reset_expires_at") || CHALLENGE.resetExpiresAt || 0);
   const stillInWindow = expiresAt && Date.now() <= expiresAt;
+  if (required && !stillInWindow) {
+    localStorage.removeItem("risx_restart_required");
+    localStorage.removeItem("risx_reset_expires_at");
+    localStorage.removeItem(RESTART_FAILED_RUN_ID_KEY);
+    CHALLENGE.resetExpiresAt = null;
+    return false;
+  }
   return required && stillInWindow;
 }
 
@@ -5005,15 +5692,9 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
     });
     if (!payoutRes.confirmed || !payoutRes.payout) return;
 
-    const run = getRun?.() || {};
     const activeClaimState = getClaimRecoveryState();
-    const runId = String(run.id || "");
-    if (
-      String(run.status || "") !== "won" ||
-      !activeClaimState ||
-      !runId ||
-      !(runId === activeClaimState.winId || runId === activeClaimState.sessionId)
-    ) {
+    const runId = String(activeClaimState?.winId || activeClaimState?.sessionId || "");
+    if (!activeClaimState || !runId) {
       await risxAlert({
         title: "Claim unavailable",
         body: "This claim is no longer attached to an eligible winning run.",
@@ -5022,30 +5703,39 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
       return;
     }
 
+    const valid = validateClaimAgainstRun(runId);
+    if (!valid.ok || !valid.run) {
+      await risxAlert({
+        title: "Claim unavailable",
+        body: valid.msg || "This run is not eligible for a claim.",
+        okText: "OK",
+      });
+      return;
+    }
+
     const payout = payoutRes.payout;
-    const tierId = CHALLENGE.tier;
-    const tier = getTier();
-    const supportId = localStorage.getItem("risx_last_payment_id") || "—";
-
-    const claim = {
-      id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-      runId: runId || localStorage.getItem("risx_run_id") || "",
-      tier: tierId,
-      prizeUsd: Number(tier.prizeUsd || 0),
-      goalCredits: Number(tier.goalCredits || 0),
+    const claimAmount = Number(
+      activeClaimState.amount ||
+      (CHALLENGE_TIERS[String(valid.run.tier || CHALLENGE.tier || "beginner")]?.prizeUsd || getTier()?.prizeUsd || 0)
+    );
+    const claimRes = createClaimForRun({
+      run: valid.run,
       payout,
-      address: payout.address,
-      email: payout.email || "",
-      asset: payout.asset,
-      chain: payout.chain,
-      supportId,
-      status: "PENDING",
-      createdAt: Date.now()
-    };
+      amount: claimAmount,
+    });
+    if (!claimRes.ok) {
+      await risxAlert({
+        title: "Claim unavailable",
+        body: claimRes.msg || "Failed to submit claim.",
+        okText: "OK",
+      });
+      return;
+    }
 
-    const list = readList(claimsKey);
-    list.unshift(claim);
-    writeList(claimsKey, list);
+    if (claimRes.claim?.paymentId) {
+      localStorage.setItem("risx_last_payment_id", String(claimRes.claim.paymentId));
+      window.updateSupportIdPill?.();
+    }
 
     setClaimRecoveryState({
       ...activeClaimState,

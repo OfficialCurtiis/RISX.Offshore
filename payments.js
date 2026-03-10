@@ -15,6 +15,11 @@
 
   const PAYMENT_SESSION_KEY = "risx_payment_session";
   const LEGACY_PENDING_KEY = "risx_pending_payment";
+  const SAVE_PREFIX = (typeof RISX_SAVE_KEY !== "undefined" ? RISX_SAVE_KEY : "risx_demo_wallet_v2");
+  const PLAYER_WALLET_KEY = `${SAVE_PREFIX}::player_wallet`;
+  const PLAYER_EMAIL_KEY = `${SAVE_PREFIX}::player_email`;
+  const ACTIVE_WALLET_KEY = `${SAVE_PREFIX}::activeWallet`;
+  const RESTART_FAILED_RUN_ID_KEY = "risx_restart_failed_run_id";
 
   // NEW: Payment ID + Resume
   const payIdEl       = document.getElementById("payPaymentId");
@@ -88,6 +93,36 @@
     };
   }
 
+  function auditWallet() {
+    const challengeWalletId = (typeof CHALLENGE_WALLET_ID !== "undefined") ? CHALLENGE_WALLET_ID : "__RISX_CHALLENGE__";
+    const playerWallet = String(localStorage.getItem(PLAYER_WALLET_KEY) || "").trim();
+    if (playerWallet) return playerWallet;
+    const active = String(localStorage.getItem(ACTIVE_WALLET_KEY) || "").trim();
+    if (active && active !== challengeWalletId) return active;
+    return "";
+  }
+
+  function auditEmail() {
+    return String(localStorage.getItem(PLAYER_EMAIL_KEY) || "").trim();
+  }
+
+  function syncPaymentRecord(session) {
+    if (!session?.paymentId) return;
+    try {
+      window.RISX_upsertPaymentRecord?.({
+        paymentId: session.paymentId,
+        wallet: auditWallet(),
+        email: auditEmail(),
+        tier: session.tier,
+        amount: Number(session.amount || 0),
+        currency: session.currency,
+        status: session.status,
+        createdAt: Number(session.createdAt || Date.now()),
+        paidAt: session.status === "paid" ? Date.now() : undefined,
+      });
+    } catch {}
+  }
+
   function setPaymentSession(payload) {
     const normalized = normalizePaymentSession(payload);
     if (!normalized) return;
@@ -106,6 +141,7 @@
     } else {
       localStorage.removeItem(LEGACY_PENDING_KEY);
     }
+    syncPaymentRecord(normalized);
     window.RISX_renderRecoveryCtas?.();
   }
 
@@ -267,11 +303,40 @@ function handleConfirmed(resp) {
   const pending = getPaymentSession();
   const intent = pending?.intent || "entry";
   const tierKey = pending?.tier || resp.tierKey;
+  const paymentId = String(pending?.paymentId || activePaymentId || resp?.payment_id || "").trim();
 
   // Persist unlock (entry unlock token still useful)
   localStorage.setItem("risx_unlock_token", resp.unlock_token);
   localStorage.setItem("risx_unlock_tier", resp.tierKey);
   localStorage.setItem("risx_unlock_intent", intent);
+
+  if (paymentId) {
+    syncPaymentRecord({
+      paymentId,
+      tier: String(resp.tierKey || tierKey || ""),
+      amount: Number(pending?.amount || resp?.pay_amount || 0),
+      currency: String(pending?.currency || resp?.pay_currency || ""),
+      status: "paid",
+      createdAt: Number(pending?.createdAt || Date.now()),
+    });
+    try {
+      window.RISX_createRunFromPayment?.({
+        paymentId,
+        wallet: auditWallet(),
+        email: auditEmail(),
+        tier: String(resp.tierKey || tierKey || ""),
+        amount: Number(pending?.amount || resp?.pay_amount || 0),
+        currency: String(pending?.currency || resp?.pay_currency || ""),
+        status: "paid",
+        paidAt: Date.now(),
+      }, {
+        tier: String(resp.tierKey || tierKey || ""),
+        tokenId: String(resp.unlock_token || "").slice(0, 24),
+        intent,
+        failedRunId: String(localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || ""),
+      });
+    } catch {}
+  }
 
   // mark UI unlocked/close modal first
   activeTierKey = tierKey;
@@ -442,10 +507,14 @@ checkBtn?.addEventListener("click", async () => {
       // Treat it as the active payment for this tier and persist it for refresh-resume
       activePaymentId = pid;
       if (payIdEl) payIdEl.textContent = pid;
+      const currentIntent =
+        String(getPaymentSession()?.intent || localStorage.getItem("risx_last_payment_intent") || localStorage.getItem("risx_payment_intent") || "entry").toLowerCase() === "restart"
+          ? "restart"
+          : "entry";
 
       setPaymentSession({
         status: "paid",
-        intent: "entry",
+        intent: currentIntent,
         tier: activeTierKey,
         invoiceId: pid,
         paymentId: pid,

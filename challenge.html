@@ -637,7 +637,7 @@
           </button>
 
           <button id="adminTabUsers" class="btn small" type="button">
-            Users <span id="adminCountUsers" class="admin-count">0</span>
+            Runs <span id="adminCountUsers" class="admin-count">0</span>
           </button>
         </div>
 
@@ -646,6 +646,16 @@
               <input id="adminPendingOnly" type="checkbox" checked />
               Pending only
             </label>
+            <select id="adminStatusFilter" class="admin-search" style="max-width:180px;">
+              <option value="all" selected>All statuses</option>
+              <option value="pending_review">Pending review</option>
+              <option value="active">Active</option>
+              <option value="failed">Failed</option>
+              <option value="won">Won</option>
+              <option value="claimed">Claimed</option>
+              <option value="paid">Paid</option>
+              <option value="void">Void</option>
+            </select>
             <input id="adminSearch" class="admin-search" type="text" placeholder="Search wallet / notes…" />
             <button id="adminRefreshBtn" class="btn small secondary" type="button">Refresh</button>
           </div>
@@ -682,7 +692,6 @@
 
         <div id="adminViewDeposits" class="admin-view"></div>
         <div id="adminViewWithdrawals" class="admin-view hidden"></div>
-        <div id="adminViewUsers" class="admin-view hidden"></div>
         <div id="adminViewClaims" class="admin-view hidden"></div>
         <div id="adminViewUsers" class="admin-view hidden"></div>
       </div>
