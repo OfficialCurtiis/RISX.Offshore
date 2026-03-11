@@ -221,16 +221,19 @@ async function checkAdminSession() {
   return adminSessionAuthed;
 }
 
+function closeNonAdminModals() {
+  const maybeClose = (el) => { if (el) closeModal?.(el); };
+  maybeClose(document.getElementById("payModal"));
+  maybeClose(challengeModal);
+  maybeClose(depositModal);
+  maybeClose(withdrawModal);
+  maybeClose(risxInputModal);
+  maybeClose(risxPayoutModal);
+}
+
 async function openAdminEntry() {
-  try {
-    const authed = await checkAdminSession();
-    if (authed) {
-      closeModal?.(adminLoginModal);
-      setAdminLoginMessage("", false);
-      openAdminPanel();
-      return;
-    }
-  } catch {}
+  closeNonAdminModals();
+  await logoutAdminSession({ showLogin: false, silent: true });
 
   if (adminLoginPassword) adminLoginPassword.value = "";
   setAdminLoginMessage("Admin login required.");
@@ -276,16 +279,36 @@ async function submitAdminLogin(e) {
   openAdminPanel();
 }
 
-async function logoutAdminSession() {
-  const { ok, data } = await apiJson("/api/admin/logout", { method: "POST" });
+async function logoutAdminSession({ showLogin = true, silent = false } = {}) {
+  let ok = false;
+  let data = {};
+  try {
+    const res = await apiJson("/api/admin/logout", { method: "POST" });
+    ok = !!res.ok;
+    data = res.data || {};
+  } catch {}
+
   adminSessionAuthed = false;
   closeModal?.(adminModal);
+
   if (adminLoginPassword) adminLoginPassword.value = "";
-  if (ok) {
-    setAdminLoginMessage("Signed out.", false);
-  } else {
-    setAdminLoginMessage(String(data?.error || "Logout failed. Please sign in again."));
+
+  if (!showLogin) {
+    closeModal?.(adminLoginModal);
+    if (!silent && !ok) {
+      setAdminLoginMessage(String(data?.error || "Logout failed. Please sign in again."));
+    } else {
+      setAdminLoginMessage("", false);
+    }
+    return;
   }
+
+  if (!silent) {
+    setAdminLoginMessage(ok ? "Signed out." : String(data?.error || "Logout failed. Please sign in again."), ok);
+  } else {
+    setAdminLoginMessage("", false);
+  }
+
   openModal?.(adminLoginModal);
 }
 
@@ -4578,7 +4601,7 @@ function renderChallengeParams(){
 }
 
 function renderAdminList(list, kind){
-  if (!list.length) return `<div class="redeem-empty">Nothing here.</div>`;
+  if (!list.length) return `<div class="redeem-empty">User Runs:</div>`;
   return list.map(r => `
     <div class="admin-row">
       <div class="admin-col">
@@ -5350,10 +5373,10 @@ function init() {
     btn.addEventListener("click", () => closeModal?.(withdrawModal))
   );
   document.querySelectorAll("[data-admin-close]").forEach(btn =>
-    btn.addEventListener("click", () => closeModal?.(adminModal))
+    btn.addEventListener("click", () => { void logoutAdminSession({ showLogin: false, silent: true }); })
   );
   document.querySelectorAll("[data-admin-login-close]").forEach(btn =>
-    btn.addEventListener("click", () => closeModal?.(adminLoginModal))
+    btn.addEventListener("click", () => { void logoutAdminSession({ showLogin: false, silent: true }); })
   );
 
   // FOOTER LINKS //
