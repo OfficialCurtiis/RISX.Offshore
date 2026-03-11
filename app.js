@@ -2037,6 +2037,31 @@ function setClaimRecoveryState(nextState) {
   renderRecoveryCtas?.();
 }
 
+async function promptStartNewChallenge() {
+  const goAgain = await risxConfirm({
+    title: "Start a new challenge?",
+    body: "Want to jump back in with standard entry pricing?",
+    okText: "Yes",
+    cancelText: "No",
+  });
+
+  if (goAgain) {
+    localStorage.setItem("risx_payment_intent", "entry");
+    localStorage.removeItem("risx_restart_required");
+    localStorage.removeItem("risx_reset_expires_at");
+    localStorage.removeItem(RESTART_FAILED_RUN_ID_KEY);
+
+    closeModal?.(risxPayoutModal);
+    closeModal?.(document.getElementById("winModal"));
+    renderTierSummary?.();
+    openModal?.(challengeModal);
+    if (challengeMsg) challengeMsg.textContent = "Pick a tier to begin.";
+    return;
+  }
+
+  window.location.href = "index.html";
+}
+
 function burnChallengeAccessState({ clearResetFlags = false } = {}) {
   challengeActive = false;
   CHALLENGE.active = false;
@@ -5868,11 +5893,13 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
       submitClaimBtn.textContent = "Claim Submitted";
     }
 
-    void risxAlert({
+    await risxAlert({
       title: "Claim Submitted",
       body: "Manual review + payout is typically completed within 24h.",
       okText: "Done",
     });
+
+    await promptStartNewChallenge();
   }
 
   if (submitClaimBtn && !submitClaimBtn._bound) {
