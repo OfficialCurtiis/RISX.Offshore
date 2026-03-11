@@ -186,7 +186,7 @@ const DEBUG = false;
 function openAdminPanel() {
   openModal?.(adminModal);
   setAdminTab?.("deposits");
-  renderAdmin?.();
+  void renderAdmin?.();
   checkAdminStatus?.();
 }
 
@@ -1693,7 +1693,7 @@ function setActiveWallet(w) {
 }
 
 // =============================
-// RUN LIFECYCLE (local only for now)
+// RUN LIFECYCLE
 // =============================
 
 function getRun() {
@@ -4107,8 +4107,66 @@ const withdrawalsKey= `${RISX_SAVE_KEY}::withdrawals`;
 const claimsKey = `${RISX_SAVE_KEY}::claims`;
 const paymentRecordsKey = `${RISX_SAVE_KEY}::challenge_payments`;
 const runsKey = `${RISX_SAVE_KEY}::challenge_runs`;
+const runsSupabaseMigrationKey = `${RISX_SAVE_KEY}::runs_supabase_migrated_v1`;
 const playerWalletKey = `${RISX_SAVE_KEY}::player_wallet`;
 const playerEmailKey = `${RISX_SAVE_KEY}::player_email`;
+
+function readEnvValue(key) {
+  const k = String(key || "");
+  if (!k) return "";
+  const fromWindow = String(
+    window?.[k]
+    || window?.__RISX_ENV__?.[k]
+    || window?.__ENV__?.[k]
+    || ""
+  ).trim();
+  if (fromWindow) return fromWindow;
+  const fromMeta = String(document?.querySelector?.(`meta[name="${k}"]`)?.getAttribute("content") || "").trim();
+  if (fromMeta) return fromMeta;
+  return "";
+}
+
+function toEpochMs(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  if (Number.isFinite(n) && n > 0) return n;
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function toIsoTimestamp(value) {
+  const ms = toEpochMs(value);
+  return ms ? new Date(ms).toISOString() : null;
+}
+
+function parseJsonObject(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value);
+    return (parsed && typeof parsed === "object") ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+const supabaseUrl = readEnvValue("VITE_SUPABASE_URL");
+const supabaseAnonKey = readEnvValue("VITE_SUPABASE_ANON_KEY");
+const supabaseClient = (window?.supabase?.createClient && supabaseUrl && supabaseAnonKey)
+  ? window.supabase.createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    })
+  : null;
+const supabaseRunsEnabled = !!supabaseClient;
+const runSyncQueue = new Map();
+let runRecordsCache = [];
+let runRecordsReady = false;
+let runRecordsLoadPromise = null;
 
 function auditWallet() {
   const stored = String(localStorage.getItem(playerWalletKey) || "").trim();
@@ -4218,40 +4276,263 @@ function getPaymentRecordById(paymentId) {
   return readPaymentRecords().find((p) => p.paymentId === id) || null;
 }
 
+function normalizeRunRecord(raw = {}) {
+  const r = (raw && typeof raw === "object") ? raw : {};
+  const events = Array.isArray(r.events) ? r.events : [];
+  const pnl = (r.pnl === null || r.pnl === undefined || r.pnl === "") ? null : Number(r.pnl);
+  return {
+    runId: String(r.runId || r.run_id || r.id || ""),
+    paymentId: String(r.paymentId || r.payment_id || ""),
+    wallet: String(r.wallet || r.wallet_address || ""),
+    email: String(r.email || ""),
+    tier: String(r.tier || ""),
+    tokenId: String(r.tokenId || r.unlockToken || ""),
+    status: normalizeRunStatus(r.status),
+    startedAt: toEpochMs(r.startedAt || r.started_at),
+    endedAt: toEpochMs(r.endedAt || r.ended_at),
+    resumedAt: toEpochMs(r.resumedAt),
+    failReason: r.failReason ? String(r.failReason) : "",
+    finalScore: r.finalScore ?? null,
+    finalProgress: r.finalProgress ?? null,
+    finalStep: r.finalStep ?? null,
+    finalMultiplier: r.finalMultiplier ?? null,
+    finalState: r.finalState ?? null,
+    durationMs: Number(r.durationMs || 0),
+    resetRequired: !!r.resetRequired,
+    restartPaymentId: String(r.restartPaymentId || ""),
+    claimId: String(r.claimId || ""),
+    adminNotes: String(r.adminNotes || ""),
+    adminGranted: !!r.adminGranted,
+    createdAt: toEpochMs(r.createdAt || r.created_at) || Date.now(),
+    updatedAt: toEpochMs(r.updatedAt || r.updated_at) || Date.now(),
+    result: r.result ? String(r.result) : "",
+    pnl: Number.isFinite(pnl) ? pnl : null,
+    events: events.map((e) => ({ ...e, ts: toEpochMs(e?.ts) || Date.now() })),
+  };
+}
+
+function cloneRunRecord(run) {
+  return normalizeRunRecord({
+    ...run,
+    events: Array.isArray(run?.events) ? run.events.map((evt) => ({ ...evt })) : [],
+  });
+}
+
+function sortRunRecords(list = []) {
+  return [...list].sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+}
+
+function deriveRunResult(run) {
+  const status = String(run?.status || "").toLowerCase();
+  if (["won", "claimed", "paid"].includes(status)) return "pass";
+  if (status === "failed") return "fail";
+  if (status === "void") return "void";
+  if (["ready", "active", "resumed"].includes(status)) return "in_progress";
+  if (status === "created") return "pending";
+  return status || null;
+}
+
+function deriveRunPnl(run) {
+  const explicit = Number(run?.pnl);
+  if (Number.isFinite(explicit)) return explicit;
+  const tierKey = String(run?.tier || "").toLowerCase();
+  const tierCfg = CHALLENGE_TIERS[tierKey];
+  const startCredits = Number(tierCfg?.startCredits);
+  if (!Number.isFinite(startCredits)) return null;
+  if (String(run?.status || "").toLowerCase() === "failed") return -startCredits;
+  const finalScore = Number(run?.finalScore);
+  if (Number.isFinite(finalScore)) return finalScore - startCredits;
+  if (["won", "claimed", "paid"].includes(String(run?.status || "").toLowerCase())) {
+    const goal = Number(tierCfg?.goalCredits);
+    if (Number.isFinite(goal)) return goal - startCredits;
+  }
+  return null;
+}
+
+function buildRunMetadata(run) {
+  return {
+    email: String(run.email || ""),
+    tokenId: String(run.tokenId || ""),
+    resumedAt: run.resumedAt || null,
+    failReason: String(run.failReason || ""),
+    finalScore: run.finalScore ?? null,
+    finalProgress: run.finalProgress ?? null,
+    finalStep: run.finalStep ?? null,
+    finalMultiplier: run.finalMultiplier ?? null,
+    finalState: run.finalState ?? null,
+    durationMs: Number(run.durationMs || 0),
+    resetRequired: !!run.resetRequired,
+    restartPaymentId: String(run.restartPaymentId || ""),
+    claimId: String(run.claimId || ""),
+    adminNotes: String(run.adminNotes || ""),
+    adminGranted: !!run.adminGranted,
+    events: Array.isArray(run.events) ? run.events.map((evt) => ({ ...evt })) : [],
+  };
+}
+
+function mapRunRecordToSupabaseRow(runInput) {
+  const run = normalizeRunRecord(runInput);
+  const now = Date.now();
+  const result = deriveRunResult(run);
+  const pnl = deriveRunPnl(run);
+  return {
+    run_id: run.runId,
+    wallet_address: run.wallet || "",
+    tier: run.tier || "",
+    status: run.status || "created",
+    payment_id: run.paymentId || null,
+    result,
+    pnl,
+    started_at: toIsoTimestamp(run.startedAt),
+    ended_at: toIsoTimestamp(run.endedAt),
+    metadata: buildRunMetadata(run),
+    created_at: toIsoTimestamp(run.createdAt) || new Date(now).toISOString(),
+    updated_at: new Date(run.updatedAt || now).toISOString(),
+  };
+}
+
+function mapSupabaseRowToRunRecord(row) {
+  const metadata = parseJsonObject(row?.metadata);
+  return normalizeRunRecord({
+    runId: row?.run_id,
+    paymentId: row?.payment_id,
+    wallet: row?.wallet_address,
+    tier: row?.tier,
+    status: row?.status,
+    startedAt: row?.started_at,
+    endedAt: row?.ended_at,
+    createdAt: row?.created_at,
+    updatedAt: row?.updated_at,
+    result: row?.result ?? metadata.result,
+    pnl: row?.pnl ?? metadata.pnl,
+    ...metadata,
+  });
+}
+
+function upsertRunCache(runInput) {
+  const run = normalizeRunRecord(runInput);
+  if (!run.runId) return;
+  const idx = runRecordsCache.findIndex((item) => item.runId === run.runId);
+  if (idx >= 0) runRecordsCache[idx] = run;
+  else runRecordsCache.unshift(run);
+  runRecordsCache = sortRunRecords(runRecordsCache);
+}
+
+async function refreshRunRecordsFromSupabase({ silent = false } = {}) {
+  if (!supabaseRunsEnabled) return runRecordsCache.map(cloneRunRecord);
+  const { data, error } = await supabaseClient
+    .from("runs")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) {
+    if (!silent) console.error("[RISX] Failed to read runs from Supabase:", error.message || error);
+    return runRecordsCache.map(cloneRunRecord);
+  }
+  runRecordsCache = sortRunRecords((Array.isArray(data) ? data : []).map(mapSupabaseRowToRunRecord).filter((r) => !!r.runId));
+  runRecordsReady = true;
+  return runRecordsCache.map(cloneRunRecord);
+}
+
+async function syncRunRecordToSupabase(runInput) {
+  if (!supabaseRunsEnabled) return;
+  const run = normalizeRunRecord({ ...runInput, updatedAt: Date.now() });
+  if (!run.runId) return;
+  const payload = mapRunRecordToSupabaseRow(run);
+  const { error } = await supabaseClient
+    .from("runs")
+    .upsert(payload, { onConflict: "run_id" });
+  if (error) {
+    console.error(`[RISX] Failed to upsert run ${run.runId}:`, error.message || error);
+  }
+}
+
+function queueRunSync(runInput) {
+  if (!supabaseRunsEnabled) return;
+  const run = normalizeRunRecord({ ...runInput, updatedAt: Date.now() });
+  if (!run.runId) return;
+  upsertRunCache(run);
+  const runId = run.runId;
+  const prev = runSyncQueue.get(runId) || Promise.resolve();
+  const next = prev
+    .catch(() => {})
+    .then(() => syncRunRecordToSupabase(run))
+    .finally(() => {
+      if (runSyncQueue.get(runId) === next) runSyncQueue.delete(runId);
+    });
+  runSyncQueue.set(runId, next);
+}
+
+async function migrateLegacyRunsToSupabase() {
+  if (!supabaseRunsEnabled) return false;
+  if (localStorage.getItem(runsSupabaseMigrationKey) === "1") return false;
+  const legacyRuns = readList(runsKey).filter(Boolean).map(normalizeRunRecord).filter((r) => !!r.runId);
+  if (!legacyRuns.length) {
+    localStorage.setItem(runsSupabaseMigrationKey, "1");
+    return false;
+  }
+  const existing = new Set(runRecordsCache.map((r) => r.runId));
+  const pending = legacyRuns.filter((r) => !existing.has(r.runId));
+  if (pending.length) {
+    const rows = pending.map(mapRunRecordToSupabaseRow);
+    const { error } = await supabaseClient.from("runs").upsert(rows, { onConflict: "run_id" });
+    if (error) {
+      console.error("[RISX] Failed legacy run migration:", error.message || error);
+      return false;
+    }
+  }
+  localStorage.removeItem(runsKey);
+  localStorage.setItem(runsSupabaseMigrationKey, "1");
+  return pending.length > 0;
+}
+
+async function ensureRunRecordsReady(opts = {}) {
+  const force = !!opts?.force;
+  if (!supabaseRunsEnabled) {
+    if (!runRecordsReady || force) {
+      runRecordsCache = sortRunRecords(readList(runsKey).filter(Boolean).map(normalizeRunRecord).filter((r) => !!r.runId));
+      runRecordsReady = true;
+    }
+    return runRecordsCache.map(cloneRunRecord);
+  }
+  if (!force && runRecordsReady) return runRecordsCache.map(cloneRunRecord);
+  if (!force && runRecordsLoadPromise) return runRecordsLoadPromise;
+
+  runRecordsLoadPromise = (async () => {
+    await refreshRunRecordsFromSupabase({ silent: true });
+    const migrated = await migrateLegacyRunsToSupabase();
+    if (migrated || force || !runRecordsReady) {
+      await refreshRunRecordsFromSupabase({ silent: false });
+    }
+    runRecordsReady = true;
+    return runRecordsCache.map(cloneRunRecord);
+  })()
+    .finally(() => {
+      runRecordsLoadPromise = null;
+    });
+
+  return runRecordsLoadPromise;
+}
+
 function readRunRecords() {
-  return readList(runsKey).filter(Boolean).map((r) => {
-    const events = Array.isArray(r.events) ? r.events : [];
-    return {
-      runId: String(r.runId || r.id || ""),
-      paymentId: String(r.paymentId || ""),
-      wallet: String(r.wallet || ""),
-      email: String(r.email || ""),
-      tier: String(r.tier || ""),
-      tokenId: String(r.tokenId || r.unlockToken || ""),
-      status: normalizeRunStatus(r.status),
-      startedAt: r.startedAt ? Number(r.startedAt) : null,
-      endedAt: r.endedAt ? Number(r.endedAt) : null,
-      resumedAt: r.resumedAt ? Number(r.resumedAt) : null,
-      failReason: r.failReason ? String(r.failReason) : "",
-      finalScore: r.finalScore ?? null,
-      finalProgress: r.finalProgress ?? null,
-      finalStep: r.finalStep ?? null,
-      finalMultiplier: r.finalMultiplier ?? null,
-      finalState: r.finalState ?? null,
-      durationMs: Number(r.durationMs || 0),
-      resetRequired: !!r.resetRequired,
-      restartPaymentId: String(r.restartPaymentId || ""),
-      claimId: String(r.claimId || ""),
-      adminNotes: String(r.adminNotes || ""),
-      adminGranted: !!r.adminGranted,
-      createdAt: Number(r.createdAt || Date.now()),
-      events: events.map((e) => ({ ...e, ts: Number(e?.ts || Date.now()) })),
-    };
-  }).filter((r) => !!r.runId);
+  if (!runRecordsReady && !supabaseRunsEnabled) {
+    runRecordsCache = sortRunRecords(readList(runsKey).filter(Boolean).map(normalizeRunRecord).filter((r) => !!r.runId));
+    runRecordsReady = true;
+  }
+  if (supabaseRunsEnabled && !runRecordsReady && !runRecordsLoadPromise) {
+    void ensureRunRecordsReady();
+  }
+  return runRecordsCache.map(cloneRunRecord);
 }
 
 function writeRunRecords(list) {
-  writeList(runsKey, list || []);
+  const normalizedList = sortRunRecords((list || []).filter(Boolean).map(normalizeRunRecord).filter((r) => !!r.runId));
+  runRecordsCache = normalizedList;
+  runRecordsReady = true;
+  if (!supabaseRunsEnabled) {
+    writeList(runsKey, normalizedList);
+    return;
+  }
+  normalizedList.forEach((run) => queueRunSync(run));
 }
 
 function appendRunEvent(run, event) {
@@ -4800,8 +5081,15 @@ function adminAdjustBalance(wallet, delta) {
 }
 
 // main admin renderer
-function renderAdmin() {
+async function renderAdmin() {
   if (!adminViewDeposits || !adminViewWithdrawals || !adminViewUsers) return;
+  if (supabaseRunsEnabled) {
+    try {
+      await ensureRunRecordsReady({ force: true });
+    } catch (err) {
+      console.error("[RISX] Failed to refresh runs for admin:", err);
+    }
+  }
 
   const q = (adminSearch?.value || "").trim().toLowerCase();
   const pendingOnly = !!adminPendingOnly?.checked;
@@ -5138,9 +5426,11 @@ function initPlinko() {
   if (plinkoDropBtn) plinkoDropBtn.onclick = (e) => dropPlinkoBall(e);
 }
 
-function init() {
+async function init() {
   if (init._didBind) return;
   init._didBind = true;
+
+  await ensureRunRecordsReady();
 
   failModal = document.getElementById("failModal");
   const failCloseBtn = document.getElementById("failCloseBtn");
@@ -5491,6 +5781,7 @@ function consumeUnlockForStartedRun() {
 }
 
 async function ensureReadyRunForTier(tier) {
+  await ensureRunRecordsReady();
   const tierKey = String(tier || "").toLowerCase();
   if (!tierKey) return null;
 
@@ -6052,4 +6343,4 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
   document.documentElement.classList.remove("booting");
 }
 
-document.addEventListener("DOMContentLoaded", init); 
+document.addEventListener("DOMContentLoaded", () => { void init(); }); 
