@@ -3580,22 +3580,71 @@ function setupPresetButtons() {
 // CRASH: LOGIC
 // =========================
 
+function weightedRand(min, max, power = 1) {
+  const r = Math.pow(Math.random(), power);
+  return min + (max - min) * r;
+}
+
 function generateCrashPoint() {
-  const houseEdge = 0.03;
   const r = Math.random();
 
-  // Inverse-style distribution (like many crash games use)
-  // Raw ~ 1/(1 - r) gives a long tail.
-  let raw = 1 / (1 - r);
+  // ~58% under 2x change, increase house edge change to r < 0.65
+  if (r < 0.58) {
+    return parseFloat(weightedRand(1.01, 1.99, 2.4).toFixed(2));
+  }
 
-  // Apply house edge and clamp for sanity
-  let point = raw * (1 - houseEdge);
+  // ~26% from 2x to 5x, 
+  if (r < 0.84) {
+    return parseFloat(weightedRand(2.00, 4.99, 1.9).toFixed(2));
+  }
 
-  // Enforce minimum and maximum
-  if (point < 1.01) point = 1.01;
-  if (point > 250) point = 250;
+  // ~10% from 5x to 10x
+  if (r < 0.94) {
+    return parseFloat(weightedRand(5.00, 9.99, 1.6).toFixed(2));
+  }
 
-  return parseFloat(point.toFixed(2));
+  // ~4.5% from 10x to 25x for higher hosue edge change r < 0.985 to .992
+  if (r < 0.985) {
+    return parseFloat(weightedRand(10.00, 24.99, 1.3).toFixed(2));
+  }
+
+  // ~1.5% above 25x
+  return parseFloat(weightedRand(25.00, 60.00, 1.0).toFixed(2));
+}
+
+function testCrashDistribution(rounds = 1000) {
+  let under2 = 0;
+  let from2to5 = 0;
+  let from5to10 = 0;
+  let from10to25 = 0;
+  let over25 = 0;
+
+  let maxSeen = 0;
+  let minSeen = Infinity;
+  let total = 0;
+
+  for (let i = 0; i < rounds; i++) {
+    const v = generateCrashPoint();
+    total += v;
+    if (v > maxSeen) maxSeen = v;
+    if (v < minSeen) minSeen = v;
+
+    if (v < 2) under2++;
+    else if (v < 5) from2to5++;
+    else if (v < 10) from5to10++;
+    else if (v < 25) from10to25++;
+    else over25++;
+  }
+
+  console.log(`Rounds: ${rounds}`);
+  console.log(`Under 2x: ${under2} (${((under2 / rounds) * 100).toFixed(1)}%)`);
+  console.log(`2x to <5x: ${from2to5} (${((from2to5 / rounds) * 100).toFixed(1)}%)`);
+  console.log(`5x to <10x: ${from5to10} (${((from5to10 / rounds) * 100).toFixed(1)}%)`);
+  console.log(`10x to <25x: ${from10to25} (${((from10to25 / rounds) * 100).toFixed(1)}%)`);
+  console.log(`25x+: ${over25} (${((over25 / rounds) * 100).toFixed(1)}%)`);
+  console.log(`Min seen: ${minSeen.toFixed(2)}x`);
+  console.log(`Max seen: ${maxSeen.toFixed(2)}x`);
+  console.log(`Average: ${(total / rounds).toFixed(2)}x`);
 }
 
 function updateCrashVisuals() {
