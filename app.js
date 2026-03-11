@@ -1707,9 +1707,10 @@ function getRun() {
 }
 
 function startRun(tier) {
-  const t = String(tier || "");
+  const t = String(tier || "").toLowerCase();
   const session = getPaymentSessionState?.();
-  const paymentId = (session && session.tier === t) ? String(session.paymentId || "") : "";
+  const sessionTier = String(session?.tier || "").toLowerCase();
+  const paymentId = (session && sessionTier === t) ? String(session.paymentId || "") : "";
   const run = markRunStarted?.({ tier: t, paymentId });
   if (!run?.runId) {
     toast?.("Challenge could not start because no valid run was found.");
@@ -1774,7 +1775,7 @@ function normalizePaymentSession(raw) {
 
   const status = String(raw.status || "").toLowerCase();
   const intent = String(raw.intent || "entry").toLowerCase();
-  const tier = String(raw.tier || raw.tierKey || "").trim();
+  const tier = String(raw.tier || raw.tierKey || "").trim().toLowerCase();
   const invoiceId = String(raw.invoiceId || "").trim();
   const paymentId = String(raw.paymentId || raw.payment_id || invoiceId).trim();
 
@@ -4352,10 +4353,11 @@ function createRunFromPayment(paymentPayload = {}, opts = {}) {
 function markRunStarted({ tier, paymentId } = {}) {
   const list = readRunRecords();
   const isStartableStatus = (r) => ["ready", "active", "resumed"].includes(String(r?.status || "").toLowerCase());
+  const tierKey = String(tier || "").toLowerCase();
   const byPayment = paymentId ? list.find((r) => r.paymentId === String(paymentId)) : null;
   const byLocalRunId = list.find((r) => r.runId === String(localStorage.getItem(RUN_ID_KEY) || ""));
   const byTier = list
-    .filter((r) => r.tier === String(tier || "") && isStartableStatus(r) && !r.claimId)
+    .filter((r) => String(r.tier || "").toLowerCase() === tierKey && isStartableStatus(r) && !r.claimId)
     .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0] || null;
   const run = [byPayment, byLocalRunId, byTier].find((r) => r && isStartableStatus(r)) || null;
   if (!run) return null;
@@ -5509,14 +5511,14 @@ async function ensureReadyRunForTier(tier) {
       paymentId: session.paymentId,
       wallet: auditWallet(),
       email: auditEmail(),
-      tier: session.tier,
+      tier: tierKey,
       amount: Number(session.amount || 0),
       currency: String(session.currency || ""),
       status: "paid",
       paidAt: Date.now(),
       createdAt: session.createdAt || Date.now(),
     }, {
-      tier: session.tier,
+      tier: tierKey,
       tokenId: token.slice(0, 24),
       intent: session.intent || "entry",
       failedRunId: localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "",
