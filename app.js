@@ -3612,41 +3612,6 @@ function generateCrashPoint() {
   return parseFloat(weightedRand(25.00, 60.00, 1.0).toFixed(2));
 }
 
-function testCrashDistribution(rounds = 1000) {
-  let under2 = 0;
-  let from2to5 = 0;
-  let from5to10 = 0;
-  let from10to25 = 0;
-  let over25 = 0;
-
-  let maxSeen = 0;
-  let minSeen = Infinity;
-  let total = 0;
-
-  for (let i = 0; i < rounds; i++) {
-    const v = generateCrashPoint();
-    total += v;
-    if (v > maxSeen) maxSeen = v;
-    if (v < minSeen) minSeen = v;
-
-    if (v < 2) under2++;
-    else if (v < 5) from2to5++;
-    else if (v < 10) from5to10++;
-    else if (v < 25) from10to25++;
-    else over25++;
-  }
-
-  console.log(`Rounds: ${rounds}`);
-  console.log(`Under 2x: ${under2} (${((under2 / rounds) * 100).toFixed(1)}%)`);
-  console.log(`2x to <5x: ${from2to5} (${((from2to5 / rounds) * 100).toFixed(1)}%)`);
-  console.log(`5x to <10x: ${from5to10} (${((from5to10 / rounds) * 100).toFixed(1)}%)`);
-  console.log(`10x to <25x: ${from10to25} (${((from10to25 / rounds) * 100).toFixed(1)}%)`);
-  console.log(`25x+: ${over25} (${((over25 / rounds) * 100).toFixed(1)}%)`);
-  console.log(`Min seen: ${minSeen.toFixed(2)}x`);
-  console.log(`Max seen: ${maxSeen.toFixed(2)}x`);
-  console.log(`Average: ${(total / rounds).toFixed(2)}x`);
-}
-
 function updateCrashVisuals() {
   if (crashBigMultEl) {
   crashBigMultEl.textContent = formatMult(crashCurrentMult);
