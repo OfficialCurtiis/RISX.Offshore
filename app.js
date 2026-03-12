@@ -4111,17 +4111,19 @@ const runsSupabaseMigrationKey = `${RISX_SAVE_KEY}::runs_supabase_migrated_v1`;
 const playerWalletKey = `${RISX_SAVE_KEY}::player_wallet`;
 const playerEmailKey = `${RISX_SAVE_KEY}::player_email`;
 
-function resolveRuntimeConfigValue(entries = []) {
-  for (const entry of entries) {
-    const value = String(entry?.value || "").trim();
-    if (!value) continue;
-    return { value, source: String(entry?.source || "unknown") };
-  }
-  return { value: "", source: "unset" };
-}
-
-function getMetaConfig(name) {
-  return String(document?.querySelector?.(`meta[name="${name}"]`)?.getAttribute("content") || "").trim();
+function readEnvValue(key) {
+  const k = String(key || "");
+  if (!k) return "";
+  const fromWindow = String(
+    window?.[k]
+    || window?.__RISX_ENV__?.[k]
+    || window?.__ENV__?.[k]
+    || ""
+  ).trim();
+  if (fromWindow) return fromWindow;
+  const fromMeta = String(document?.querySelector?.(`meta[name="${k}"]`)?.getAttribute("content") || "").trim();
+  if (fromMeta) return fromMeta;
+  return "";
 }
 
 function toEpochMs(value) {
@@ -4149,77 +4151,22 @@ function parseJsonObject(value) {
   }
 }
 
-const supabaseUrlConfig = resolveRuntimeConfigValue([
-  { source: "window.RISX_SUPABASE_URL", value: window?.RISX_SUPABASE_URL },
-  { source: "window.RISX_SUPABASE.url", value: window?.RISX_SUPABASE?.url },
-  { source: "window.SUPABASE_URL", value: window?.SUPABASE_URL },
-  { source: "window.__RISX_ENV__.RISX_SUPABASE_URL", value: window?.__RISX_ENV__?.RISX_SUPABASE_URL },
-  { source: "window.__RISX_ENV__.VITE_SUPABASE_URL", value: window?.__RISX_ENV__?.VITE_SUPABASE_URL },
-  { source: "window.__ENV__.RISX_SUPABASE_URL", value: window?.__ENV__?.RISX_SUPABASE_URL },
-  { source: "window.__ENV__.VITE_SUPABASE_URL", value: window?.__ENV__?.VITE_SUPABASE_URL },
-  { source: "window.VITE_SUPABASE_URL", value: window?.VITE_SUPABASE_URL },
-  { source: "meta[risx-supabase-url]", value: getMetaConfig("risx-supabase-url") },
-  { source: "meta[SUPABASE_URL]", value: getMetaConfig("SUPABASE_URL") },
-  { source: "meta[VITE_SUPABASE_URL]", value: getMetaConfig("VITE_SUPABASE_URL") },
-]);
-const supabaseKeyConfig = resolveRuntimeConfigValue([
-  { source: "window.RISX_SUPABASE_ANON_KEY", value: window?.RISX_SUPABASE_ANON_KEY },
-  { source: "window.RISX_SUPABASE.anonKey", value: window?.RISX_SUPABASE?.anonKey },
-  { source: "window.RISX_SUPABASE.publishableKey", value: window?.RISX_SUPABASE?.publishableKey },
-  { source: "window.SUPABASE_ANON_KEY", value: window?.SUPABASE_ANON_KEY },
-  { source: "window.SUPABASE_PUBLISHABLE_KEY", value: window?.SUPABASE_PUBLISHABLE_KEY },
-  { source: "window.__RISX_ENV__.RISX_SUPABASE_ANON_KEY", value: window?.__RISX_ENV__?.RISX_SUPABASE_ANON_KEY },
-  { source: "window.__RISX_ENV__.VITE_SUPABASE_ANON_KEY", value: window?.__RISX_ENV__?.VITE_SUPABASE_ANON_KEY },
-  { source: "window.__ENV__.RISX_SUPABASE_ANON_KEY", value: window?.__ENV__?.RISX_SUPABASE_ANON_KEY },
-  { source: "window.__ENV__.VITE_SUPABASE_ANON_KEY", value: window?.__ENV__?.VITE_SUPABASE_ANON_KEY },
-  { source: "window.VITE_SUPABASE_ANON_KEY", value: window?.VITE_SUPABASE_ANON_KEY },
-  { source: "meta[risx-supabase-anon-key]", value: getMetaConfig("risx-supabase-anon-key") },
-  { source: "meta[SUPABASE_ANON_KEY]", value: getMetaConfig("SUPABASE_ANON_KEY") },
-  { source: "meta[VITE_SUPABASE_ANON_KEY]", value: getMetaConfig("VITE_SUPABASE_ANON_KEY") },
-]);
-const supabaseUrl = supabaseUrlConfig.value;
-const supabaseAnonKey = supabaseKeyConfig.value;
-
-console.log("supabaseUrl:", supabaseUrl);
-console.log("has supabase key:", !!supabaseAnonKey);
-
-const supabaseRuntimeInfo = {
-  urlDefined: !!supabaseUrl,
-  keyDefined: !!supabaseAnonKey,
-  urlSource: supabaseUrlConfig.source,
-  keySource: supabaseKeyConfig.source,
-  hasCreateClientFactory: !!window?.supabase?.createClient,
-};
-console.info("[RISX][Supabase] Runtime config:", supabaseRuntimeInfo);
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error("[RISX][Supabase] Missing runtime URL/key. Provide browser runtime config via window.RISX_SUPABASE_URL + window.RISX_SUPABASE_ANON_KEY (or supported fallbacks).", supabaseRuntimeInfo);
-}
-if (!window?.supabase?.createClient) {
-  console.error("[RISX][Supabase] window.supabase.createClient is unavailable. Ensure @supabase/supabase-js is loaded before app.js.");
-}
-
-let supabaseClient = null;
-try {
-  if (window?.supabase?.createClient && supabaseUrl && supabaseAnonKey) {
-    supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey, {
+const supabaseUrl = readEnvValue("VITE_SUPABASE_URL");
+const supabaseAnonKey = readEnvValue("VITE_SUPABASE_ANON_KEY");
+const supabaseClient = (window?.supabase?.createClient && supabaseUrl && supabaseAnonKey)
+  ? window.supabase.createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
         detectSessionInUrl: false,
       },
-    });
-  }
-} catch (err) {
-  console.error("[RISX][Supabase] createClient failed:", err);
-}
+    })
+  : null;
 const supabaseRunsEnabled = !!supabaseClient;
 const runSyncQueue = new Map();
 let runRecordsCache = [];
 let runRecordsReady = false;
 let runRecordsLoadPromise = null;
-const supabaseProbeSessionKey = `${RISX_SAVE_KEY}::supabase_runs_probe_done`;
-let supabaseProbePromise = null;
-let supabaseProbeDone = false;
 
 function auditWallet() {
   const stored = String(localStorage.getItem(playerWalletKey) || "").trim();
@@ -4462,87 +4409,6 @@ function mapSupabaseRowToRunRecord(row) {
   });
 }
 
-function isSupabaseProbeRow(row) {
-  const metadata = parseJsonObject(row?.metadata);
-  return !!metadata?.systemProbe;
-}
-
-function getProbeSessionFlag() {
-  try {
-    return sessionStorage.getItem(supabaseProbeSessionKey) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function setProbeSessionFlag() {
-  try {
-    sessionStorage.setItem(supabaseProbeSessionKey, "1");
-  } catch {}
-}
-
-async function runSupabaseDirectInsertProbe({ force = false } = {}) {
-  if (!supabaseRunsEnabled) return { ok: false, skipped: true, reason: "supabase_disabled" };
-  if (!force && supabaseProbeDone) return { ok: true, skipped: true, reason: "already_tested" };
-  if (!force && getProbeSessionFlag()) {
-    supabaseProbeDone = true;
-    return { ok: true, skipped: true, reason: "session_already_tested" };
-  }
-  if (!force && supabaseProbePromise) return supabaseProbePromise;
-
-  supabaseProbePromise = (async () => {
-    const now = Date.now();
-    const probeRunId = `probe_${now}_${Math.random().toString(16).slice(2, 8)}`;
-    const probeRow = {
-      run_id: probeRunId,
-      wallet_address: "__RISX_SUPABASE_PROBE__",
-      tier: "beginner",
-      status: "created",
-      payment_id: `probe_payment_${now}`,
-      result: "pending",
-      pnl: 0,
-      started_at: new Date(now).toISOString(),
-      ended_at: new Date(now).toISOString(),
-      metadata: {
-        systemProbe: true,
-        createdBy: "risx_runtime_probe",
-        ts: now,
-      },
-      created_at: new Date(now).toISOString(),
-      updated_at: new Date(now).toISOString(),
-    };
-
-    console.info("[RISX][Supabase] Running direct insert probe into public.runs...", { probeRunId });
-    const { data, error } = await supabaseClient
-      .from("runs")
-      .insert(probeRow)
-      .select("run_id,created_at")
-      .single();
-
-    if (error) {
-      console.error("[RISX][Supabase] Direct insert probe FAILED:", {
-        probeRunId,
-        error,
-      });
-      return { ok: false, skipped: false, error };
-    }
-
-    supabaseProbeDone = true;
-    setProbeSessionFlag();
-    console.info("[RISX][Supabase] Direct insert probe succeeded.", data);
-    return { ok: true, skipped: false, data };
-  })()
-    .catch((err) => {
-      console.error("[RISX][Supabase] Direct insert probe threw:", err);
-      return { ok: false, skipped: false, error: err };
-    })
-    .finally(() => {
-      supabaseProbePromise = null;
-    });
-
-  return supabaseProbePromise;
-}
-
 function upsertRunCache(runInput) {
   const run = normalizeRunRecord(runInput);
   if (!run.runId) return;
@@ -4559,21 +4425,10 @@ async function refreshRunRecordsFromSupabase({ silent = false } = {}) {
     .select("*")
     .order("created_at", { ascending: false });
   if (error) {
-    if (!silent) {
-      console.error("[RISX][Supabase] SELECT failed for public.runs:", {
-        error,
-        hint: "Check URL/key, RLS policies, and table permissions for anon role.",
-      });
-    }
+    if (!silent) console.error("[RISX] Failed to read runs from Supabase:", error.message || error);
     return runRecordsCache.map(cloneRunRecord);
   }
-  const rows = Array.isArray(data) ? data : [];
-  runRecordsCache = sortRunRecords(
-    rows
-      .filter((row) => !isSupabaseProbeRow(row))
-      .map(mapSupabaseRowToRunRecord)
-      .filter((r) => !!r.runId)
-  );
+  runRecordsCache = sortRunRecords((Array.isArray(data) ? data : []).map(mapSupabaseRowToRunRecord).filter((r) => !!r.runId));
   runRecordsReady = true;
   return runRecordsCache.map(cloneRunRecord);
 }
@@ -4587,12 +4442,7 @@ async function syncRunRecordToSupabase(runInput) {
     .from("runs")
     .upsert(payload, { onConflict: "run_id" });
   if (error) {
-    console.error("[RISX][Supabase] UPSERT failed for run:", {
-      runId: run.runId,
-      status: run.status,
-      error,
-      payload,
-    });
+    console.error(`[RISX] Failed to upsert run ${run.runId}:`, error.message || error);
   }
 }
 
@@ -4605,15 +4455,7 @@ function queueRunSync(runInput) {
   const prev = runSyncQueue.get(runId) || Promise.resolve();
   const next = prev
     .catch(() => {})
-    .then(async () => {
-      if (!supabaseProbeDone && !getProbeSessionFlag()) {
-        const probe = await runSupabaseDirectInsertProbe();
-        if (!probe?.ok) {
-          console.error("[RISX][Supabase] Skipping guaranteed probe success; attempting UPSERT anyway.", probe);
-        }
-      }
-      await syncRunRecordToSupabase(run);
-    })
+    .then(() => syncRunRecordToSupabase(run))
     .finally(() => {
       if (runSyncQueue.get(runId) === next) runSyncQueue.delete(runId);
     });
@@ -4634,10 +4476,7 @@ async function migrateLegacyRunsToSupabase() {
     const rows = pending.map(mapRunRecordToSupabaseRow);
     const { error } = await supabaseClient.from("runs").upsert(rows, { onConflict: "run_id" });
     if (error) {
-      console.error("[RISX][Supabase] Legacy run migration UPSERT failed:", {
-        error,
-        rowCount: rows.length,
-      });
+      console.error("[RISX] Failed legacy run migration:", error.message || error);
       return false;
     }
   }
@@ -4659,10 +4498,6 @@ async function ensureRunRecordsReady(opts = {}) {
   if (!force && runRecordsLoadPromise) return runRecordsLoadPromise;
 
   runRecordsLoadPromise = (async () => {
-    const probe = await runSupabaseDirectInsertProbe();
-    if (!probe?.ok) {
-      console.error("[RISX][Supabase] Connectivity probe did not succeed; runtime writes may fail.", probe);
-    }
     await refreshRunRecordsFromSupabase({ silent: true });
     const migrated = await migrateLegacyRunsToSupabase();
     if (migrated || force || !runRecordsReady) {
@@ -4991,7 +4826,6 @@ function getRunRecordForClaim(claim) {
 
 window.RISX_upsertPaymentRecord = upsertPaymentRecord;
 window.RISX_createRunFromPayment = createRunFromPayment;
-window.RISX_runSupabaseProbe = () => runSupabaseDirectInsertProbe({ force: true });
 
 // Admin
 let adminTab = "deposits";
