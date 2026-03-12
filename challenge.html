@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <title>RISX — Where risk becomes reward.</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="risx-supabase-url" content="">
+  <meta name="risx-supabase-anon-key" content="">
   <link rel="stylesheet" href="style.css" />
 </head>
 
@@ -1035,6 +1037,11 @@
   </div>
 </div>
 
+<script>
+  // Plain browser runtime config (set at deploy time, before app.js loads):
+  // window.RISX_SUPABASE_URL = "https://<project>.supabase.co";
+  // window.RISX_SUPABASE_ANON_KEY = "<anon-or-publishable-key>";
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="app.js"></script>
 <script src="payments.js"></script>
