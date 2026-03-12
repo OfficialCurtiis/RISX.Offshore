@@ -4179,6 +4179,10 @@ const supabaseKeyConfig = resolveRuntimeConfigValue([
 ]);
 const supabaseUrl = supabaseUrlConfig.value;
 const supabaseAnonKey = supabaseKeyConfig.value;
+
+console.log("supabaseUrl:", supabaseUrl);
+console.log("has supabase key:", !!supabaseAnonKey);
+
 const supabaseRuntimeInfo = {
   urlDefined: !!supabaseUrl,
   keyDefined: !!supabaseAnonKey,
