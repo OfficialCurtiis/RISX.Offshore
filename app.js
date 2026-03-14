@@ -1706,13 +1706,19 @@ function getRun() {
   };
 }
 
-function startRun(tier) {
+function startRun(tier, preferredRunId = "") {
   const t = String(tier || "").toLowerCase();
   const session = getPaymentSessionState?.();
   const sessionTier = String(session?.tier || "").toLowerCase();
   const paymentId = (session && sessionTier === t) ? String(session.paymentId || "") : "";
-  const run = markRunStarted?.({ tier: t, paymentId });
+  const run = markRunStarted?.({ tier: t, paymentId, runId: preferredRunId });
   if (!run?.runId) {
+    console.error("[RISX][RunStart] markRunStarted returned null.", {
+      tier: t,
+      preferredRunId: String(preferredRunId || ""),
+      paymentId,
+      cachedRuns: readRunRecords().map((r) => ({ runId: r.runId, tier: r.tier, status: r.status, claimId: r.claimId })),
+    });
     toast?.("Challenge could not start because no valid run was found.");
     return null;
   }
@@ -4812,16 +4818,18 @@ function createRunFromPayment(paymentPayload = {}, opts = {}) {
   return run;
 }
 
-function markRunStarted({ tier, paymentId } = {}) {
+function markRunStarted({ tier, paymentId, runId } = {}) {
   const list = readRunRecords();
   const isStartableStatus = (r) => ["ready", "active", "resumed"].includes(String(r?.status || "").toLowerCase());
   const tierKey = String(tier || "").toLowerCase();
+  const preferredRunId = String(runId || "");
+  const byRunId = preferredRunId ? list.find((r) => r.runId === preferredRunId) : null;
   const byPayment = paymentId ? list.find((r) => r.paymentId === String(paymentId)) : null;
   const byLocalRunId = list.find((r) => r.runId === String(localStorage.getItem(RUN_ID_KEY) || ""));
   const byTier = list
     .filter((r) => String(r.tier || "").toLowerCase() === tierKey && isStartableStatus(r) && !r.claimId)
     .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0] || null;
-  const run = [byPayment, byLocalRunId, byTier].find((r) => r && isStartableStatus(r)) || null;
+  const run = [byRunId, byPayment, byLocalRunId, byTier].find((r) => r && isStartableStatus(r)) || null;
   if (!run) return null;
   const status = String(run.status || "").toLowerCase();
 
@@ -6059,7 +6067,7 @@ async function startChallengeNow(tier) {
     return;
   }
 
-  const runId = startRun(tierKey);
+  const runId = startRun(tierKey, preparedRunId);
   if (!runId) {
     challengeActive = false;
     CHALLENGE.active = false;
