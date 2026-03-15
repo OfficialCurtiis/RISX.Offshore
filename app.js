@@ -1528,16 +1528,12 @@ function postRoundChecks() {
   const t = getTier?.() || {};
   const bal = Number(getBalance?.() ?? balance ?? 0);
 
-if (challengeActive && !challengeCompleted && bal <= 0) {
-  challengeActive = false;
-  challengeCompleted = false;
-  saveChallengeActive?.(false);
-
-  challengeFail?.("Balance hit 0");
-  showChallengeResetIfNeeded?.();
-  refreshChallengeHud?.();
-  return;
-}
+  if (challengeActive && !challengeCompleted && bal <= 0) {
+    challengeFail?.("Balance hit 0");
+    showChallengeResetIfNeeded?.();
+    refreshChallengeHud?.();
+    return;
+  }
 
   showChallengeResetIfNeeded?.();
 }
@@ -1553,6 +1549,10 @@ function escapeHtml(str) {
 
 function challengeFail(reason) {
   challengeFailed = true;
+  challengeActive = false;
+  challengeCompleted = false;
+  CHALLENGE.active = false;
+  saveChallengeActive?.(false);
 
   setChallengeStatus?.("failed");
   endRun("failed");
