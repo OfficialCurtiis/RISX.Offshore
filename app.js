@@ -5970,6 +5970,24 @@ function consumeUnlockForStartedRun() {
   setPaymentSessionState(null);
 }
 
+function forceRunReady(runId) {
+  const id = String(runId || "");
+  if (!id) return null;
+  const list = readRunRecords();
+  const run = list.find((r) => r.runId === id);
+  if (!run) return null;
+  const status = String(run.status || "").toLowerCase();
+  if (["ready", "active", "resumed"].includes(status)) return run;
+  if (status !== "created") return null;
+  if (run.claimId) return null;
+  run.status = "ready";
+  run.endedAt = null;
+  run.resetRequired = false;
+  appendRunEvent(run, { type: "run_promoted_ready_from_created" });
+  writeRunRecords(list);
+  return run;
+}
+
 async function ensureReadyRunForTier(tier) {
   await ensureRunRecordsReady();
   const tierKey = String(tier || "").toLowerCase();
@@ -5977,7 +5995,8 @@ async function ensureReadyRunForTier(tier) {
 
   const runs = readRunRecords();
   const startable = new Set(["ready", "active", "resumed"]);
-  const existing = runs.find((r) => r.tier && r.tier.toLowerCase() === tierKey && startable.has(String(r.status || "")));
+  const isStartable = (r) => startable.has(String(r?.status || "").toLowerCase());
+  const existing = runs.find((r) => r.tier && r.tier.toLowerCase() === tierKey && isStartable(r));
   if (existing) return existing.runId;
 
   const token = String(localStorage.getItem("risx_unlock_token") || "");
@@ -6005,12 +6024,29 @@ async function ensureReadyRunForTier(tier) {
       failedRunId: localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "",
     });
 
-    if (run?.runId) return run.runId;
+    if (run?.runId) {
+      const refreshed = getRunById(run.runId);
+      if (isStartable(refreshed)) return refreshed.runId;
+      const promoted = forceRunReady(run.runId);
+      if (isStartable(promoted)) return promoted.runId;
+      console.error("[RISX][RunPrep] Run created from paid session but not startable.", {
+        runId: run.runId,
+        status: refreshed?.status,
+      });
+    }
   }
 
   // Fallback: token-only unlocks (admin/airdrop) — create a ready run once.
   const existingTokenRun = runs.find((r) => r.tokenId && r.tokenId === token.slice(0, 24));
-  if (existingTokenRun) return existingTokenRun.runId;
+  if (existingTokenRun) {
+    if (isStartable(existingTokenRun)) return existingTokenRun.runId;
+    const promoted = forceRunReady(existingTokenRun.runId);
+    if (isStartable(promoted)) return promoted.runId;
+    console.error("[RISX][RunPrep] Existing token-linked run is not startable.", {
+      runId: existingTokenRun.runId,
+      status: existingTokenRun.status,
+    });
+  }
 
   const adminRun = {
     runId: newRunId(),
