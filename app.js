@@ -988,16 +988,17 @@ function refreshChallengeHud() {
   async function completeReset() {
     if (challengeState.status !== "failed") return;
 
-    CHALLENGE.resetExpiresAt = null;
-
-    challengeState.status = "active";
-    CHALLENGE.active = true;
-    challengeActive = true;
+    challengeState.status = "failed";
+    challengeActive = false;
+    CHALLENGE.active = false;
+    saveChallengeActive?.(false);
 
     closeModal?.(failModal);
-    lockAppUI?.(false);
-
-    await startChallengeNow(CHALLENGE.tier);
+    closeModal?.(challengeModal);
+    lockAppUI?.(true);
+    openModal?.(challengeModal);
+    renderTierSummary?.();
+    renderRecoveryCtas?.();
   }
 
 window.RISX_completeReset = async (tier) => {
@@ -1007,6 +1008,9 @@ window.RISX_completeReset = async (tier) => {
     CHALLENGE.tier = tierKey;
     if (challengeTier) challengeTier.value = tierKey;
   }
+  recoveryUnlockTier = String(CHALLENGE.tier || challengeTierSelected || tier || "beginner").toLowerCase();
+  recoveryUnlockIntent = "restart";
+  localStorage.setItem("risx_unlock_intent", "restart");
   await completeReset();
 };
 
@@ -1957,7 +1961,7 @@ async function refreshPostPaymentRecovery() {
   recoveryUnlockTier = String(unlock?.tier || "").toLowerCase();
   recoveryUnlockIntent = String(unlock?.intent || "entry");
 
-  if (recoveryUnlockTier && !isRestartRequired()) {
+  if (recoveryUnlockTier && !isRestartRequired() && recoveryUnlockIntent !== "restart") {
     recoveryUnlockIntent = "entry";
   }
 
@@ -2105,7 +2109,7 @@ function renderRecoveryCtas() {
   }
   if (startChallengeRecoveryBtn) {
     startChallengeRecoveryBtn.style.display = showStart ? "inline-flex" : "none";
-    startChallengeRecoveryBtn.textContent = isRestartRequired() ? "Resume Restart" : "Start Challenge";
+    startChallengeRecoveryBtn.textContent = (recoveryUnlockIntent === "restart" || isRestartRequired()) ? "Start Restart" : "Start Challenge";
   }
   if (resumeClaimBtn) {
     resumeClaimBtn.style.display = showClaim ? "inline-flex" : "none";
@@ -5963,11 +5967,13 @@ challengeTier?.addEventListener("change", () => {
 });
 
 function consumeUnlockForStartedRun() {
+  const consumedIntent = String(localStorage.getItem("risx_unlock_intent") || "").toLowerCase();
   localStorage.removeItem("risx_unlock_token");
   localStorage.removeItem("risx_unlock_tier");
   localStorage.removeItem("risx_unlock_intent");
   localStorage.removeItem("risx_payment_intent");
   setPaymentSessionState(null);
+  return consumedIntent;
 }
 
 function forceRunReady(runId) {
@@ -6138,11 +6144,13 @@ async function startChallengeNow(tier) {
   saveChallengeCompleted(false);
 
   // Unlocks are one-use for starting a run; clear recovery once consumed.
-  consumeUnlockForStartedRun();
-  localStorage.removeItem("risx_restart_required");
-  localStorage.removeItem("risx_reset_expires_at");
-  localStorage.removeItem(RESTART_FAILED_RUN_ID_KEY);
-  CHALLENGE.resetExpiresAt = null;
+  const consumedIntent = consumeUnlockForStartedRun();
+  if (consumedIntent === "restart") {
+    localStorage.removeItem("risx_restart_required");
+    localStorage.removeItem("risx_reset_expires_at");
+    localStorage.removeItem(RESTART_FAILED_RUN_ID_KEY);
+    CHALLENGE.resetExpiresAt = null;
+  }
 
   showChallengeResetIfNeeded();
   setDefaultBetsIfEmpty();
@@ -6482,21 +6490,23 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
         paymentIntent: localStorage.getItem("risx_payment_intent"),
       });
 
-      // Real restart flow only if restart is actually required
-      if (restartNeeded) {
-        recoveryUnlockIntent = "restart";
-        localStorage.setItem("risx_payment_intent", "restart");
-        window.RISX_openPayModalForTier?.(tier);
-        return;
-      }
-
-      // Valid unlock + no restart required = start immediately
       if (unlockOk) {
-        recoveryUnlockIntent = "entry";
+        const restartUnlock = recoveryUnlockIntent === "restart";
+        if (restartUnlock) {
+          localStorage.setItem("risx_unlock_intent", "restart");
+        }
         localStorage.removeItem("risx_payment_intent");
         localStorage.removeItem("risx_pending_payment");
         closeModal?.(challengeModal);
         await startChallengeNow(tier);
+        return;
+      }
+
+      // No valid unlock yet, and restart is still required, so continue the reset payment flow.
+      if (restartNeeded) {
+        recoveryUnlockIntent = "restart";
+        localStorage.setItem("risx_payment_intent", "restart");
+        window.RISX_openPayModalForTier?.(tier);
         return;
       }
 
