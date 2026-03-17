@@ -3152,6 +3152,20 @@ function isProbablyAddress(s) {
 // UTILS
 // =========================
 
+function isRestartRequired() {
+  const required = localStorage.getItem("risx_restart_required") === "1";
+  const expiresAt = Number(localStorage.getItem("risx_reset_expires_at") || CHALLENGE.resetExpiresAt || 0);
+  const stillInWindow = expiresAt && Date.now() <= expiresAt;
+  if (required && !stillInWindow) {
+    localStorage.removeItem("risx_restart_required");
+    localStorage.removeItem("risx_reset_expires_at");
+    localStorage.removeItem(RESTART_FAILED_RUN_ID_KEY);
+    CHALLENGE.resetExpiresAt = null;
+    return false;
+  }
+  return required && stillInWindow;
+}
+
 function wireBetMultButtons(gameKey, inputEl, halfBtn, twoXBtn, maxBtn) {
   if (!inputEl || inputEl._wiredMults) return;
   inputEl._wiredMults = true;
@@ -6053,6 +6067,9 @@ async function ensureReadyRunForTier(tier) {
   const sessionTier = String(session?.tier || "").toLowerCase();
   const tokenId = token.slice(0, 24);
   const preferredRunId = String(localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "");
+  const paymentId = (session && session.status === "paid" && sessionTier === tierKey)
+    ? String(session.paymentId || "")
+    : "";
 
   if (preferredRunId) {
     const preferredRun = runs.find((r) => r.runId === preferredRunId);
@@ -6062,11 +6079,32 @@ async function ensureReadyRunForTier(tier) {
       status: preferredRun?.status || "missing",
       tier: preferredRun?.tier || "",
     });
+
+    const linkedRestartRun = runs.find((r) =>
+      r.runId !== preferredRunId &&
+      String(r.tier || "").toLowerCase() === tierKey &&
+      isStartable(r) &&
+      (
+        (paymentId && String(r.paymentId || "") === paymentId) ||
+        (tokenId && String(r.tokenId || "") === tokenId)
+      )
+    );
+    if (linkedRestartRun) {
+      console.info("[RISX][RunPrep] Reusing explicit restart-lineage run.", {
+        reason: "restart_lineage_match",
+        runId: linkedRestartRun.runId,
+        preferredRunId,
+        paymentId,
+        tokenId,
+        status: linkedRestartRun.status,
+      });
+      return linkedRestartRun.runId;
+    }
   }
 
-  if (session && session.status === "paid" && sessionTier === tierKey && session.paymentId) {
+  if (paymentId) {
     const run = createRunFromPayment({
-      paymentId: session.paymentId,
+      paymentId,
       wallet: auditWallet(),
       email: auditEmail(),
       tier: tierKey,
@@ -6088,7 +6126,7 @@ async function ensureReadyRunForTier(tier) {
         console.info("[RISX][RunPrep] Reusing/created payment-backed startable run.", {
           reason: "payment_id_match",
           runId: refreshed.runId,
-          paymentId: session.paymentId,
+          paymentId,
           status: refreshed.status,
         });
         return refreshed.runId;
@@ -6098,7 +6136,7 @@ async function ensureReadyRunForTier(tier) {
         console.info("[RISX][RunPrep] Promoted payment-backed run to ready.", {
           reason: "payment_id_match_promoted",
           runId: promoted.runId,
-          paymentId: session.paymentId,
+          paymentId,
           status: promoted.status,
         });
         return promoted.runId;
@@ -6335,20 +6373,6 @@ if (resetBtn && !resetBtn._bound) {
   localStorage.setItem("risx_payment_intent", "restart"); // ✅ first
   window.RISX_openPayModalForTier?.(tierKey);            // ✅ use tierKey
   });
-}
-
-function isRestartRequired() {
-  const required = localStorage.getItem("risx_restart_required") === "1";
-  const expiresAt = Number(localStorage.getItem("risx_reset_expires_at") || CHALLENGE.resetExpiresAt || 0);
-  const stillInWindow = expiresAt && Date.now() <= expiresAt;
-  if (required && !stillInWindow) {
-    localStorage.removeItem("risx_restart_required");
-    localStorage.removeItem("risx_reset_expires_at");
-    localStorage.removeItem(RESTART_FAILED_RUN_ID_KEY);
-    CHALLENGE.resetExpiresAt = null;
-    return false;
-  }
-  return required && stillInWindow;
 }
 
 function updateSupportIdPill(){
