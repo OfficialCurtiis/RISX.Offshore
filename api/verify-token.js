@@ -16,6 +16,10 @@ export default async function handler(req, res) {
       tierKey: v.payload.tierKey,
       paymentId: v.payload.paymentId,
       exp: v.payload.exp,
+      intent: ["entry", "restart"].includes(String(v.payload.intent || "").toLowerCase())
+        ? String(v.payload.intent).toLowerCase()
+        : "entry",
+      failedRunId: String(v.payload.failedRunId || ""),
     });
   } catch (e) {
     if (String(e?.message || "").includes("Missing RISX_ADMIN_KEY_CURRENT")) {

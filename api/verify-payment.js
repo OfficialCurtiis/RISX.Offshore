@@ -2,9 +2,19 @@
 import { signUnlockToken } from "./admin/_mint.js";
 
 function extractTierKeyFromOrderId(order_id = "") {
-  // order_id format created in create-payment.js: risx_${tierKey}_${Date.now()}_${rand}
+  // order_id format: risx_${tierKey}_${intent}_${ts}_${rand}[_fr_${failedRunId}]
   const m = String(order_id).match(/^risx_(beginner|intermediate|pro)_/i);
   return m ? m[1].toLowerCase() : null;
+}
+
+function extractIntentFromOrderId(order_id = "") {
+  const m = String(order_id).match(/^risx_(?:beginner|intermediate|pro)_(entry|restart)_/i);
+  return m ? m[1].toLowerCase() : "entry";
+}
+
+function extractFailedRunIdFromOrderId(order_id = "") {
+  const m = String(order_id).match(/_fr_([a-zA-Z0-9_-]{1,80})$/);
+  return m ? m[1] : "";
 }
 
 export default async function handler(req, res) {
@@ -27,6 +37,8 @@ export default async function handler(req, res) {
 
     const statusLower = String(data.payment_status || "").toLowerCase();
     const tierKey = extractTierKeyFromOrderId(data.order_id);
+    const intent = extractIntentFromOrderId(data.order_id);
+    const failedRunId = intent === "restart" ? extractFailedRunIdFromOrderId(data.order_id) : "";
 
     const out = {
       payment_id: data.payment_id,
@@ -35,7 +47,9 @@ export default async function handler(req, res) {
       pay_amount: data.pay_amount,
       pay_currency: data.pay_currency,
       order_id: data.order_id,
-      tierKey, // NEW
+      tierKey,
+      intent,
+      failedRunId,
     };
 
     if ((statusLower === "confirmed" || statusLower === "finished") && tierKey) {
@@ -44,6 +58,8 @@ export default async function handler(req, res) {
         tierKey,
         paymentId: String(data.payment_id),
         exp,
+        intent,
+        failedRunId,
       });
       out.unlock_expires_at = exp;
     }

@@ -13,8 +13,15 @@ export function getMintKeyStatus() {
   };
 }
 
-export function signUnlockToken({ tierKey, paymentId, exp }) {
-  const payload = { tierKey, paymentId, exp };
+export function signUnlockToken({ tierKey, paymentId, exp, intent = "entry", failedRunId = "" }) {
+  const normalizedIntent = String(intent || "").toLowerCase() === "restart" ? "restart" : "entry";
+  const payload = {
+    tierKey,
+    paymentId,
+    exp,
+    intent: normalizedIntent,
+    failedRunId: normalizedIntent === "restart" ? String(failedRunId || "") : "",
+  };
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const sig = crypto.createHmac("sha256", getCurrentMintKey()).update(body).digest("base64url");
   return `${body}.${sig}`;
@@ -38,6 +45,7 @@ export function verifyUnlockToken(token) {
   }
 
   if (!payload?.tierKey || !payload?.paymentId || !payload?.exp) return { ok: false };
+  if (payload.intent && !["entry", "restart"].includes(String(payload.intent).toLowerCase())) return { ok: false };
   if (Date.now() > Number(payload.exp)) return { ok: false, expired: true };
   return { ok: true, payload };
 }

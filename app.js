@@ -1862,11 +1862,20 @@ async function verifyLocalUnlockToken() {
     });
     const j = await r.json().catch(() => ({}));
     if (r.ok && j?.valid && j?.tierKey) {
+      const tierKey = String(j.tierKey || "").toLowerCase();
+      const verifiedIntent = ["entry", "restart"].includes(String(j.intent || "").toLowerCase())
+        ? String(j.intent).toLowerCase()
+        : "";
       const storedIntent =
         String(localStorage.getItem("risx_unlock_intent") || getPaymentSessionState()?.intent || "entry").toLowerCase();
-      const tierKey = String(j.tierKey || "").toLowerCase();
+      const intent = verifiedIntent || (storedIntent === "restart" ? "restart" : "entry");
+      const failedRunId = String(j.failedRunId || "");
       localStorage.setItem("risx_unlock_tier", tierKey);
-      return { tier: tierKey, intent: (storedIntent === "restart" ? "restart" : "entry") };
+      localStorage.setItem("risx_unlock_intent", intent);
+      if (intent === "restart" && failedRunId) {
+        localStorage.setItem(RESTART_FAILED_RUN_ID_KEY, failedRunId);
+      }
+      return { tier: tierKey, intent, failedRunId };
     }
   } catch {}
 
@@ -1889,6 +1898,11 @@ async function recoverUnlockFromPaymentSession() {
     const status = String(j?.payment_status || "").toLowerCase();
     const tierKey = String(j?.tierKey || session.tier || "").toLowerCase();
     if (status === "confirmed" || status === "finished") {
+      const verifiedIntent = ["entry", "restart"].includes(String(j?.intent || "").toLowerCase())
+        ? String(j.intent).toLowerCase()
+        : "";
+      const resolvedIntent = verifiedIntent || String(session.intent || "entry").toLowerCase();
+      const failedRunId = String(j?.failedRunId || localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "");
       const record = upsertPaymentRecord({
         paymentId: session.paymentId,
         wallet: auditWallet(),
@@ -1902,7 +1916,10 @@ async function recoverUnlockFromPaymentSession() {
       if (j?.unlock_token && j?.tierKey) {
         localStorage.setItem("risx_unlock_token", String(j.unlock_token));
         localStorage.setItem("risx_unlock_tier", tierKey);
-        localStorage.setItem("risx_unlock_intent", session.intent || "entry");
+        localStorage.setItem("risx_unlock_intent", resolvedIntent);
+        if (resolvedIntent === "restart" && failedRunId) {
+          localStorage.setItem(RESTART_FAILED_RUN_ID_KEY, failedRunId);
+        }
       }
       createRunFromPayment({
         paymentId: session.paymentId,
@@ -1916,13 +1933,14 @@ async function recoverUnlockFromPaymentSession() {
       }, {
         tier: tierKey,
         tokenId: String(j?.unlock_token || localStorage.getItem("risx_unlock_token") || "").slice(0, 24),
-        intent: session.intent || "entry",
-        failedRunId: String(localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || ""),
+        intent: resolvedIntent,
+        failedRunId,
       });
       setPaymentSessionState({
         ...session,
         status: "paid",
         tier: tierKey,
+        intent: resolvedIntent,
       });
       return verifyLocalUnlockToken();
     }
@@ -3133,12 +3151,6 @@ function isProbablyAddress(s) {
 // =========================
 // UTILS
 // =========================
-
-function isRestartRequired() {
-  const required = String(localStorage.getItem("risx_restart_required") || "").toLowerCase() === "true";
-  const expiresAt = Number(localStorage.getItem("risx_reset_expires_at") || 0);
-  return required && (!expiresAt || Date.now() < expiresAt);
-}
 
 function wireBetMultButtons(gameKey, inputEl, halfBtn, twoXBtn, maxBtn) {
   if (!inputEl || inputEl._wiredMults) return;
@@ -4786,6 +4798,19 @@ function createRunFromPayment(paymentPayload = {}, opts = {}) {
       events: [],
     };
     list.unshift(run);
+    console.info("[RISX][RunPrep] Created fresh payment-backed run.", {
+      runId: run.runId,
+      paymentId: payment.paymentId,
+      tier: run.tier,
+      intent: String(opts.intent || "entry"),
+    });
+  } else {
+    console.info("[RISX][RunPrep] Found existing payment-backed run.", {
+      runId: run.runId,
+      paymentId: payment.paymentId,
+      status: run.status,
+      terminal: isRunTerminal(run),
+    });
   }
 
   run.wallet = run.wallet || payment.wallet || auditWallet();
@@ -5976,6 +6001,23 @@ function consumeUnlockForStartedRun() {
   return consumedIntent;
 }
 
+function isRunTerminal(run) {
+  const status = String(run?.status || "").toLowerCase();
+  return ["failed", "won", "claimed", "paid", "void"].includes(status);
+}
+
+function clearStaleRunPointers() {
+  const localRunId = String(localStorage.getItem(RUN_ID_KEY) || "");
+  if (!localRunId) return;
+  const run = getRunById(localRunId);
+  if (run && !isRunTerminal(run)) return;
+  clearRun();
+  console.info("[RISX][RunPrep] Cleared stale local run pointers.", {
+    localRunId,
+    status: run?.status || "missing",
+  });
+}
+
 function forceRunReady(runId) {
   const id = String(runId || "");
   if (!id) return null;
@@ -5996,21 +6038,31 @@ function forceRunReady(runId) {
 
 async function ensureReadyRunForTier(tier) {
   await ensureRunRecordsReady();
+  clearStaleRunPointers();
   const tierKey = String(tier || "").toLowerCase();
   if (!tierKey) return null;
 
   const runs = readRunRecords();
   const startable = new Set(["ready", "active", "resumed"]);
   const isStartable = (r) => startable.has(String(r?.status || "").toLowerCase());
-  const existing = runs.find((r) => r.tier && r.tier.toLowerCase() === tierKey && isStartable(r));
-  if (existing) return existing.runId;
-
   const token = String(localStorage.getItem("risx_unlock_token") || "");
   const unlockOk = token && await hasValidUnlockForTier(tierKey);
   if (!unlockOk) return null;
 
   const session = getPaymentSessionState?.();
   const sessionTier = String(session?.tier || "").toLowerCase();
+  const tokenId = token.slice(0, 24);
+  const preferredRunId = String(localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "");
+
+  if (preferredRunId) {
+    const preferredRun = runs.find((r) => r.runId === preferredRunId);
+    console.info("[RISX][RunPrep] Checked restart lineage pointer.", {
+      reason: preferredRun ? "restart_lineage_found" : "restart_lineage_missing",
+      runId: preferredRunId,
+      status: preferredRun?.status || "missing",
+      tier: preferredRun?.tier || "",
+    });
+  }
 
   if (session && session.status === "paid" && sessionTier === tierKey && session.paymentId) {
     const run = createRunFromPayment({
@@ -6025,32 +6077,68 @@ async function ensureReadyRunForTier(tier) {
       createdAt: session.createdAt || Date.now(),
     }, {
       tier: tierKey,
-      tokenId: token.slice(0, 24),
+      tokenId,
       intent: session.intent || "entry",
       failedRunId: localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "",
     });
 
     if (run?.runId) {
       const refreshed = getRunById(run.runId);
-      if (isStartable(refreshed)) return refreshed.runId;
+      if (isStartable(refreshed)) {
+        console.info("[RISX][RunPrep] Reusing/created payment-backed startable run.", {
+          reason: "payment_id_match",
+          runId: refreshed.runId,
+          paymentId: session.paymentId,
+          status: refreshed.status,
+        });
+        return refreshed.runId;
+      }
       const promoted = forceRunReady(run.runId);
-      if (isStartable(promoted)) return promoted.runId;
+      if (isStartable(promoted)) {
+        console.info("[RISX][RunPrep] Promoted payment-backed run to ready.", {
+          reason: "payment_id_match_promoted",
+          runId: promoted.runId,
+          paymentId: session.paymentId,
+          status: promoted.status,
+        });
+        return promoted.runId;
+      }
       console.error("[RISX][RunPrep] Run created from paid session but not startable.", {
+        reason: "payment_id_match_not_startable",
         runId: run.runId,
         status: refreshed?.status,
       });
     }
   }
 
-  // Fallback: token-only unlocks (admin/airdrop) — create a ready run once.
-  const existingTokenRun = runs.find((r) => r.tokenId && r.tokenId === token.slice(0, 24));
+  // Fallback: token-only unlocks (admin/airdrop). Terminal runs stay in history and are never reused.
+  const existingTokenRun = runs.find((r) => r.tokenId && r.tokenId === tokenId);
   if (existingTokenRun) {
-    if (isStartable(existingTokenRun)) return existingTokenRun.runId;
+    if (isStartable(existingTokenRun)) {
+      console.info("[RISX][RunPrep] Reusing existing startable token-linked run.", {
+        reason: "token_id_match",
+        runId: existingTokenRun.runId,
+        tokenId,
+        status: existingTokenRun.status,
+      });
+      return existingTokenRun.runId;
+    }
     const promoted = forceRunReady(existingTokenRun.runId);
-    if (isStartable(promoted)) return promoted.runId;
-    console.error("[RISX][RunPrep] Existing token-linked run is not startable.", {
+    if (isStartable(promoted)) {
+      console.info("[RISX][RunPrep] Promoted token-linked run to ready.", {
+        reason: "token_id_match_promoted",
+        runId: promoted.runId,
+        tokenId,
+        status: promoted.status,
+      });
+      return promoted.runId;
+    }
+    console.info("[RISX][RunPrep] Existing token-linked run is terminal or non-startable; creating fresh run.", {
+      reason: "token_id_match_terminal",
       runId: existingTokenRun.runId,
       status: existingTokenRun.status,
+      tokenId,
+      terminal: isRunTerminal(existingTokenRun),
     });
   }
 
@@ -6060,7 +6148,7 @@ async function ensureReadyRunForTier(tier) {
     wallet: auditWallet(),
     email: auditEmail(),
     tier: tierKey,
-    tokenId: token.slice(0, 24),
+    tokenId,
     status: "ready",
     startedAt: null,
     endedAt: null,
@@ -6078,10 +6166,17 @@ async function ensureReadyRunForTier(tier) {
     adminNotes: "",
     adminGranted: true,
     createdAt: Date.now(),
-    events: [{ type: "token_granted", tokenId: token.slice(0, 24), ts: Date.now() }],
+    events: [{ type: "token_granted", tokenId, ts: Date.now() }],
   };
 
   writeRunRecords([adminRun, ...runs]);
+  console.info("[RISX][RunPrep] Created fresh run for unlock.", {
+    reason: "fresh_run_created",
+    runId: adminRun.runId,
+    tier: tierKey,
+    tokenId,
+    source: session?.status === "paid" && sessionTier === tierKey && session.paymentId ? "paid_session_fallback" : "token_only",
+  });
   return adminRun.runId;
 }
 

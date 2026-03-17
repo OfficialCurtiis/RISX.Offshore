@@ -7,7 +7,7 @@ export default async function handler(req, res) {
     if (!apiKey) return res.status(500).json({ error: "Missing NOWPAYMENTS_API_KEY on server" });
 
     // ✅ Parse body first, then derive payCur
-    const { tierKey, payCurrency, currency: bodyCurrency, intent = "entry" } = req.body || {};
+    const { tierKey, payCurrency, currency: bodyCurrency, intent = "entry", failedRunId = "" } = req.body || {};
     const payCur = String(payCurrency || bodyCurrency || "usdcsol").toLowerCase();
     if (!tierKey) return res.status(400).json({ error: "Missing tierKey" });
 
@@ -25,14 +25,17 @@ export default async function handler(req, res) {
     const allowed = new Set(["btc", "ltc", "trx", "sol", "usdtsol", "usdcsol"]);
     if (!allowed.has(payCur)) return res.status(400).json({ error: "Invalid payCurrency" });
 
-    const order_id = `risx_${tierKey}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const normalizedIntent = String(intent || "").toLowerCase() === "restart" ? "restart" : "entry";
+    const safeFailedRunId = String(failedRunId || "").trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80);
+    const restartSuffix = normalizedIntent === "restart" && safeFailedRunId ? `_fr_${safeFailedRunId}` : "";
+    const order_id = `risx_${tierKey}_${normalizedIntent}_${Date.now()}_${Math.random().toString(16).slice(2)}${restartSuffix}`;
 
    const payload = {
   price_amount: priceUsd,
   price_currency: "usd",
   pay_currency: payCur,
   order_id,
-  order_description: `RISX ${tierKey} ${intent === "restart" ? "restart" : "entry"}`,
+  order_description: `RISX ${tierKey} ${normalizedIntent === "restart" ? "restart" : "entry"}`,
   };
 
     const r = await fetch("https://api.nowpayments.io/v1/payment", {
@@ -52,6 +55,8 @@ export default async function handler(req, res) {
     // Return only what the frontend needs
     return res.status(200).json({
       tierKey,
+      intent: normalizedIntent,
+      failedRunId: normalizedIntent === "restart" ? safeFailedRunId : "",
       order_id: data.order_id || order_id,
       payment_id: data.payment_id,
       pay_address: data.pay_address,

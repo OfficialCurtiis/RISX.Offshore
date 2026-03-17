@@ -274,11 +274,14 @@ function isUnlocked(tierKey) {
   async function createPayment(tierKey, currency, intent = "entry") {
     const t = CHALLENGE_TIERS[tierKey] || CHALLENGE_TIERS.beginner;
     const usd = (intent === "restart") ? t.restartUsd : t.entryUsd;
+    const failedRunId = intent === "restart"
+      ? String(localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "")
+      : "";
 
     const r = await fetch("/api/create-payment", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tierKey, usd, currency, intent })
+      body: JSON.stringify({ tierKey, usd, currency, intent, failedRunId })
     });
 
     const j = await r.json();
@@ -301,14 +304,18 @@ function handleConfirmed(resp) {
   }
 
   const pending = getPaymentSession();
-  const intent = pending?.intent || "entry";
-  const tierKey = pending?.tier || resp.tierKey;
+  const intent = String(resp?.intent || pending?.intent || "entry").toLowerCase() === "restart" ? "restart" : "entry";
+  const tierKey = String(resp?.tierKey || pending?.tier || "").toLowerCase();
   const paymentId = String(pending?.paymentId || activePaymentId || resp?.payment_id || "").trim();
+  const failedRunId = String(resp?.failedRunId || localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "");
 
   // Persist unlock (entry unlock token still useful)
   localStorage.setItem("risx_unlock_token", resp.unlock_token);
   localStorage.setItem("risx_unlock_tier", resp.tierKey);
   localStorage.setItem("risx_unlock_intent", intent);
+  if (intent === "restart" && failedRunId) {
+    localStorage.setItem(RESTART_FAILED_RUN_ID_KEY, failedRunId);
+  }
 
   if (paymentId) {
     syncPaymentRecord({
@@ -333,7 +340,7 @@ function handleConfirmed(resp) {
         tier: String(resp.tierKey || tierKey || ""),
         tokenId: String(resp.unlock_token || "").slice(0, 24),
         intent,
-        failedRunId: String(localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || ""),
+        failedRunId,
       });
     } catch {}
   }
@@ -504,6 +511,11 @@ checkBtn?.addEventListener("click", async () => {
     if (manualMsgEl) manualMsgEl.textContent = `Status: ${status || "unknown"}`;
 
     if (status === "confirmed" || status === "finished") {
+      const serverTierKey = String(s?.tierKey || "").toLowerCase();
+      if (!serverTierKey) {
+        if (manualMsgEl) manualMsgEl.textContent = "Confirmed, but tier could not be verified. Contact support.";
+        return;
+      }
       // Treat it as the active payment for this tier and persist it for refresh-resume
       activePaymentId = pid;
       if (payIdEl) payIdEl.textContent = pid;
@@ -515,7 +527,7 @@ checkBtn?.addEventListener("click", async () => {
       setPaymentSession({
         status: "paid",
         intent: currentIntent,
-        tier: activeTierKey,
+        tier: serverTierKey,
         invoiceId: pid,
         paymentId: pid,
         amount: s.pay_amount || 0,
