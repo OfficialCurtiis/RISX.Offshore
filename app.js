@@ -91,11 +91,14 @@ const RISX_SAVE_KEY = "risx_demo_wallet_v2";
 const WALLET_KEY = `${RISX_SAVE_KEY}::activeWallet`;
 const walletStoreKey = (wallet) => `${RISX_SAVE_KEY}::wallet::${wallet}`;
 const CHALLENGE_WALLET_ID = "__RISX_CHALLENGE__";
-const RUN_ID_KEY      = "risx_run_id";
-const RUN_TIER_KEY    = "risx_run_tier";
-const RUN_STATUS_KEY  = "risx_run_status";
-const RUN_START_KEY   = "risx_run_started_at";
-const RUN_END_KEY     = "risx_run_ended_at";
+// RISX Core (generic challenge state). Keep offshore wrappers below for compatibility.
+const risxCoreStateStore = window.RISXCoreState?.createChallengeStateStore?.({ storage: localStorage }) || null;
+const risxCoreStateKeys = risxCoreStateStore?.keys || {};
+const RUN_ID_KEY      = risxCoreStateKeys.RUN_ID || "risx_run_id";
+const RUN_TIER_KEY    = risxCoreStateKeys.RUN_TIER || "risx_run_tier";
+const RUN_STATUS_KEY  = risxCoreStateKeys.RUN_STATUS || "risx_run_status";
+const RUN_START_KEY   = risxCoreStateKeys.RUN_STARTED_AT || "risx_run_started_at";
+const RUN_END_KEY     = risxCoreStateKeys.RUN_ENDED_AT || "risx_run_ended_at";
 const RESTART_FAILED_RUN_ID_KEY = "risx_restart_failed_run_id";
 const PAYMENT_SESSION_KEY = "risx_payment_session";
 const CLAIM_STATE_KEY = "risx_claim_state";
@@ -1416,12 +1419,12 @@ window.updateSupportIdPill = function () {
 
 function loadChallengeState() {
   try {
-    const isActive = localStorage.getItem("RISX_CH_ACTIVE") === "1";
+    const isActive = risxCoreStateStore?.getChallengeActive?.() ?? (localStorage.getItem("RISX_CH_ACTIVE") === "1");
 
     challengeActive = isActive;
     CHALLENGE.active = isActive;
 
-    const t = localStorage.getItem("RISX_CH_TIER");
+    const t = risxCoreStateStore?.getActiveTier?.() || localStorage.getItem("RISX_CH_TIER");
     if (t) {
       challengeTierSelected = t;
       CHALLENGE.tier = t;
@@ -1430,6 +1433,10 @@ function loadChallengeState() {
 }
 
 function saveChallengeActive(v){
+  if (risxCoreStateStore?.setChallengeActive) {
+    risxCoreStateStore.setChallengeActive(!!v);
+    return;
+  }
   try { localStorage.setItem("RISX_CH_ACTIVE", v ? "1" : "0"); } catch {}
 }
 
@@ -1441,17 +1448,28 @@ function saveChallengeActive(v){
     try { return localStorage.getItem("RISX_CHALLENGE_DONE") === "1"; } catch { return false; }
   }
 
-  const CHALLENGE_STATUS_KEY = "RISX_CHALLENGE_STATUS"; // "active" | "failed" | "won" | ""
+  const CHALLENGE_STATUS_KEY = risxCoreStateKeys.CHALLENGE_STATUS || "RISX_CHALLENGE_STATUS"; // "active" | "failed" | "won" | ""
 
   function setChallengeStatus(v) {
+    if (risxCoreStateStore?.setChallengeStatus) {
+      risxCoreStateStore.setChallengeStatus(String(v || ""));
+      return;
+    }
     try { localStorage.setItem(CHALLENGE_STATUS_KEY, String(v || "")); } catch {}
   }
 
   function getChallengeStatus() {
+    if (risxCoreStateStore?.getChallengeStatus) {
+      return risxCoreStateStore.getChallengeStatus() || "";
+    }
     try { return localStorage.getItem(CHALLENGE_STATUS_KEY) || ""; } catch { return ""; }
   }
 
   function clearChallengeStatus() {
+    if (risxCoreStateStore?.clearChallengeStatus) {
+      risxCoreStateStore.clearChallengeStatus();
+      return;
+    }
     try { localStorage.removeItem(CHALLENGE_STATUS_KEY); } catch {}
   }
 
@@ -1464,7 +1482,11 @@ function saveChallengeActive(v){
 
     try {
       if (challengeTierSelected) {
-        localStorage.setItem("RISX_CH_TIER", challengeTierSelected);
+        if (risxCoreStateStore?.setActiveTier) {
+          risxCoreStateStore.setActiveTier(challengeTierSelected);
+        } else {
+          localStorage.setItem("RISX_CH_TIER", challengeTierSelected);
+        }
       }
     } catch {}
   }
@@ -1708,6 +1730,9 @@ function setActiveWallet(w) {
 // =============================
 
 function getRun() {
+  if (risxCoreStateStore?.getCurrentRun) {
+    return risxCoreStateStore.getCurrentRun();
+  }
   return {
     id: localStorage.getItem(RUN_ID_KEY),
     tier: localStorage.getItem(RUN_TIER_KEY),
@@ -1734,20 +1759,48 @@ function startRun(tier, preferredRunId = "") {
     return null;
   }
   const id = String(run.runId);
-  localStorage.setItem(RUN_ID_KEY, id);
-  localStorage.setItem(RUN_TIER_KEY, t);
-  localStorage.setItem(RUN_STATUS_KEY, String(run?.status || "active"));
-  localStorage.setItem(RUN_START_KEY, String(run?.startedAt || Date.now()));
-  localStorage.removeItem(RUN_END_KEY);
+  if (risxCoreStateStore?.setCurrentRun) {
+    risxCoreStateStore.setCurrentRun({
+      runId: id,
+      tier: t,
+      status: String(run?.status || "active"),
+      startedAt: Number(run?.startedAt || Date.now()),
+    });
+  } else {
+    localStorage.setItem(RUN_ID_KEY, id);
+    localStorage.setItem(RUN_TIER_KEY, t);
+    localStorage.setItem(RUN_STATUS_KEY, String(run?.status || "active"));
+    localStorage.setItem(RUN_START_KEY, String(run?.startedAt || Date.now()));
+    localStorage.removeItem(RUN_END_KEY);
+  }
   return id;
 }
 
 function endRun(status /* "won" | "failed" | "reset" */) {
+  if (risxCoreStateStore?.setCurrentRun) {
+    const current = risxCoreStateStore.getCurrentRun?.() || {};
+    risxCoreStateStore.setCurrentRun({
+      runId: current.id || "",
+      tier: current.tier || "",
+      status,
+      startedAt: Number(current.startedAt || Date.now()),
+    });
+    localStorage.setItem(RUN_END_KEY, String(Date.now()));
+    return;
+  }
   localStorage.setItem(RUN_STATUS_KEY, status);
   localStorage.setItem(RUN_END_KEY, String(Date.now()));
 }
 
 function finalizeActiveRunLocalState(status, runId, endedAt) {
+  if (risxCoreStateStore?.finalizeCurrentRun) {
+    risxCoreStateStore.finalizeCurrentRun({
+      status: String(status || ""),
+      runId: String(runId || ""),
+      endedAt: endedAt ? Number(endedAt) : Date.now(),
+    });
+    return;
+  }
   const localRunId = String(localStorage.getItem(RUN_ID_KEY) || "");
   const targetRunId = String(runId || "");
   if (!localRunId || (targetRunId && localRunId !== targetRunId)) return;
@@ -1759,6 +1812,10 @@ function finalizeActiveRunLocalState(status, runId, endedAt) {
 }
 
 function clearRun() {
+  if (risxCoreStateStore?.clearCurrentRun) {
+    risxCoreStateStore.clearCurrentRun();
+    return;
+  }
   localStorage.removeItem(RUN_ID_KEY);
   localStorage.removeItem(RUN_TIER_KEY);
   localStorage.removeItem(RUN_STATUS_KEY);
