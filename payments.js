@@ -265,7 +265,7 @@ function stopPolling() {
     stopPolling();
   }
 
-function isUnlocked(tierKey) {
+  function isUnlocked(tierKey) {
   const tok = localStorage.getItem("risx_unlock_token");
   const tk  = localStorage.getItem("risx_unlock_tier");
   return !!tok && (!tierKey || tk === tierKey);
@@ -551,9 +551,11 @@ checkBtn?.addEventListener("click", async () => {
 });
 
   // ------- Expose ONE function for your tier buttons -------
-  window.RISX_openPayModalForTier = (tierKey) => {
+  window.RISX_openPayModalForTier = async (tierKey) => {
   const intent = localStorage.getItem("risx_payment_intent") || "entry";
-  if (intent === "entry" && isUnlocked(tierKey)) {
+  const recovery = await window.RISX_resolveRecoveryState?.({ allowPaymentRecovery: false }).catch?.(() => null);
+  const hasVerifiedUnlock = recovery?.kind === "unlock" && String(recovery?.tier || "").toLowerCase() === String(tierKey || "").toLowerCase();
+  if (intent === "entry" && hasVerifiedUnlock) {
     toast?.(`✅ ${tierKey} already unlocked.`);
     return;
   }
