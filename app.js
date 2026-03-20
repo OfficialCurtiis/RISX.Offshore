@@ -94,6 +94,10 @@ const CHALLENGE_WALLET_ID = "__RISX_CHALLENGE__";
 // RISX Core (generic challenge state). Keep offshore wrappers below for compatibility.
 const risxCoreStateStore = window.RISXCoreState?.createChallengeStateStore?.({ storage: localStorage }) || null;
 const risxCoreStateKeys = risxCoreStateStore?.keys || {};
+const risxCoreRuns = window.RISXCoreRuns?.createRunLifecycle?.({
+  stateStore: risxCoreStateStore,
+  storage: localStorage,
+}) || null;
 const RUN_ID_KEY      = risxCoreStateKeys.RUN_ID || "risx_run_id";
 const RUN_TIER_KEY    = risxCoreStateKeys.RUN_TIER || "risx_run_tier";
 const RUN_STATUS_KEY  = risxCoreStateKeys.RUN_STATUS || "risx_run_status";
@@ -1729,7 +1733,35 @@ function setActiveWallet(w) {
 // RUN LIFECYCLE
 // =============================
 
+// RISX Core run lifecycle wrappers (keep app.js API surface stable).
+function startChallenge(payload = {}) {
+  return risxCoreRuns?.startChallenge?.(payload) || null;
+}
+
+function advanceStage(nextStageIndex) {
+  return risxCoreRuns?.advanceStage?.(nextStageIndex) ?? 0;
+}
+
+function failRun(payload = {}) {
+  return risxCoreRuns?.failRun?.(payload) ?? false;
+}
+
+function completeRun(payload = {}) {
+  return risxCoreRuns?.completeRun?.(payload) ?? false;
+}
+
+function resetRun(payload = {}) {
+  if (risxCoreRuns?.resetRun) {
+    risxCoreRuns.resetRun(payload);
+    return;
+  }
+  clearRun();
+}
+
 function getRun() {
+  if (risxCoreRuns?.getRun) {
+    return risxCoreRuns.getRun();
+  }
   if (risxCoreStateStore?.getCurrentRun) {
     return risxCoreStateStore.getCurrentRun();
   }
@@ -1759,7 +1791,14 @@ function startRun(tier, preferredRunId = "") {
     return null;
   }
   const id = String(run.runId);
-  if (risxCoreStateStore?.setCurrentRun) {
+  if (startChallenge) {
+    startChallenge({
+      runId: id,
+      tier: t,
+      status: String(run?.status || "active"),
+      startedAt: Number(run?.startedAt || Date.now()),
+    });
+  } else if (risxCoreStateStore?.setCurrentRun) {
     risxCoreStateStore.setCurrentRun({
       runId: id,
       tier: t,
@@ -1777,6 +1816,14 @@ function startRun(tier, preferredRunId = "") {
 }
 
 function endRun(status /* "won" | "failed" | "reset" */) {
+  if (String(status || "").toLowerCase() === "failed") {
+    failRun({ preservePointer: true, endedAt: Date.now() });
+    return;
+  }
+  if (String(status || "").toLowerCase() === "won") {
+    completeRun({ preservePointer: true, endedAt: Date.now() });
+    return;
+  }
   if (risxCoreStateStore?.setCurrentRun) {
     const current = risxCoreStateStore.getCurrentRun?.() || {};
     risxCoreStateStore.setCurrentRun({
@@ -1812,6 +1859,10 @@ function finalizeActiveRunLocalState(status, runId, endedAt) {
 }
 
 function clearRun() {
+  if (risxCoreRuns?.resetRun) {
+    resetRun();
+    return;
+  }
   if (risxCoreStateStore?.clearCurrentRun) {
     risxCoreStateStore.clearCurrentRun();
     return;
