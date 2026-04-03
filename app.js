@@ -101,6 +101,13 @@ const PAYMENT_SESSION_KEY = "risx_payment_session";
 const CLAIM_STATE_KEY = "risx_claim_state";
 let recoveryUnlockTier = "";
 let recoveryUnlockIntent = "entry";
+let lastResolvedRecoveryState = {
+  kind: "none",
+  tier: "",
+  intent: "entry",
+  paymentId: "",
+  failedRunId: "",
+};
 
 function debounce(fn, delay = 150) {
   let t;
@@ -1963,25 +1970,89 @@ async function recoverUnlockFromPaymentSession() {
   return null;
 }
 
+function validateRecoveryIntent(intent, failedRunId = "") {
+  const normalizedIntent = String(intent || "").toLowerCase() === "restart" ? "restart" : "entry";
+  if (normalizedIntent !== "restart") {
+    return { intent: "entry", failedRunId: "" };
+  }
+
+  const runId = String(failedRunId || localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "");
+  const failedRun = runId ? getRunById(runId) : null;
+  if (!isRestartRequired() || !runId || String(failedRun?.status || "") !== "failed") {
+    return { intent: "entry", failedRunId: "" };
+  }
+
+  return { intent: "restart", failedRunId: runId };
+}
+
+async function resolveRecoveryState({ allowPaymentRecovery = true } = {}) {
+  const claimState = getClaimRecoveryState();
+  if (claimState && (claimState.status === "available" || claimState.status === "started")) {
+    return {
+      kind: "claim",
+      tier: "",
+      intent: "entry",
+      paymentId: "",
+      failedRunId: "",
+    };
+  }
+
+  let unlock = await verifyLocalUnlockToken();
+  if (!unlock && allowPaymentRecovery) {
+    unlock = await recoverUnlockFromPaymentSession();
+  }
+
+  if (unlock?.tier) {
+    const validated = validateRecoveryIntent(unlock.intent, unlock.failedRunId);
+    return {
+      kind: "unlock",
+      tier: String(unlock.tier || "").toLowerCase(),
+      intent: validated.intent,
+      paymentId: String(localStorage.getItem("risx_last_payment_id") || getPaymentSessionState()?.paymentId || ""),
+      failedRunId: validated.failedRunId,
+    };
+  }
+
+  const paymentSession = getPaymentSessionState();
+  if (paymentSession && ["pending", "paid"].includes(String(paymentSession.status || "").toLowerCase())) {
+    const validated = validateRecoveryIntent(paymentSession.intent, localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "");
+    return {
+      kind: "payment",
+      tier: String(paymentSession.tier || "").toLowerCase(),
+      intent: validated.intent,
+      paymentId: String(paymentSession.paymentId || ""),
+      failedRunId: validated.failedRunId,
+    };
+  }
+
+  return {
+    kind: "none",
+    tier: "",
+    intent: "entry",
+    paymentId: "",
+    failedRunId: "",
+  };
+}
+
 async function refreshPostPaymentRecovery() {
   if (challengeActive) {
     recoveryUnlockTier = "";
     recoveryUnlockIntent = "entry";
+    lastResolvedRecoveryState = {
+      kind: "none",
+      tier: "",
+      intent: "entry",
+      paymentId: "",
+      failedRunId: "",
+    };
     renderRecoveryCtas?.();
     return;
   }
 
-  let unlock = await verifyLocalUnlockToken();
-  if (!unlock) {
-    unlock = await recoverUnlockFromPaymentSession();
-  }
-
-  recoveryUnlockTier = String(unlock?.tier || "").toLowerCase();
-  recoveryUnlockIntent = String(unlock?.intent || "entry");
-
-  if (recoveryUnlockTier && !isRestartRequired() && recoveryUnlockIntent !== "restart") {
-    recoveryUnlockIntent = "entry";
-  }
+  const recovery = await resolveRecoveryState();
+  lastResolvedRecoveryState = recovery;
+  recoveryUnlockTier = recovery.kind === "unlock" ? String(recovery.tier || "").toLowerCase() : "";
+  recoveryUnlockIntent = String(recovery.intent || "entry");
 
   if (recoveryUnlockTier && challengeTier) {
     challengeTier.value = recoveryUnlockTier;
@@ -1990,12 +2061,7 @@ async function refreshPostPaymentRecovery() {
     renderTierSummary?.();
   }
 
-  const paymentSession = getPaymentSessionState();
-  const claimState = getClaimRecoveryState();
-  const hasAnyRecovery =
-    !!recoveryUnlockTier ||
-    paymentSession?.status === "pending" ||
-    !!(claimState && (claimState.status === "available" || claimState.status === "started"));
+  const hasAnyRecovery = recovery.kind !== "none";
 
   if (!challengeActive && challengeModal) {
     const modalOpen = challengeModal.classList.contains("open") || challengeModal.style.display === "block";
@@ -2114,11 +2180,12 @@ function burnChallengeAccessState({ clearResetFlags = false } = {}) {
 function renderRecoveryCtas() {
   if (!challengeRecoveryCtas) return;
 
-  const paymentSession = getPaymentSessionState();
+  const recovery = lastResolvedRecoveryState || { kind: "none", tier: "", intent: "entry", paymentId: "", failedRunId: "" };
   const claimState = getClaimRecoveryState();
-  const showStart = !challengeActive && !!recoveryUnlockTier;
-  const showPayment = paymentSession?.status === "pending" && !showStart;
-  const showClaim = !!claimState && (claimState.status === "available" || claimState.status === "started");
+  const paymentSession = getPaymentSessionState();
+  const showClaim = recovery.kind === "claim" && !!claimState;
+  const showStart = !challengeActive && recovery.kind === "unlock";
+  const showPayment = !challengeActive && recovery.kind === "payment" && !!paymentSession && paymentSession.status === "pending";
 
   challengeRecoveryCtas.style.display = (showPayment || showStart || showClaim) ? "flex" : "none";
 
@@ -2127,7 +2194,7 @@ function renderRecoveryCtas() {
   }
   if (startChallengeRecoveryBtn) {
     startChallengeRecoveryBtn.style.display = showStart ? "inline-flex" : "none";
-    startChallengeRecoveryBtn.textContent = (recoveryUnlockIntent === "restart" || isRestartRequired()) ? "Start Restart" : "Start Challenge";
+    startChallengeRecoveryBtn.textContent = recovery.intent === "restart" ? "Start Restart" : "Start Challenge";
   }
   if (resumeClaimBtn) {
     resumeClaimBtn.style.display = showClaim ? "inline-flex" : "none";
@@ -2139,6 +2206,7 @@ window.RISX_renderRecoveryCtas = () => {
   renderRecoveryCtas();
   void refreshPostPaymentRecovery();
 };
+window.RISX_resolveRecoveryState = resolveRecoveryState;
 
 /*===============================
      Challenge UI locking
@@ -6577,10 +6645,13 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
   startChallengeRecoveryBtn.addEventListener("click", async () => {
     startChallengeRecoveryBtn.disabled = true;
     try {
-      await refreshPostPaymentRecovery();
+      const recovery = await resolveRecoveryState();
+      lastResolvedRecoveryState = recovery;
+      recoveryUnlockTier = recovery.kind === "unlock" ? String(recovery.tier || "").toLowerCase() : "";
+      recoveryUnlockIntent = String(recovery.intent || "entry");
 
       let tier = String(
-        recoveryUnlockTier ||
+        recovery.tier ||
         challengeTier?.value ||
         challengeTierSelected ||
         CHALLENGE.tier ||
@@ -6592,9 +6663,6 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
         return;
       }
 
-      const unlockOk = await hasValidUnlockForTier(tier);
-      const restartNeeded = isRestartRequired();
-
       if (challengeTier) challengeTier.value = tier;
       challengeTierSelected = tier;
       CHALLENGE.tier = tier;
@@ -6602,17 +6670,20 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
 
       console.log("[RISX][RecoveryCTA] click", {
         tier,
+        recoveryKind: recovery.kind,
         recoveryUnlockTier,
         recoveryUnlockIntent,
-        unlockOk,
-        restartNeeded,
+        paymentId: recovery.paymentId,
+        failedRunId: recovery.failedRunId,
         paymentIntent: localStorage.getItem("risx_payment_intent"),
       });
 
-      if (unlockOk) {
-        const restartUnlock = recoveryUnlockIntent === "restart";
-        if (restartUnlock) {
+      if (recovery.kind === "unlock") {
+        if (recovery.intent === "restart") {
           localStorage.setItem("risx_unlock_intent", "restart");
+          if (recovery.failedRunId) {
+            localStorage.setItem(RESTART_FAILED_RUN_ID_KEY, recovery.failedRunId);
+          }
         }
         localStorage.removeItem("risx_payment_intent");
         localStorage.removeItem("risx_pending_payment");
@@ -6622,7 +6693,7 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
       }
 
       // No valid unlock yet, and restart is still required, so continue the reset payment flow.
-      if (restartNeeded) {
+      if (recovery.kind === "payment" && recovery.intent === "restart") {
         recoveryUnlockIntent = "restart";
         localStorage.setItem("risx_payment_intent", "restart");
         window.RISX_openPayModalForTier?.(tier);
