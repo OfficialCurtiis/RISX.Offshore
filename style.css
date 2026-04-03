@@ -4299,7 +4299,7 @@ body.modal-open {
   height: var(--bucket-strip-h);
   box-sizing: border-box;
   margin: 0;
-  z-index: 4;
+  z-index: 999999; /* above pegs + ball */
 }
 
 @media (min-width: 981px){
