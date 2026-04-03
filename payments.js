@@ -15,6 +15,7 @@
 
   const PAYMENT_SESSION_KEY = "risx_payment_session";
   const LEGACY_PENDING_KEY = "risx_pending_payment";
+  const CREATE_PAYMENT_ATTEMPT_KEY = "risx_create_payment_attempt_v1";
   const SAVE_PREFIX = (typeof RISX_SAVE_KEY !== "undefined" ? RISX_SAVE_KEY : "risx_demo_wallet_v2");
   const PLAYER_WALLET_KEY = `${SAVE_PREFIX}::player_wallet`;
   const PLAYER_EMAIL_KEY = `${SAVE_PREFIX}::player_email`;
@@ -104,6 +105,53 @@
 
   function auditEmail() {
     return String(localStorage.getItem(PLAYER_EMAIL_KEY) || "").trim();
+  }
+
+  function newIdempotencyKey() {
+    try {
+      if (globalThis?.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+      if (globalThis?.crypto?.getRandomValues) {
+        const bytes = new Uint8Array(16);
+        globalThis.crypto.getRandomValues(bytes);
+        return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+      }
+    } catch {}
+    return `fallback_${Date.now()}`;
+  }
+
+  function getOrCreateCreatePaymentAttempt({ tierKey, currency, intent, failedRunId }) {
+    const now = Date.now();
+    const existingRaw = localStorage.getItem(CREATE_PAYMENT_ATTEMPT_KEY);
+    if (existingRaw) {
+      try {
+        const existing = JSON.parse(existingRaw);
+        const isSameShape =
+          existing &&
+          existing.tierKey === tierKey &&
+          existing.currency === currency &&
+          existing.intent === intent &&
+          existing.failedRunId === failedRunId;
+        const ageMs = Math.max(0, now - Number(existing.createdAt || 0));
+        if (isSameShape && ageMs <= 15 * 60 * 1000 && existing.key) {
+          return existing.key;
+        }
+      } catch {}
+    }
+
+    const next = {
+      key: newIdempotencyKey(),
+      tierKey,
+      currency,
+      intent,
+      failedRunId,
+      createdAt: now,
+    };
+    localStorage.setItem(CREATE_PAYMENT_ATTEMPT_KEY, JSON.stringify(next));
+    return next.key;
+  }
+
+  function clearCreatePaymentAttempt() {
+    localStorage.removeItem(CREATE_PAYMENT_ATTEMPT_KEY);
   }
 
   function syncPaymentRecord(session) {
@@ -277,16 +325,34 @@ function stopPolling() {
     const failedRunId = intent === "restart"
       ? String(localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "")
       : "";
+    const idempotencyKey = getOrCreateCreatePaymentAttempt({
+      tierKey,
+      currency,
+      intent,
+      failedRunId,
+    });
 
     const r = await fetch("/api/create-payment", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tierKey, usd, currency, intent, failedRunId })
+      headers: {
+        "Content-Type": "application/json",
+        "X-Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify({
+        tierKey,
+        usd,
+        currency,
+        intent,
+        failedRunId,
+        wallet: auditWallet(),
+        email: auditEmail(),
+        idempotencyKey,
+      })
     });
 
     const j = await r.json();
     if (!r.ok) throw new Error(j?.details ? `${j.error}: ${j.details}` : (j?.error || "Create payment failed"));
-
+    clearCreatePaymentAttempt();
     return j; // contains payment_id, pay_amount, pay_address, etc.
   }
 
