@@ -198,6 +198,10 @@ export default async function handler(req, res) {
       order_id,
       order_description: `RISX ${tierKey} ${normalizedIntent === "restart" ? "restart" : "entry"}`,
     };
+    const callbackUrl = String(process.env.NOWPAYMENTS_IPN_CALLBACK_URL || "").trim();
+    if (callbackUrl) {
+      providerPayload.ipn_callback_url = callbackUrl;
+    }
 
     const providerRes = await fetch("https://api.nowpayments.io/v1/payment", {
       method: "POST",
