@@ -2698,7 +2698,7 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
   if (bucketsRect && boardRect) {
     const bucketTop = bucketsRect.top - boardRect.top;
     const bucketH = bucketsRect.height || stripH;
-    const bucketPocketY = bucketTop + bucketH * 0.62;
+    const bucketPocketY = bucketTop + bucketH * 0.5;
     targetY = bucketPocketY - PLINKO_BALL_R;
   }
 
