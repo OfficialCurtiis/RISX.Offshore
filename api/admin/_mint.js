@@ -15,7 +15,10 @@ export function getMintKeyStatus() {
 
 export function signUnlockToken({ tierKey, paymentId, exp, intent = "entry", failedRunId = "" }) {
   const normalizedIntent = String(intent || "").toLowerCase() === "restart" ? "restart" : "entry";
+  const iat = Date.now();
   const payload = {
+    jti: crypto.randomUUID(),
+    iat,
     tierKey,
     paymentId,
     exp,
@@ -46,6 +49,10 @@ export function verifyUnlockToken(token) {
 
   if (!payload?.tierKey || !payload?.paymentId || !payload?.exp) return { ok: false };
   if (payload.intent && !["entry", "restart"].includes(String(payload.intent).toLowerCase())) return { ok: false };
+  if (!payload.jti) {
+    // Backward compatibility for older tokens minted before jti support.
+    payload.jti = crypto.createHash("sha256").update(body).digest("hex").slice(0, 32);
+  }
   if (Date.now() > Number(payload.exp)) return { ok: false, expired: true };
   return { ok: true, payload };
 }

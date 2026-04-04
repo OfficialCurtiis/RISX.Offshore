@@ -6068,6 +6068,43 @@ async function hasValidUnlockForTier(tier) {
   }
 }
 
+async function consumeUnlockForRun(tier, runId) {
+  const token = String(localStorage.getItem("risx_unlock_token") || "");
+  if (!token) return { ok: false, reason: "missing_token" };
+
+  const tierKey = String(tier || "").toLowerCase();
+  if (!tierKey) return { ok: false, reason: "missing_tier" };
+
+  try {
+    const r = await fetch("/api/verify-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token,
+        consume: true,
+        tierKey,
+        runId: String(runId || ""),
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    const ok = !!(r.ok && j.valid && j.consumed && String(j.tierKey || "").toLowerCase() === tierKey);
+    if (!ok) {
+      return {
+        ok: false,
+        reason: String(j?.error || "consume_failed"),
+        status: r.status,
+      };
+    }
+    return {
+      ok: true,
+      intent: String(j.intent || "entry").toLowerCase(),
+      jti: String(j.jti || ""),
+    };
+  } catch {
+    return { ok: false, reason: "network_error" };
+  }
+}
+
 challengeTier?.addEventListener("change", () => {
   challengeTierSelected = String(challengeTier.value || "").toLowerCase();
   renderTierSummary(); // this already calls renderChallengeParams()
@@ -6308,6 +6345,16 @@ async function startChallengeNow(tier) {
     toast?.("Unlock found but no startable run. Resume payment or try again.");
     renderRecoveryCtas?.();
     return;
+  }
+
+  const consumeRes = await consumeUnlockForRun(tierKey, preparedRunId);
+  if (!consumeRes.ok) {
+    toast?.("Unlock token was already used or invalid. Please resume payment.");
+    renderRecoveryCtas?.();
+    return;
+  }
+  if (consumeRes.intent === "restart") {
+    localStorage.setItem("risx_unlock_intent", "restart");
   }
 
   const runId = startRun(tierKey, preparedRunId);
