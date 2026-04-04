@@ -6076,12 +6076,11 @@ async function consumeUnlockForRun(tier, runId) {
   if (!tierKey) return { ok: false, reason: "missing_tier" };
 
   try {
-    const r = await fetch("/api/verify-token", {
+    const r = await fetch("/api/unlock-consume", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         token,
-        consume: true,
         tierKey,
         runId: String(runId || ""),
       }),
