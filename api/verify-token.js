@@ -122,6 +122,11 @@ export default async function handler(req, res) {
 
       if (!updatedRun) return res.status(404).json({ ok: false, error: "Run not found" });
 
+      const returnedLiveBalanceRaw = updatedRun?.metadata?.liveBalance ?? clampedBalance;
+      const returnedLiveBalance = Number.isFinite(Number(returnedLiveBalanceRaw))
+        ? Math.max(0, Math.round(Number(returnedLiveBalanceRaw) * 100) / 100)
+        : null;
+
       return res.status(200).json({
         ok: true,
         synced: true,
@@ -129,7 +134,7 @@ export default async function handler(req, res) {
         paymentId: String(updatedRun.payment_id || vr.payload.paymentId || ""),
         tierKey: String(updatedRun.tier || vr.payload.tierKey || ""),
         status: String(updatedRun.status || syncStatus || ""),
-        liveBalance: Number(updatedRun?.metadata?.liveBalance ?? clampedBalance ?? 0),
+        liveBalance: returnedLiveBalance,
       });
     }
 
