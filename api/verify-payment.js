@@ -47,6 +47,23 @@ function isPaidStatus(status = "") {
   return s === "confirmed" || s === "finished" || s === "paid";
 }
 
+async function findConsumedUnlockByPaymentId(paymentId) {
+  const id = String(paymentId || "").trim();
+  if (!id) return null;
+  return withSupabaseAdmin("verify_payment_unlock_consumed_by_payment", async (admin) => {
+    const { data, error } = await admin
+      .from("unlock_tokens")
+      .select("jti,run_id,consumed_at,payment_id")
+      .eq("payment_id", id)
+      .not("consumed_at", "is", null)
+      .order("consumed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  });
+}
+
 async function fetchPaymentRow(paymentId) {
   return withSupabaseAdmin("verify_payment_fetch_row", async (admin) => {
     const { data, error } = await admin
@@ -142,7 +159,11 @@ export default async function handler(req, res) {
         // DB-first: if we already know terminal truth, return immediately.
         if (["paid", "expired", "cancelled", "failed"].includes(dbStatus)) {
           const out = buildResponseFromPaymentRow(paymentRow);
-          if (isPaidStatus(out.payment_status) && out.tierKey) {
+          let consumedUnlock = null;
+          if (hasSupabaseAdminEnv()) {
+            consumedUnlock = await findConsumedUnlockByPaymentId(out.payment_id || paymentId);
+          }
+          if (isPaidStatus(out.payment_status) && out.tierKey && !consumedUnlock) {
             const exp = Date.now() + 1000 * 60 * 60 * 24;
             out.unlock_token = signUnlockToken({
               tierKey: out.tierKey,
@@ -152,6 +173,10 @@ export default async function handler(req, res) {
               failedRunId: out.failedRunId,
             });
             out.unlock_expires_at = exp;
+          } else if (consumedUnlock) {
+            out.unlock_consumed = true;
+            out.unlock_consumed_at = consumedUnlock.consumed_at || null;
+            out.consumed_run_id = consumedUnlock.run_id || null;
           }
           return res.status(200).json(out);
         }
@@ -203,7 +228,11 @@ export default async function handler(req, res) {
       failedRunId,
     };
 
-    if (isPaidStatus(statusLower) && tierKey) {
+    let consumedUnlock = null;
+    if (hasSupabaseAdminEnv()) {
+      consumedUnlock = await findConsumedUnlockByPaymentId(String(providerData.payment_id || paymentId));
+    }
+    if (isPaidStatus(statusLower) && tierKey && !consumedUnlock) {
       const exp = Date.now() + 1000 * 60 * 60 * 24;
       out.unlock_token = signUnlockToken({
         tierKey,
@@ -213,6 +242,10 @@ export default async function handler(req, res) {
         failedRunId,
       });
       out.unlock_expires_at = exp;
+    } else if (consumedUnlock) {
+      out.unlock_consumed = true;
+      out.unlock_consumed_at = consumedUnlock.consumed_at || null;
+      out.consumed_run_id = consumedUnlock.run_id || null;
     }
     return res.status(200).json(out);
   } catch (e) {

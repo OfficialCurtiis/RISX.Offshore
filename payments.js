@@ -365,7 +365,11 @@ function stopPolling() {
 
 function handleConfirmed(resp) {
   if (!(resp?.unlock_token && resp?.tierKey)) {
-    statusEl.textContent = "Confirmed, but missing unlock token. Contact support.";
+    if (resp?.unlock_consumed) {
+      statusEl.textContent = "This payment was already used to start a challenge run. Resume that run from this device or contact support.";
+    } else {
+      statusEl.textContent = "Confirmed, but missing unlock token. Contact support.";
+    }
     return;
   }
 
