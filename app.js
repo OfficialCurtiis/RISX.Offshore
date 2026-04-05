@@ -4517,7 +4517,7 @@ try {
 } catch (err) {
   console.error("[RISX][Supabase] createClient/init failed:", err);
 }
-const supabaseRunsEnabled = !!supabaseClient;
+let supabaseRunsEnabled = !!supabaseClient;
 const runSyncQueue = new Map();
 let runRecordsCache = [];
 let runRecordsReady = false;
@@ -4525,6 +4525,26 @@ let runRecordsLoadPromise = null;
 const supabaseProbeSessionKey = `${RISX_SAVE_KEY}::supabase_runs_probe_done_v1`;
 let supabaseProbePromise = null;
 let supabaseProbeDone = false;
+
+function isSupabaseUnauthorizedError(error) {
+  const status = Number(error?.status || error?.statusCode || error?.response?.status || 0);
+  const code = String(error?.code || "");
+  const msg = String(error?.message || "").toLowerCase();
+  return status === 401 || status === 403 || code === "401" || code === "403" || msg.includes("unauthorized") || msg.includes("forbidden");
+}
+
+function disableSupabaseRuns(reason = "", detail = null) {
+  if (!supabaseRunsEnabled) return;
+  supabaseRunsEnabled = false;
+  runSyncQueue.clear();
+  try {
+    writeList(runsKey, runRecordsCache.map(cloneRunRecord));
+  } catch {}
+  console.warn("[RISX][Supabase] Client run sync disabled; falling back to local cache only.", {
+    reason: String(reason || "disabled"),
+    detail: detail || null,
+  });
+}
 
 function auditWallet() {
   const stored = String(localStorage.getItem(playerWalletKey) || "").trim();
@@ -4832,6 +4852,9 @@ async function runSupabaseDirectInsertProbe({ force = false } = {}) {
 
     if (error) {
       console.error("[RISX][Supabase] Direct insert probe FAILED:", { probeRunId, error });
+      if (isSupabaseUnauthorizedError(error)) {
+        disableSupabaseRuns("probe_unauthorized", error);
+      }
       return { ok: false, skipped: false, error };
     }
 
@@ -4867,6 +4890,12 @@ async function refreshRunRecordsFromSupabase({ silent = false } = {}) {
     .select("*")
     .order("created_at", { ascending: false });
   if (error) {
+    if (isSupabaseUnauthorizedError(error)) {
+      disableSupabaseRuns("select_unauthorized", error);
+      runRecordsCache = sortRunRecords(readList(runsKey).filter(Boolean).map(normalizeRunRecord).filter((r) => !!r.runId));
+      runRecordsReady = true;
+      return runRecordsCache.map(cloneRunRecord);
+    }
     if (!silent) {
       console.error("[RISX][Supabase] SELECT failed for public.runs:", {
         error,
@@ -4896,6 +4925,11 @@ async function syncRunRecordToSupabase(runInput) {
     .upsert(payload, { onConflict: "run_id" });
   if (!error) return;
 
+  if (isSupabaseUnauthorizedError(error)) {
+    disableSupabaseRuns("upsert_unauthorized", error);
+    return;
+  }
+
   console.error("[RISX][Supabase] UPSERT failed for run:", {
     runId: run.runId,
     status: run.status,
@@ -4912,6 +4946,10 @@ async function syncRunRecordToSupabase(runInput) {
     .from("runs")
     .update(payload)
     .eq("run_id", run.runId);
+  if (updateError && isSupabaseUnauthorizedError(updateError)) {
+    disableSupabaseRuns("update_unauthorized", updateError);
+    return;
+  }
   if (!updateError) {
     console.warn("[RISX][Supabase] Fallback UPDATE succeeded after UPSERT failure.", { runId: run.runId });
     return;
@@ -4920,6 +4958,10 @@ async function syncRunRecordToSupabase(runInput) {
   const { error: insertError } = await supabaseClient
     .from("runs")
     .insert(payload);
+  if (insertError && isSupabaseUnauthorizedError(insertError)) {
+    disableSupabaseRuns("insert_unauthorized", insertError);
+    return;
+  }
   if (insertError) {
     console.error("[RISX][Supabase] Fallback INSERT also failed:", {
       runId: run.runId,
@@ -4941,12 +4983,14 @@ function queueRunSync(runInput) {
   const next = prev
     .catch(() => {})
     .then(async () => {
+      if (!supabaseRunsEnabled) return;
       if (!supabaseProbeDone && !getSupabaseProbeSessionFlag()) {
         const probe = await runSupabaseDirectInsertProbe();
         if (!probe?.ok) {
           console.error("[RISX][Supabase] Direct insert probe did not pass; attempting run sync anyway.", probe);
         }
       }
+      if (!supabaseRunsEnabled) return;
       await syncRunRecordToSupabase(run);
     })
     .finally(() => {
@@ -4969,6 +5013,10 @@ async function migrateLegacyRunsToSupabase() {
     const rows = pending.map(mapRunRecordToSupabaseRow);
     const { error } = await supabaseClient.from("runs").upsert(rows, { onConflict: "run_id" });
     if (error) {
+      if (isSupabaseUnauthorizedError(error)) {
+        disableSupabaseRuns("legacy_migrate_unauthorized", error);
+        return false;
+      }
       console.error("[RISX][Supabase] Legacy run migration UPSERT failed:", {
         error,
         rowCount: rows.length,
@@ -5249,7 +5297,7 @@ function markRunStarted({ tier, paymentId, runId } = {}) {
     run.status = "active";
     if (!run.startedAt) run.startedAt = Date.now();
     const tierCfg = CHALLENGE_TIERS[String(run.tier || tierKey || "").toLowerCase()];
-    if (!Number.isFinite(Number(run.liveBalance))) {
+    if (!Number.isFinite(Number(run.liveBalance)) || Number(run.liveBalance) <= 0) {
       run.liveBalance = Number(tierCfg?.startCredits || 0);
     }
     appendRunEvent(run, { type: "challenge_started" });
@@ -5279,7 +5327,7 @@ function markRunResumed(runId) {
   if (!run) return null;
   if (!run.startedAt) return markRunStarted({ tier: run.tier, paymentId: run.paymentId });
   if (run.status === "won" || run.status === "failed" || run.status === "claimed" || run.status === "paid" || run.status === "void") {
-    return run;
+    return null;
   }
   run.status = "resumed";
   run.resumedAt = Date.now();
