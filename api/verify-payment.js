@@ -1,5 +1,5 @@
 // /api/verify-payment.js
-import { signUnlockToken } from "./admin/_mint.js";
+import { signRunResumeToken, signUnlockToken } from "./admin/_mint.js";
 import { hasSupabaseAdminEnv, withSupabaseAdmin } from "./_supabaseAdmin.js";
 
 function extractTierKeyFromOrderId(order_id = "") {
@@ -62,6 +62,82 @@ async function findConsumedUnlockByPaymentId(paymentId) {
     if (error) throw error;
     return data || null;
   });
+}
+
+function parseJsonObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function parseRunLiveBalance(runRow) {
+  const metadata = parseJsonObject(runRow?.metadata);
+  const raw = Number(metadata.liveBalance ?? metadata.balance ?? null);
+  if (!Number.isFinite(raw)) return null;
+  return Math.max(0, Math.round(raw * 100) / 100);
+}
+
+async function fetchRunRowByRunId(runId) {
+  const id = String(runId || "").trim();
+  if (!id) return null;
+  return withSupabaseAdmin("verify_payment_fetch_run_row", async (admin) => {
+    const { data, error } = await admin
+      .from("runs")
+      .select("*")
+      .eq("run_id", id)
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  });
+}
+
+function buildResumeRunPayload(runRow, fallback = {}) {
+  const metadata = parseJsonObject(runRow?.metadata);
+  const runId = String(runRow?.run_id || fallback.runId || "").trim();
+  if (!runId) return null;
+  return {
+    run_id: runId,
+    payment_id: String(runRow?.payment_id || fallback.paymentId || "").trim() || null,
+    tierKey: String(runRow?.tier || fallback.tierKey || "").toLowerCase() || null,
+    status: String(runRow?.status || "").toLowerCase() || null,
+    started_at: runRow?.started_at || null,
+    ended_at: runRow?.ended_at || null,
+    result: runRow?.result ?? metadata.result ?? null,
+    pnl: runRow?.pnl ?? metadata.pnl ?? null,
+    live_balance: parseRunLiveBalance(runRow),
+    updated_at: runRow?.updated_at || null,
+  };
+}
+
+async function buildConsumedResumeData(consumedUnlock, fallback = {}) {
+  const runId = String(consumedUnlock?.run_id || "").trim();
+  if (!runId) return null;
+
+  let runRow = null;
+  try {
+    runRow = await fetchRunRowByRunId(runId);
+  } catch {
+    runRow = null;
+  }
+
+  const paymentId = String(runRow?.payment_id || fallback.paymentId || consumedUnlock?.payment_id || "").trim();
+  const tierKey = String(runRow?.tier || fallback.tierKey || "").toLowerCase();
+  const resumeRun = buildResumeRunPayload(runRow, { runId, paymentId, tierKey });
+
+  if (!paymentId || !tierKey) {
+    return resumeRun ? { resume_run: resumeRun } : null;
+  }
+
+  const resumeExp = Date.now() + 1000 * 60 * 60 * 24 * 7;
+  return {
+    resume_token: signRunResumeToken({
+      runId,
+      paymentId,
+      tierKey,
+      exp: resumeExp,
+    }),
+    resume_token_expires_at: resumeExp,
+    resume_run: resumeRun,
+  };
 }
 
 async function fetchPaymentRow(paymentId) {
@@ -177,6 +253,13 @@ export default async function handler(req, res) {
             out.unlock_consumed = true;
             out.unlock_consumed_at = consumedUnlock.consumed_at || null;
             out.consumed_run_id = consumedUnlock.run_id || null;
+            const resume = await buildConsumedResumeData(consumedUnlock, {
+              paymentId: String(out.payment_id || paymentId),
+              tierKey: out.tierKey || null,
+            });
+            if (resume?.resume_token) out.resume_token = resume.resume_token;
+            if (resume?.resume_token_expires_at) out.resume_token_expires_at = resume.resume_token_expires_at;
+            if (resume?.resume_run) out.resume_run = resume.resume_run;
           }
           return res.status(200).json(out);
         }
@@ -246,6 +329,13 @@ export default async function handler(req, res) {
       out.unlock_consumed = true;
       out.unlock_consumed_at = consumedUnlock.consumed_at || null;
       out.consumed_run_id = consumedUnlock.run_id || null;
+      const resume = await buildConsumedResumeData(consumedUnlock, {
+        paymentId: String(providerData.payment_id || paymentId),
+        tierKey: tierKey || null,
+      });
+      if (resume?.resume_token) out.resume_token = resume.resume_token;
+      if (resume?.resume_token_expires_at) out.resume_token_expires_at = resume.resume_token_expires_at;
+      if (resume?.resume_run) out.resume_run = resume.resume_run;
     }
     return res.status(200).json(out);
   } catch (e) {

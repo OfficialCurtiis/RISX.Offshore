@@ -364,20 +364,83 @@ function stopPolling() {
   }
 
 function handleConfirmed(resp) {
-  if (!(resp?.unlock_token && resp?.tierKey)) {
-    if (resp?.unlock_consumed) {
-      statusEl.textContent = "This payment was already used to start a challenge run. Resume that run from this device or contact support.";
-    } else {
-      statusEl.textContent = "Confirmed, but missing unlock token. Contact support.";
-    }
-    return;
-  }
-
   const pending = getPaymentSession();
   const intent = String(resp?.intent || pending?.intent || "entry").toLowerCase() === "restart" ? "restart" : "entry";
   const tierKey = String(resp?.tierKey || pending?.tier || "").toLowerCase();
   const paymentId = String(pending?.paymentId || activePaymentId || resp?.payment_id || "").trim();
   const failedRunId = String(resp?.failedRunId || localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "");
+  const amount = Number(pending?.amount || resp?.pay_amount || 0);
+  const currency = String(pending?.currency || resp?.pay_currency || "");
+
+  if (resp?.unlock_consumed) {
+    if (paymentId && tierKey) {
+      setPaymentSession({
+        status: "paid",
+        intent,
+        tier: tierKey,
+        invoiceId: paymentId,
+        paymentId,
+        amount,
+        currency,
+        payAddress: String(pending?.payAddress || ""),
+        createdAt: Number(pending?.createdAt || Date.now()),
+      });
+      syncPaymentRecord({
+        paymentId,
+        tier: tierKey,
+        amount,
+        currency,
+        status: "paid",
+        createdAt: Number(pending?.createdAt || Date.now()),
+      });
+    }
+
+    if (resp?.resume_token && resp?.consumed_run_id) {
+      try {
+        window.RISX_setRunResumeState?.({
+          token: String(resp.resume_token || ""),
+          runId: String(resp.consumed_run_id || ""),
+          paymentId: paymentId || String(resp?.payment_id || ""),
+          tierKey: tierKey || String(resp?.resume_run?.tierKey || ""),
+          exp: Number(resp.resume_token_expires_at || 0),
+        });
+      } catch {}
+    }
+
+    try {
+      window.RISX_upsertRunFromResumeSnapshot?.({
+        ...(resp?.resume_run && typeof resp.resume_run === "object" ? resp.resume_run : {}),
+        run_id: String(resp?.consumed_run_id || resp?.resume_run?.run_id || ""),
+        payment_id: paymentId || String(resp?.resume_run?.payment_id || ""),
+        tierKey: tierKey || String(resp?.resume_run?.tierKey || ""),
+        live_balance: resp?.resume_run?.live_balance ?? null,
+        status: String(resp?.resume_run?.status || "resumed"),
+      }, {
+        runId: String(resp?.consumed_run_id || ""),
+        paymentId: paymentId || String(resp?.payment_id || ""),
+        tier: tierKey || String(resp?.resume_run?.tierKey || ""),
+      });
+    } catch {}
+
+    if (tierKey) localStorage.setItem("risx_unlock_tier", tierKey);
+    localStorage.setItem("risx_unlock_intent", intent);
+    if (intent === "restart" && failedRunId) {
+      localStorage.setItem(RESTART_FAILED_RUN_ID_KEY, failedRunId);
+    }
+
+    statusEl.textContent = "Payment already consumed. Resuming your existing run…";
+    updatePaymentSessionStatus("paid");
+    activeTierKey = tierKey || activeTierKey;
+    setUnlocked(activeTierKey || "beginner");
+    closeModal();
+    window.RISX_startChallengeFromPayment?.(tierKey || "beginner");
+    return;
+  }
+
+  if (!(resp?.unlock_token && resp?.tierKey)) {
+    statusEl.textContent = "Confirmed, but missing unlock token. Contact support.";
+    return;
+  }
 
   // Persist unlock (entry unlock token still useful)
   localStorage.setItem("risx_unlock_token", resp.unlock_token);
@@ -391,8 +454,8 @@ function handleConfirmed(resp) {
     syncPaymentRecord({
       paymentId,
       tier: String(resp.tierKey || tierKey || ""),
-      amount: Number(pending?.amount || resp?.pay_amount || 0),
-      currency: String(pending?.currency || resp?.pay_currency || ""),
+      amount,
+      currency,
       status: "paid",
       createdAt: Number(pending?.createdAt || Date.now()),
     });
@@ -402,8 +465,8 @@ function handleConfirmed(resp) {
         wallet: auditWallet(),
         email: auditEmail(),
         tier: String(resp.tierKey || tierKey || ""),
-        amount: Number(pending?.amount || resp?.pay_amount || 0),
-        currency: String(pending?.currency || resp?.pay_currency || ""),
+        amount,
+        currency,
         status: "paid",
         paidAt: Date.now(),
       }, {

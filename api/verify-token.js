@@ -1,6 +1,6 @@
 // /api/verify-token.js
 import crypto from "crypto";
-import { verifyUnlockToken } from "./admin/_mint.js";
+import { signRunResumeToken, verifyRunResumeToken, verifyUnlockToken } from "./admin/_mint.js";
 import { hasSupabaseAdminEnv, withSupabaseAdmin } from "./_supabaseAdmin.js";
 
 function sha256Hex(input) {
@@ -64,7 +64,75 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
   try {
-    const { token, consume = false, tierKey: requestedTier, runId = "" } = req.body || {};
+    const { mode = "", token, consume = false, tierKey: requestedTier, runId = "", resumeToken = "", liveBalance, status: runStatus } = req.body || {};
+
+    if (String(mode || "").toLowerCase() === "sync_run") {
+      if (!hasSupabaseAdminEnv()) {
+        return res.status(500).json({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY on server" });
+      }
+      const vr = verifyRunResumeToken(String(resumeToken || ""));
+      if (!vr.ok) return res.status(401).json({ ok: false, error: "Invalid or expired resume token", expired: !!vr.expired });
+
+      const tokenRunId = sanitizeText(vr.payload.runId, 120);
+      const bodyRunId = sanitizeText(runId, 120);
+      if (bodyRunId && bodyRunId !== tokenRunId) {
+        return res.status(409).json({ ok: false, error: "runId mismatch" });
+      }
+
+      const nextBalance = Number(liveBalance);
+      const clampedBalance = Number.isFinite(nextBalance) ? Math.max(0, Math.round(nextBalance * 100) / 100) : null;
+      const nextStatusRaw = String(runStatus || "").toLowerCase();
+      const syncStatus = ["active", "resumed", "ready"].includes(nextStatusRaw) ? nextStatusRaw : null;
+
+      const updatedRun = await withSupabaseAdmin("verify_token_sync_run", async (admin) => {
+        const { data: existing, error: findErr } = await admin
+          .from("runs")
+          .select("*")
+          .eq("run_id", tokenRunId)
+          .limit(1)
+          .maybeSingle();
+        if (findErr) throw findErr;
+        if (!existing) return null;
+
+        const existingPaymentId = String(existing.payment_id || "");
+        if (existingPaymentId && existingPaymentId !== String(vr.payload.paymentId || "")) {
+          throw new Error("payment mismatch");
+        }
+
+        const metadata = (existing.metadata && typeof existing.metadata === "object") ? existing.metadata : {};
+        const patch = {
+          updated_at: new Date().toISOString(),
+          metadata: {
+            ...metadata,
+            liveBalance: clampedBalance ?? metadata.liveBalance ?? null,
+            lastClientSyncAt: new Date().toISOString(),
+          },
+        };
+        if (syncStatus) patch.status = syncStatus;
+
+        const { data: updated, error: updateErr } = await admin
+          .from("runs")
+          .update(patch)
+          .eq("run_id", tokenRunId)
+          .select("*")
+          .single();
+        if (updateErr) throw updateErr;
+        return updated;
+      });
+
+      if (!updatedRun) return res.status(404).json({ ok: false, error: "Run not found" });
+
+      return res.status(200).json({
+        ok: true,
+        synced: true,
+        runId: String(updatedRun.run_id || tokenRunId),
+        paymentId: String(updatedRun.payment_id || vr.payload.paymentId || ""),
+        tierKey: String(updatedRun.tier || vr.payload.tierKey || ""),
+        status: String(updatedRun.status || syncStatus || ""),
+        liveBalance: Number(updatedRun?.metadata?.liveBalance ?? clampedBalance ?? 0),
+      });
+    }
+
     if (!token) return res.status(400).json({ error: "Missing token" });
 
     const v = verifyUnlockToken(token);
@@ -99,6 +167,13 @@ export default async function handler(req, res) {
         if (existing.consumed_at) {
           const existingRunId = sanitizeText(existing.run_id || "", 120);
           if (!safeRunId || existingRunId === safeRunId) {
+            const resumeExp = Date.now() + 1000 * 60 * 60 * 24 * 7;
+            const resumeTokenOut = signRunResumeToken({
+              runId: existingRunId || safeRunId || "",
+              paymentId: String(v.payload.paymentId || ""),
+              tierKey: tokenTier,
+              exp: resumeExp,
+            });
             return res.status(200).json({
               valid: true,
               consumed: true,
@@ -110,6 +185,8 @@ export default async function handler(req, res) {
               failedRunId: String(v.payload.failedRunId || ""),
               exp: expiresAtMs,
               runId: existingRunId || null,
+              resume_token: resumeTokenOut,
+              resume_token_expires_at: resumeExp,
             });
           }
           return res.status(409).json({
@@ -143,6 +220,13 @@ export default async function handler(req, res) {
         const after = await findUnlockRowByJti(jti);
         const afterRunId = sanitizeText(after?.run_id || "", 120);
         if (after?.consumed_at && (!safeRunId || afterRunId === safeRunId)) {
+          const resumeExp = Date.now() + 1000 * 60 * 60 * 24 * 7;
+          const resumeToken = signRunResumeToken({
+            runId: afterRunId || safeRunId || "",
+            paymentId: String(v.payload.paymentId || ""),
+            tierKey: tokenTier,
+            exp: resumeExp,
+          });
           return res.status(200).json({
             valid: true,
             consumed: true,
@@ -154,6 +238,8 @@ export default async function handler(req, res) {
             failedRunId: String(v.payload.failedRunId || ""),
             exp: expiresAtMs,
             runId: afterRunId || null,
+            resume_token: resumeToken,
+            resume_token_expires_at: resumeExp,
           });
         }
         return res.status(409).json({
@@ -163,6 +249,14 @@ export default async function handler(req, res) {
         });
       }
 
+      const resumeExp = Date.now() + 1000 * 60 * 60 * 24 * 7;
+      const nextRunId = sanitizeText(consumed.run_id || "", 120) || safeRunId || "";
+      const resumeTokenOut = signRunResumeToken({
+        runId: nextRunId,
+        paymentId: String(v.payload.paymentId || ""),
+        tierKey: tokenTier,
+        exp: resumeExp,
+      });
       return res.status(200).json({
         valid: true,
         consumed: true,
@@ -172,7 +266,9 @@ export default async function handler(req, res) {
         exp: expiresAtMs,
         intent: normalizedIntent,
         failedRunId: String(v.payload.failedRunId || ""),
-        runId: sanitizeText(consumed.run_id || "", 120) || null,
+        runId: nextRunId || null,
+        resume_token: resumeTokenOut,
+        resume_token_expires_at: resumeExp,
       });
     }
 

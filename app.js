@@ -99,6 +99,14 @@ const RUN_END_KEY     = "risx_run_ended_at";
 const RESTART_FAILED_RUN_ID_KEY = "risx_restart_failed_run_id";
 const PAYMENT_SESSION_KEY = "risx_payment_session";
 const CLAIM_STATE_KEY = "risx_claim_state";
+const RUN_RESUME_TOKEN_KEY = "risx_run_resume_token";
+const RUN_RESUME_TOKEN_EXPIRES_KEY = "risx_run_resume_token_expires_at";
+const RUN_RESUME_RUN_ID_KEY = "risx_run_resume_run_id";
+const RUN_RESUME_PAYMENT_ID_KEY = "risx_run_resume_payment_id";
+const RUN_RESUME_TIER_KEY = "risx_run_resume_tier";
+let runProgressSyncTimer = null;
+let runProgressSyncInflight = false;
+let runProgressSyncPending = null;
 let recoveryUnlockTier = "";
 let recoveryUnlockIntent = "entry";
 let lastResolvedRecoveryState = {
@@ -1497,6 +1505,7 @@ function adjustBalance(delta, opts = {}) {
 
   updateBalanceDisplay?.();
   persistActiveWalletState?.();
+  queueRunProgressSync?.({ status: "active" });
   showChallengeResetIfNeeded?.();
 
   if (!opts.suppressChallengeChecks) {
@@ -1667,6 +1676,7 @@ function setBalance(next) {
   balance = clamp2(Math.max(0, Number(next || 0)));
   updateBalanceDisplay?.();
   persistActiveWalletState?.();
+  queueRunProgressSync?.({ status: "active" });
 }
 
 function getActiveWallet() {
@@ -1766,6 +1776,94 @@ function clearRun() {
   localStorage.removeItem(RUN_END_KEY);
 }
 
+async function postRunProgressSync({ runId, liveBalance, status = "active" } = {}) {
+  const resume = getRunResumeState();
+  const id = String(runId || "");
+  if (!resume || !id || resume.runId !== id) return { ok: false, skipped: true, reason: "no_resume_state" };
+
+  try {
+    const r = await fetch("/api/verify-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "sync_run",
+        resumeToken: resume.token,
+        runId: id,
+        liveBalance: Number.isFinite(Number(liveBalance)) ? Number(liveBalance) : undefined,
+        status: status || "active",
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j?.ok) {
+      if (r.status === 401 || r.status === 404 || r.status === 409) {
+        clearRunResumeState();
+      }
+      return { ok: false, status: r.status, error: String(j?.error || "sync_failed") };
+    }
+
+    patchRunRecordInCache(String(j.runId || id), {
+      status: String(j?.status || status || "active"),
+      liveBalance: Number.isFinite(Number(j?.liveBalance)) ? Number(j.liveBalance) : Number(liveBalance),
+      lastClientSyncAt: Date.now(),
+    });
+    return {
+      ok: true,
+      runId: String(j.runId || id),
+      liveBalance: Number.isFinite(Number(j?.liveBalance)) ? Number(j.liveBalance) : Number(liveBalance),
+    };
+  } catch {
+    return { ok: false, error: "network_error" };
+  }
+}
+
+async function flushRunProgressSync() {
+  if (runProgressSyncInflight) return;
+  if (!runProgressSyncPending) return;
+  runProgressSyncInflight = true;
+  const payload = runProgressSyncPending;
+  runProgressSyncPending = null;
+  try {
+    await postRunProgressSync(payload);
+  } finally {
+    runProgressSyncInflight = false;
+    if (runProgressSyncPending && !runProgressSyncTimer) {
+      runProgressSyncTimer = setTimeout(() => {
+        runProgressSyncTimer = null;
+        void flushRunProgressSync();
+      }, 900);
+    }
+  }
+}
+
+function queueRunProgressSync({ immediate = false, status = "active" } = {}) {
+  const runId = String(localStorage.getItem(RUN_ID_KEY) || "");
+  if (!runId || !challengeActive) return;
+  const resume = getRunResumeState();
+  if (!resume || resume.runId !== runId) return;
+
+  const liveBalance = clamp2(Math.max(0, Number(balance || 0)));
+  patchRunRecordInCache(runId, {
+    liveBalance,
+    status: status || "active",
+    lastClientSyncAt: Date.now(),
+  });
+  runProgressSyncPending = { runId, liveBalance, status: status || "active" };
+
+  if (immediate) {
+    if (runProgressSyncTimer) {
+      clearTimeout(runProgressSyncTimer);
+      runProgressSyncTimer = null;
+    }
+    void flushRunProgressSync();
+    return;
+  }
+  if (runProgressSyncTimer) return;
+  runProgressSyncTimer = setTimeout(() => {
+    runProgressSyncTimer = null;
+    void flushRunProgressSync();
+  }, 900);
+}
+
 function readStoredObject(key) {
   try {
     const raw = localStorage.getItem(key);
@@ -1857,6 +1955,56 @@ function setPaymentSessionState(nextState) {
   renderRecoveryCtas?.();
 }
 
+function clearRunResumeState() {
+  localStorage.removeItem(RUN_RESUME_TOKEN_KEY);
+  localStorage.removeItem(RUN_RESUME_TOKEN_EXPIRES_KEY);
+  localStorage.removeItem(RUN_RESUME_RUN_ID_KEY);
+  localStorage.removeItem(RUN_RESUME_PAYMENT_ID_KEY);
+  localStorage.removeItem(RUN_RESUME_TIER_KEY);
+}
+
+function getRunResumeState() {
+  const token = String(localStorage.getItem(RUN_RESUME_TOKEN_KEY) || "");
+  if (!token) return null;
+  const runId = String(localStorage.getItem(RUN_RESUME_RUN_ID_KEY) || "");
+  const paymentId = String(localStorage.getItem(RUN_RESUME_PAYMENT_ID_KEY) || "");
+  const tierKey = String(localStorage.getItem(RUN_RESUME_TIER_KEY) || "").toLowerCase();
+  const exp = Number(localStorage.getItem(RUN_RESUME_TOKEN_EXPIRES_KEY) || 0);
+  if (exp && Date.now() > exp) {
+    clearRunResumeState();
+    return null;
+  }
+  if (!runId || !tierKey) {
+    clearRunResumeState();
+    return null;
+  }
+  return { token, runId, paymentId, tierKey, exp: Number.isFinite(exp) ? exp : 0 };
+}
+
+function setRunResumeState(payload = {}) {
+  const token = String(payload.token || payload.resume_token || "").trim();
+  const runId = String(payload.runId || payload.run_id || payload.consumed_run_id || "").trim();
+  const paymentId = String(payload.paymentId || payload.payment_id || "").trim();
+  const tierKey = String(payload.tierKey || payload.tier || "").toLowerCase().trim();
+  const exp = Number(payload.exp || payload.resume_token_expires_at || 0);
+
+  if (!token || !runId || !tierKey) {
+    clearRunResumeState();
+    return null;
+  }
+
+  localStorage.setItem(RUN_RESUME_TOKEN_KEY, token);
+  localStorage.setItem(RUN_RESUME_RUN_ID_KEY, runId);
+  localStorage.setItem(RUN_RESUME_PAYMENT_ID_KEY, paymentId);
+  localStorage.setItem(RUN_RESUME_TIER_KEY, tierKey);
+  if (Number.isFinite(exp) && exp > 0) {
+    localStorage.setItem(RUN_RESUME_TOKEN_EXPIRES_KEY, String(Math.floor(exp)));
+  } else {
+    localStorage.removeItem(RUN_RESUME_TOKEN_EXPIRES_KEY);
+  }
+  return getRunResumeState();
+}
+
 async function verifyLocalUnlockToken() {
   const token = String(localStorage.getItem("risx_unlock_token") || "");
   if (!token) return null;
@@ -1920,6 +2068,7 @@ async function recoverUnlockFromPaymentSession() {
         status: "paid",
         paidAt: Date.now(),
       });
+
       if (j?.unlock_token && j?.tierKey) {
         localStorage.setItem("risx_unlock_token", String(j.unlock_token));
         localStorage.setItem("risx_unlock_tier", tierKey);
@@ -1949,7 +2098,57 @@ async function recoverUnlockFromPaymentSession() {
         tier: tierKey,
         intent: resolvedIntent,
       });
-      return verifyLocalUnlockToken();
+      if (j?.unlock_consumed && j?.consumed_run_id) {
+        const resumeTier = String(j?.resume_run?.tierKey || tierKey || session.tier || "").toLowerCase();
+        let resumeState = getRunResumeState();
+        if (j?.resume_token) {
+          resumeState = setRunResumeState({
+            token: String(j.resume_token || ""),
+            runId: String(j.consumed_run_id || ""),
+            paymentId: String(session.paymentId || ""),
+            tierKey: resumeTier || tierKey || session.tier,
+            exp: Number(j.resume_token_expires_at || 0),
+          });
+        }
+        if (!resumeState) return null;
+        upsertRunFromResumeSnapshot({
+          ...(j?.resume_run && typeof j.resume_run === "object" ? j.resume_run : {}),
+          run_id: String(j.consumed_run_id || j?.resume_run?.run_id || ""),
+          payment_id: String(session.paymentId || j?.resume_run?.payment_id || ""),
+          tierKey: resumeTier || tierKey || session.tier,
+          status: String(j?.resume_run?.status || "resumed"),
+          live_balance: j?.resume_run?.live_balance ?? null,
+        }, {
+          runId: String(j.consumed_run_id || ""),
+          paymentId: String(session.paymentId || ""),
+          tier: resumeTier || tierKey || session.tier,
+        });
+
+        localStorage.setItem("risx_unlock_tier", resumeTier || tierKey);
+        localStorage.setItem("risx_unlock_intent", resolvedIntent);
+        if (resolvedIntent === "restart" && failedRunId) {
+          localStorage.setItem(RESTART_FAILED_RUN_ID_KEY, failedRunId);
+        }
+
+        setPaymentSessionState({
+          ...session,
+          status: "paid",
+          tier: resumeTier || tierKey,
+          intent: resolvedIntent,
+        });
+
+        return {
+          tier: resumeTier || tierKey,
+          intent: resolvedIntent,
+          failedRunId,
+        };
+      }
+
+      if (j?.unlock_token && j?.tierKey) {
+        return verifyLocalUnlockToken();
+      }
+
+      return null;
     }
 
     if (status === "expired" || status === "cancelled") {
@@ -2161,8 +2360,14 @@ function burnChallengeAccessState({ clearResetFlags = false } = {}) {
   challengeActive = false;
   CHALLENGE.active = false;
   saveChallengeActive?.(false);
+  if (runProgressSyncTimer) {
+    clearTimeout(runProgressSyncTimer);
+    runProgressSyncTimer = null;
+  }
+  runProgressSyncPending = null;
   recoveryUnlockTier = "";
   recoveryUnlockIntent = "entry";
+  clearRunResumeState();
 
   localStorage.removeItem("risx_unlock_token");
   localStorage.removeItem("risx_unlock_tier");
@@ -4438,6 +4643,7 @@ function normalizeRunRecord(raw = {}) {
   const r = (raw && typeof raw === "object") ? raw : {};
   const events = Array.isArray(r.events) ? r.events : [];
   const pnl = (r.pnl === null || r.pnl === undefined || r.pnl === "") ? null : Number(r.pnl);
+  const liveBalanceRaw = Number(r.liveBalance ?? r.live_balance ?? null);
   return {
     runId: String(r.runId || r.run_id || r.id || ""),
     paymentId: String(r.paymentId || r.payment_id || ""),
@@ -4465,6 +4671,8 @@ function normalizeRunRecord(raw = {}) {
     updatedAt: toEpochMs(r.updatedAt || r.updated_at) || Date.now(),
     result: r.result ? String(r.result) : "",
     pnl: Number.isFinite(pnl) ? pnl : null,
+    liveBalance: Number.isFinite(liveBalanceRaw) ? clamp2(Math.max(0, liveBalanceRaw)) : null,
+    lastClientSyncAt: toEpochMs(r.lastClientSyncAt || r.last_client_sync_at) || null,
     events: events.map((e) => ({ ...e, ts: toEpochMs(e?.ts) || Date.now() })),
   };
 }
@@ -4524,6 +4732,8 @@ function buildRunMetadata(run) {
     claimId: String(run.claimId || ""),
     adminNotes: String(run.adminNotes || ""),
     adminGranted: !!run.adminGranted,
+    liveBalance: Number.isFinite(Number(run.liveBalance)) ? clamp2(Math.max(0, Number(run.liveBalance))) : null,
+    lastClientSyncAt: run.lastClientSyncAt || null,
     events: Array.isArray(run.events) ? run.events.map((evt) => ({ ...evt })) : [],
   };
 }
@@ -4825,6 +5035,26 @@ function writeRunRecords(list) {
   normalizedList.forEach((run) => queueRunSync(run));
 }
 
+function patchRunRecordInCache(runId, patch = {}) {
+  const id = String(runId || "");
+  if (!id) return null;
+  const idx = runRecordsCache.findIndex((r) => String(r?.runId || "") === id);
+  if (idx < 0) return null;
+  const merged = normalizeRunRecord({
+    ...runRecordsCache[idx],
+    ...patch,
+    runId: id,
+    updatedAt: Date.now(),
+  });
+  runRecordsCache[idx] = merged;
+  runRecordsCache = sortRunRecords(runRecordsCache);
+  runRecordsReady = true;
+  if (!supabaseRunsEnabled) {
+    writeList(runsKey, runRecordsCache);
+  }
+  return cloneRunRecord(merged);
+}
+
 function appendRunEvent(run, event) {
   if (!run) return;
   if (!Array.isArray(run.events)) run.events = [];
@@ -4851,6 +5081,66 @@ function getRunByPaymentId(paymentId) {
   return readRunRecords().find((r) => r.paymentId === id) || null;
 }
 
+function upsertRunFromResumeSnapshot(snapshot = {}, opts = {}) {
+  const runId = String(snapshot.run_id || snapshot.runId || opts.runId || "").trim();
+  if (!runId) return null;
+  const paymentId = String(snapshot.payment_id || snapshot.paymentId || opts.paymentId || "").trim();
+  const tierKey = String(snapshot.tierKey || snapshot.tier || opts.tier || "").toLowerCase();
+  const status = normalizeRunStatus(snapshot.status || "resumed");
+  const liveBalanceRaw = Number(snapshot.live_balance ?? snapshot.liveBalance ?? null);
+  const liveBalance = Number.isFinite(liveBalanceRaw) ? clamp2(Math.max(0, liveBalanceRaw)) : null;
+
+  const list = readRunRecords();
+  let run = list.find((r) => r.runId === runId);
+  if (!run && paymentId) run = list.find((r) => String(r.paymentId || "") === paymentId);
+
+  if (!run) {
+    run = {
+      runId,
+      paymentId,
+      wallet: auditWallet(),
+      email: auditEmail(),
+      tier: tierKey || "beginner",
+      tokenId: "",
+      status,
+      startedAt: toEpochMs(snapshot.started_at || snapshot.startedAt) || Date.now(),
+      endedAt: toEpochMs(snapshot.ended_at || snapshot.endedAt),
+      resumedAt: Date.now(),
+      failReason: "",
+      finalScore: null,
+      finalProgress: null,
+      finalStep: null,
+      finalMultiplier: null,
+      finalState: null,
+      durationMs: 0,
+      resetRequired: false,
+      restartPaymentId: "",
+      claimId: "",
+      adminNotes: "",
+      adminGranted: false,
+      liveBalance,
+      createdAt: toEpochMs(snapshot.created_at || snapshot.createdAt) || Date.now(),
+      events: [],
+    };
+    list.unshift(run);
+  }
+
+  run.runId = runId;
+  if (paymentId) run.paymentId = paymentId;
+  if (tierKey) run.tier = tierKey;
+  run.status = status;
+  if (liveBalance !== null) run.liveBalance = liveBalance;
+  const startedAt = toEpochMs(snapshot.started_at || snapshot.startedAt);
+  if (startedAt) run.startedAt = startedAt;
+  const endedAt = toEpochMs(snapshot.ended_at || snapshot.endedAt);
+  if (endedAt) run.endedAt = endedAt;
+  run.updatedAt = Date.now();
+  appendRunEvent(run, { type: "run_resume_recovered", source: "verify_payment", runId });
+
+  writeRunRecords(list);
+  return run;
+}
+
 function createRunFromPayment(paymentPayload = {}, opts = {}) {
   const payment = upsertPaymentRecord(paymentPayload);
   if (!payment) return null;
@@ -4858,6 +5148,8 @@ function createRunFromPayment(paymentPayload = {}, opts = {}) {
   const list = readRunRecords();
   let run = list.find((r) => r.paymentId === payment.paymentId);
   if (!run) {
+    const baseTierKey = String(payment.tier || opts.tier || "").toLowerCase();
+    const tierCfg = CHALLENGE_TIERS[baseTierKey];
     run = {
       runId: newRunId(),
       paymentId: payment.paymentId,
@@ -4881,6 +5173,7 @@ function createRunFromPayment(paymentPayload = {}, opts = {}) {
       claimId: "",
       adminNotes: "",
       adminGranted: !!opts.adminGranted,
+      liveBalance: Number(tierCfg?.startCredits || 0),
       createdAt: Date.now(),
       events: [],
     };
@@ -4903,6 +5196,9 @@ function createRunFromPayment(paymentPayload = {}, opts = {}) {
   run.wallet = run.wallet || payment.wallet || auditWallet();
   run.email = run.email || payment.email || auditEmail();
   run.tier = run.tier || payment.tier || String(opts.tier || "");
+  if (!Number.isFinite(Number(run.liveBalance))) {
+    run.liveBalance = Number(CHALLENGE_TIERS[String(run.tier || "").toLowerCase()]?.startCredits || 0);
+  }
   if (opts.tokenId) run.tokenId = String(opts.tokenId);
   if (opts.adminGranted) run.adminGranted = true;
   if (payment.status === "paid" && run.status === "created") run.status = "ready";
@@ -4952,11 +5248,19 @@ function markRunStarted({ tier, paymentId, runId } = {}) {
   if (status === "ready") {
     run.status = "active";
     if (!run.startedAt) run.startedAt = Date.now();
+    const tierCfg = CHALLENGE_TIERS[String(run.tier || tierKey || "").toLowerCase()];
+    if (!Number.isFinite(Number(run.liveBalance))) {
+      run.liveBalance = Number(tierCfg?.startCredits || 0);
+    }
     appendRunEvent(run, { type: "challenge_started" });
   } else {
     run.status = "resumed";
     if (!run.startedAt) run.startedAt = Date.now();
     run.resumedAt = Date.now();
+    if (!Number.isFinite(Number(run.liveBalance))) {
+      const tierCfg = CHALLENGE_TIERS[String(run.tier || tierKey || "").toLowerCase()];
+      run.liveBalance = Number(tierCfg?.startCredits || 0);
+    }
     appendRunEvent(run, { type: "challenge_resumed" });
   }
   run.endedAt = null;
@@ -4992,6 +5296,7 @@ function markRunFailed(reason = "") {
   if (!run) return null;
 
   run.status = "failed";
+  run.liveBalance = clamp2(Math.max(0, Number(balance || 0)));
   run.failReason = String(reason || "");
   run.resetRequired = true;
   run.endedAt = Date.now();
@@ -5024,6 +5329,7 @@ function markRunWon(summary = {}) {
   }
 
   run.status = "won";
+  run.liveBalance = clamp2(Math.max(0, Number(balance || 0)));
   run.endedAt = Date.now();
   if (run.startedAt) run.durationMs = Math.max(0, run.endedAt - run.startedAt);
   run.finalScore = summary.finalScore ?? summary.achieved ?? null;
@@ -5131,6 +5437,9 @@ function getRunRecordForClaim(claim) {
 
 window.RISX_upsertPaymentRecord = upsertPaymentRecord;
 window.RISX_createRunFromPayment = createRunFromPayment;
+window.RISX_upsertRunFromResumeSnapshot = upsertRunFromResumeSnapshot;
+window.RISX_setRunResumeState = setRunResumeState;
+window.RISX_getRunResumeState = getRunResumeState;
 window.RISX_runSupabaseProbe = () => runSupabaseDirectInsertProbe({ force: true });
 
 // Admin
@@ -5793,6 +6102,7 @@ async function init() {
     setChallengeWalletUI?.();
     lockAppUI(false);
     closeModal(challengeModal);
+    queueRunProgressSync?.({ immediate: true, status: "resumed" });
   }
 } else {
   const paymentRecovery = getPaymentSessionState();
@@ -6052,25 +6362,57 @@ ${msg}
 // =============================
 
 async function hasValidUnlockForTier(tier) {
-  const token = localStorage.getItem("risx_unlock_token");
-  if (!token) return false;
-
   const tierKey = String(tier || "").toLowerCase();
   if (!tierKey) return false;
 
-  try {
-    const r = await fetch("/api/verify-token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
-    });
+  const token = String(localStorage.getItem("risx_unlock_token") || "");
+  if (token) {
+    try {
+      const r = await fetch("/api/verify-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
 
-    const j = await r.json().catch(() => ({}));
-    const ok = !!(r.ok && j.valid && String(j.tierKey || "").toLowerCase() === tierKey);
-    return ok;
-  } catch {
-    return false;
+      const j = await r.json().catch(() => ({}));
+      const ok = !!(r.ok && j.valid && String(j.tierKey || "").toLowerCase() === tierKey);
+      if (ok) return true;
+    } catch {}
   }
+
+  const resume = getRunResumeState();
+  if (!(resume && String(resume.tierKey || "").toLowerCase() === tierKey)) return false;
+  const run = getRunById(String(resume.runId || ""));
+  if (!run) return true;
+  return ["ready", "active", "resumed"].includes(String(run.status || "").toLowerCase());
+}
+
+async function authorizeResumeStartForRun(tier, runId) {
+  const tierKey = String(tier || "").toLowerCase();
+  const resume = getRunResumeState();
+  if (!resume) return { ok: false, reason: "missing_resume_token" };
+  if (String(resume.tierKey || "").toLowerCase() !== tierKey) {
+    return { ok: false, reason: "resume_tier_mismatch" };
+  }
+  const expectedRunId = String(resume.runId || "");
+  const targetRunId = String(runId || "");
+  if (!expectedRunId || (targetRunId && expectedRunId !== targetRunId)) {
+    return { ok: false, reason: "resume_run_mismatch" };
+  }
+
+  const sync = await postRunProgressSync({
+    runId: targetRunId || expectedRunId,
+    liveBalance: Number(balance || 0),
+    status: "resumed",
+  });
+  if (!sync?.ok) {
+    return { ok: false, reason: String(sync?.error || "resume_auth_failed") };
+  }
+  return {
+    ok: true,
+    runId: String(sync.runId || targetRunId || expectedRunId),
+    liveBalance: Number.isFinite(Number(sync.liveBalance)) ? Number(sync.liveBalance) : null,
+  };
 }
 
 async function consumeUnlockForRun(tier, runId) {
@@ -6104,6 +6446,10 @@ async function consumeUnlockForRun(tier, runId) {
       ok: true,
       intent: String(j.intent || "entry").toLowerCase(),
       jti: String(j.jti || ""),
+      runId: String(j.runId || runId || ""),
+      paymentId: String(j.paymentId || ""),
+      resumeToken: String(j.resume_token || ""),
+      resumeTokenExp: Number(j.resume_token_expires_at || 0),
     };
   } catch {
     return { ok: false, reason: "network_error" };
@@ -6168,17 +6514,45 @@ async function ensureReadyRunForTier(tier) {
   const runs = readRunRecords();
   const startable = new Set(["ready", "active", "resumed"]);
   const isStartable = (r) => startable.has(String(r?.status || "").toLowerCase());
-  const token = String(localStorage.getItem("risx_unlock_token") || "");
-  const unlockOk = token && await hasValidUnlockForTier(tierKey);
+  const unlockOk = await hasValidUnlockForTier(tierKey);
   if (!unlockOk) return null;
+  const token = String(localStorage.getItem("risx_unlock_token") || "");
+  const resume = getRunResumeState();
+  const resumeRunId = (resume && String(resume.tierKey || "").toLowerCase() === tierKey)
+    ? String(resume.runId || "")
+    : "";
 
   const session = getPaymentSessionState?.();
   const sessionTier = String(session?.tier || "").toLowerCase();
-  const tokenId = token.slice(0, 24);
+  const tokenId = token
+    ? token.slice(0, 24)
+    : (resumeRunId ? `resume_${resumeRunId.slice(0, 16)}` : "");
   const preferredRunId = String(localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "");
   const paymentId = (session && session.status === "paid" && sessionTier === tierKey)
     ? String(session.paymentId || "")
     : "";
+
+  if (resumeRunId) {
+    const resumeRun = runs.find((r) => r.runId === resumeRunId);
+    if (resumeRun && isStartable(resumeRun)) {
+      return resumeRun.runId;
+    }
+    if (!resumeRun) {
+      const seededResumeRun = upsertRunFromResumeSnapshot({
+        run_id: resumeRunId,
+        payment_id: String(resume?.paymentId || ""),
+        tierKey,
+        status: "resumed",
+      }, {
+        runId: resumeRunId,
+        paymentId: String(resume?.paymentId || ""),
+        tier: tierKey,
+      });
+      if (seededResumeRun && isStartable(seededResumeRun)) {
+        return seededResumeRun.runId;
+      }
+    }
+  }
 
   if (preferredRunId) {
     const preferredRun = runs.find((r) => r.runId === preferredRunId);
@@ -6312,6 +6686,7 @@ async function ensureReadyRunForTier(tier) {
     claimId: "",
     adminNotes: "",
     adminGranted: true,
+    liveBalance: Number(CHALLENGE_TIERS[tierKey]?.startCredits || 0),
     createdAt: Date.now(),
     events: [{ type: "token_granted", tokenId, ts: Date.now() }],
   };
@@ -6351,13 +6726,44 @@ async function startChallengeNow(tier) {
     return;
   }
 
-  const consumeRes = await consumeUnlockForRun(tierKey, preparedRunId);
-  if (!consumeRes.ok) {
-    toast?.("Unlock token was already used or invalid. Please resume payment.");
-    renderRecoveryCtas?.();
-    return;
+  let startIntent = "entry";
+  let consumeRes = null;
+  let resumeAuth = null;
+  let usedUnlockToken = false;
+
+  const unlockToken = String(localStorage.getItem("risx_unlock_token") || "");
+  if (unlockToken) {
+    consumeRes = await consumeUnlockForRun(tierKey, preparedRunId);
+    if (consumeRes.ok) {
+      usedUnlockToken = true;
+      startIntent = String(consumeRes.intent || "entry").toLowerCase() === "restart" ? "restart" : "entry";
+      if (consumeRes.resumeToken) {
+        setRunResumeState({
+          token: consumeRes.resumeToken,
+          runId: String(consumeRes.runId || preparedRunId || ""),
+          paymentId: String(consumeRes.paymentId || getPaymentSessionState?.()?.paymentId || ""),
+          tierKey,
+          exp: Number(consumeRes.resumeTokenExp || 0),
+        });
+      }
+    }
   }
-  if (consumeRes.intent === "restart") {
+
+  if (!usedUnlockToken) {
+    resumeAuth = await authorizeResumeStartForRun(tierKey, preparedRunId);
+    if (!resumeAuth.ok) {
+      toast?.("Unlock token was already used or invalid. Please resume payment.");
+      renderRecoveryCtas?.();
+      return;
+    }
+    if (unlockToken && consumeRes && !consumeRes.ok) {
+      localStorage.removeItem("risx_unlock_token");
+    }
+    const fallbackIntent = String(localStorage.getItem("risx_unlock_intent") || getPaymentSessionState?.()?.intent || "entry").toLowerCase();
+    startIntent = fallbackIntent === "restart" ? "restart" : "entry";
+  }
+
+  if (startIntent === "restart") {
     localStorage.setItem("risx_unlock_intent", "restart");
   }
 
@@ -6387,17 +6793,39 @@ async function startChallengeNow(tier) {
   setChallengeWalletUI();
   setActiveWallet(CHALLENGE_WALLET_ID);
 
-  balance = Number(t.startCredits || 0);
+  let initialBalance = Number(t.startCredits || 0);
+  if (resumeAuth && Number.isFinite(Number(resumeAuth.liveBalance))) {
+    initialBalance = Number(resumeAuth.liveBalance);
+  } else {
+    const startedRun = getRunById(runId);
+    const runLive = Number(startedRun?.liveBalance);
+    if (Number.isFinite(runLive)) initialBalance = runLive;
+  }
+
+  balance = clamp2(Math.max(0, Number(initialBalance || 0)));
+  patchRunRecordInCache(runId, {
+    liveBalance: balance,
+    status: "active",
+    lastClientSyncAt: Date.now(),
+  });
   _lastBalanceForMercy = Number(balance || 0);
   _mercyOn = false;
 
   updateBalanceDisplay?.();
   persistActiveWalletState?.();
+  queueRunProgressSync?.({ immediate: true, status: "active" });
   saveChallengeCompleted(false);
 
-  // Unlocks are one-use for starting a run; clear recovery once consumed.
-  const consumedIntent = consumeUnlockForStartedRun();
-  if (consumedIntent === "restart") {
+  // Unlock tokens are one-use; payment recovery state is no longer needed once run starts.
+  if (usedUnlockToken) {
+    consumeUnlockForStartedRun();
+  } else {
+    setPaymentSessionState(null);
+    localStorage.removeItem("risx_pending_payment");
+    localStorage.removeItem("risx_payment_intent");
+  }
+
+  if (startIntent === "restart") {
     localStorage.removeItem("risx_restart_required");
     localStorage.removeItem("risx_reset_expires_at");
     localStorage.removeItem(RESTART_FAILED_RUN_ID_KEY);
