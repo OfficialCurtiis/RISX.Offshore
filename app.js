@@ -4354,6 +4354,11 @@ function normalizeRunStatus(status) {
   return "created";
 }
 
+function runIsTerminalStatus(run) {
+  const status = String(run?.status || "").toLowerCase();
+  return ["failed", "won", "claimed", "paid", "void"].includes(status);
+}
+
 function inferAssetChainFromCurrency(cur) {
   const v = String(cur || "").toLowerCase();
   if (v.includes("btc")) return { asset: "BTC", chain: "Bitcoin" };
@@ -4891,7 +4896,7 @@ function createRunFromPayment(paymentPayload = {}, opts = {}) {
       runId: run.runId,
       paymentId: payment.paymentId,
       status: run.status,
-      terminal: isRunTerminal(run),
+      terminal: runIsTerminalStatus(run),
     });
   }
 
@@ -6121,15 +6126,14 @@ function consumeUnlockForStartedRun() {
 }
 
 function isRunTerminal(run) {
-  const status = String(run?.status || "").toLowerCase();
-  return ["failed", "won", "claimed", "paid", "void"].includes(status);
+  return runIsTerminalStatus(run);
 }
 
 function clearStaleRunPointers() {
   const localRunId = String(localStorage.getItem(RUN_ID_KEY) || "");
   if (!localRunId) return;
   const run = getRunById(localRunId);
-  if (run && !isRunTerminal(run)) return;
+  if (run && !runIsTerminalStatus(run)) return;
   clearRun();
   console.info("[RISX][RunPrep] Cleared stale local run pointers.", {
     localRunId,
@@ -6281,7 +6285,7 @@ async function ensureReadyRunForTier(tier) {
       runId: existingTokenRun.runId,
       status: existingTokenRun.status,
       tokenId,
-      terminal: isRunTerminal(existingTokenRun),
+      terminal: runIsTerminalStatus(existingTokenRun),
     });
   }
 
