@@ -6402,7 +6402,7 @@ async function authorizeResumeStartForRun(tier, runId) {
 
   const sync = await postRunProgressSync({
     runId: targetRunId || expectedRunId,
-    liveBalance: Number(balance || 0),
+    liveBalance: undefined,
     status: "resumed",
   });
   if (!sync?.ok) {
