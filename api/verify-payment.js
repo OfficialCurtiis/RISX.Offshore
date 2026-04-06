@@ -75,6 +75,11 @@ function parseRunLiveBalance(runRow) {
   return Math.max(0, Math.round(raw * 100) / 100);
 }
 
+function isTerminalRunStatus(status) {
+  const s = String(status || "").toLowerCase();
+  return ["failed", "won", "claimed", "paid", "void"].includes(s);
+}
+
 async function fetchRunRowByRunId(runId) {
   const id = String(runId || "").trim();
   if (!id) return null;
@@ -122,8 +127,9 @@ async function buildConsumedResumeData(consumedUnlock, fallback = {}) {
   const paymentId = String(runRow?.payment_id || fallback.paymentId || consumedUnlock?.payment_id || "").trim();
   const tierKey = String(runRow?.tier || fallback.tierKey || "").toLowerCase();
   const resumeRun = buildResumeRunPayload(runRow, { runId, paymentId, tierKey });
+  const runIsTerminal = isTerminalRunStatus(runRow?.status || resumeRun?.status || "");
 
-  if (!paymentId || !tierKey) {
+  if (!paymentId || !tierKey || runIsTerminal) {
     return resumeRun ? { resume_run: resumeRun } : null;
   }
 

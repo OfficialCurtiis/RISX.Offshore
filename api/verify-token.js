@@ -15,6 +15,22 @@ function normalizeIntent(intent) {
   return String(intent || "").toLowerCase() === "restart" ? "restart" : "entry";
 }
 
+function isTerminalRunStatus(status) {
+  const s = String(status || "").toLowerCase();
+  return ["failed", "won", "claimed", "paid", "void"].includes(s);
+}
+
+function canTransitionRunStatus(currentStatus, nextStatus) {
+  const current = String(currentStatus || "").toLowerCase();
+  const next = String(nextStatus || "").toLowerCase();
+  if (!next) return false;
+  if (!current || current === next) return true;
+  if (!isTerminalRunStatus(current)) return true;
+  if (current === "won") return ["claimed", "paid", "void"].includes(next);
+  if (current === "claimed") return ["paid", "void"].includes(next);
+  return false;
+}
+
 async function findUnlockRowByJti(jti) {
   return withSupabaseAdmin("verify_token_find_unlock_jti", async (admin) => {
     const { data, error } = await admin
@@ -82,7 +98,9 @@ export default async function handler(req, res) {
       const nextBalance = Number(liveBalance);
       const clampedBalance = Number.isFinite(nextBalance) ? Math.max(0, Math.round(nextBalance * 100) / 100) : null;
       const nextStatusRaw = String(runStatus || "").toLowerCase();
-      const syncStatus = ["active", "resumed", "ready"].includes(nextStatusRaw) ? nextStatusRaw : null;
+      const syncStatus = ["ready", "active", "resumed", "failed", "won", "claimed", "paid", "void"].includes(nextStatusRaw)
+        ? nextStatusRaw
+        : null;
 
       const updatedRun = await withSupabaseAdmin("verify_token_sync_run", async (admin) => {
         const { data: existing, error: findErr } = await admin
@@ -100,15 +118,21 @@ export default async function handler(req, res) {
         }
 
         const metadata = (existing.metadata && typeof existing.metadata === "object") ? existing.metadata : {};
+        const existingStatus = String(existing.status || "").toLowerCase();
+        const allowStatusTransition = canTransitionRunStatus(existingStatus, syncStatus);
+        const updateBalance = !isTerminalRunStatus(existingStatus);
+        if (!allowStatusTransition && isTerminalRunStatus(existingStatus)) {
+          return existing;
+        }
         const patch = {
           updated_at: new Date().toISOString(),
           metadata: {
             ...metadata,
-            liveBalance: clampedBalance ?? metadata.liveBalance ?? null,
+            liveBalance: updateBalance ? (clampedBalance ?? metadata.liveBalance ?? null) : (metadata.liveBalance ?? null),
             lastClientSyncAt: new Date().toISOString(),
           },
         };
-        if (syncStatus) patch.status = syncStatus;
+        if (allowStatusTransition && syncStatus) patch.status = syncStatus;
 
         const { data: updated, error: updateErr } = await admin
           .from("runs")

@@ -319,6 +319,11 @@ function stopPolling() {
   return !!tok && (!tierKey || tk === tierKey);
 }
 
+  function isTerminalRunStatus(status) {
+    const s = String(status || "").toLowerCase();
+    return ["failed", "won", "claimed", "paid", "void"].includes(s);
+  }
+
   async function createPayment(tierKey, currency, intent = "entry") {
     const t = CHALLENGE_TIERS[tierKey] || CHALLENGE_TIERS.beginner;
     const usd = (intent === "restart") ? t.restartUsd : t.entryUsd;
@@ -374,6 +379,8 @@ function handleConfirmed(resp) {
 
   if (resp?.unlock_consumed) {
     const restartRequired = String(localStorage.getItem("risx_restart_required") || "") === "1";
+    const resumeRunStatus = String(resp?.resume_run?.status || "").toLowerCase();
+    const resumeRunTerminal = isTerminalRunStatus(resumeRunStatus);
     if (restartRequired && intent !== "restart") {
       statusEl.textContent = "This entry payment cannot restart a failed run. Creating discounted restart payment…";
       if (tierKey) localStorage.setItem("risx_payment_intent", "restart");
@@ -404,7 +411,7 @@ function handleConfirmed(resp) {
       });
     }
 
-    if (resp?.resume_token && resp?.consumed_run_id) {
+    if (!resumeRunTerminal && resp?.resume_token && resp?.consumed_run_id) {
       try {
         window.RISX_setRunResumeState?.({
           token: String(resp.resume_token || ""),
@@ -430,6 +437,22 @@ function handleConfirmed(resp) {
         tier: tierKey || String(resp?.resume_run?.tierKey || ""),
       });
     } catch {}
+
+    if (resumeRunTerminal) {
+      localStorage.removeItem("risx_unlock_token");
+      localStorage.removeItem("risx_unlock_tier");
+      localStorage.removeItem("risx_unlock_intent");
+      localStorage.removeItem("risx_payment_intent");
+      localStorage.removeItem("risx_pending_payment");
+      try { window.RISX_setRunResumeState?.({}); } catch {}
+      statusEl.textContent = "Payment already consumed and that run is finalized. Start a new challenge to continue.";
+      updatePaymentSessionStatus("paid");
+      activeTierKey = tierKey || activeTierKey;
+      setUnlocked(activeTierKey || "beginner");
+      closeModal();
+      window.RISX_renderRecoveryCtas?.();
+      return;
+    }
 
     if (tierKey) localStorage.setItem("risx_unlock_tier", tierKey);
     localStorage.setItem("risx_unlock_intent", intent);

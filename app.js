@@ -570,6 +570,7 @@ function triggerChallengeWin(payload = {}) {
     payout,
   });
   const winRunId = String(finalizedRun?.runId || localStorage.getItem(RUN_ID_KEY) || "");
+  syncTerminalRunProgress(finalizedRun, "won");
 
   // Recovery metadata is allowed; active access tokens are burned so this run cannot be replayed.
   burnChallengeAccessState({ clearResetFlags: true });
@@ -1577,6 +1578,7 @@ function challengeFail(reason) {
   setChallengeStatus?.("failed");
   endRun("failed");
   const failedRun = markRunFailed?.(reason);
+  syncTerminalRunProgress(failedRun, "failed");
   const failedRunId = String(failedRun?.runId || localStorage.getItem(RUN_ID_KEY) || "");
   if (failedRunId) {
     localStorage.setItem(RESTART_FAILED_RUN_ID_KEY, failedRunId);
@@ -1774,6 +1776,23 @@ function clearRun() {
   localStorage.removeItem(RUN_STATUS_KEY);
   localStorage.removeItem(RUN_START_KEY);
   localStorage.removeItem(RUN_END_KEY);
+}
+
+function isRunTerminalStatusValue(status) {
+  const s = String(status || "").toLowerCase();
+  return ["failed", "won", "claimed", "paid", "void"].includes(s);
+}
+
+function syncTerminalRunProgress(run, status) {
+  const runId = String(run?.runId || "");
+  const normalizedStatus = String(status || "").toLowerCase();
+  if (!runId || !isRunTerminalStatusValue(normalizedStatus)) return;
+  const resume = getRunResumeState();
+  if (!resume || String(resume.runId || "") !== runId) return;
+  const liveBalance = Number.isFinite(Number(run?.liveBalance))
+    ? clamp2(Math.max(0, Number(run.liveBalance)))
+    : clamp2(Math.max(0, Number(balance || 0)));
+  void postRunProgressSync({ runId, liveBalance, status: normalizedStatus }).catch(() => {});
 }
 
 async function postRunProgressSync({ runId, liveBalance, status = "active" } = {}) {
@@ -2340,6 +2359,7 @@ async function promptStartNewChallenge() {
   });
 
   if (goAgain) {
+    setClaimRecoveryState(null);
     localStorage.setItem("risx_payment_intent", "entry");
     localStorage.removeItem("risx_restart_required");
     localStorage.removeItem("risx_reset_expires_at");
@@ -6533,6 +6553,10 @@ function isRunTerminal(run) {
   return runIsTerminalStatus(run);
 }
 
+function isExistingClaimErrorMessage(msg) {
+  return String(msg || "").toLowerCase().includes("claim already exists");
+}
+
 function clearStaleRunPointers() {
   const localRunId = String(localStorage.getItem(RUN_ID_KEY) || "");
   if (!localRunId) return;
@@ -7106,6 +7130,34 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
 
     const valid = validateClaimAgainstRun(runId);
     if (!valid.ok || !valid.run) {
+      if (isExistingClaimErrorMessage(valid.msg)) {
+        markRunClaimState(runId, "claimed", {
+          eventType: "claim_already_exists_recovered",
+          eventPayload: {},
+        });
+        setClaimRecoveryState({
+          ...activeClaimState,
+          status: "submitted",
+          submittedAt: Number(activeClaimState.submittedAt || Date.now()),
+          form: normalizeClaimForm({
+            wallet: payoutRes?.payout?.address || activeClaimState?.form?.wallet || "",
+            crypto: payoutRes?.payout?.asset || activeClaimState?.form?.crypto || "SOL",
+            chain: payoutRes?.payout?.chain || activeClaimState?.form?.chain || "",
+            email: payoutRes?.payout?.email || activeClaimState?.form?.email || "",
+          }),
+        });
+        if (submitClaimBtn) {
+          submitClaimBtn.disabled = true;
+          submitClaimBtn.textContent = "Claim Submitted";
+        }
+        await risxAlert({
+          title: "Claim Already Submitted",
+          body: "A claim for this run already exists. We linked your session to that submitted claim.",
+          okText: "OK",
+        });
+        await promptStartNewChallenge();
+        return;
+      }
       await risxAlert({
         title: "Claim unavailable",
         body: valid.msg || "This run is not eligible for a claim.",
