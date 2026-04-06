@@ -373,6 +373,15 @@ function handleConfirmed(resp) {
   const currency = String(pending?.currency || resp?.pay_currency || "");
 
   if (resp?.unlock_consumed) {
+    const restartRequired = String(localStorage.getItem("risx_restart_required") || "") === "1";
+    if (restartRequired && intent !== "restart") {
+      statusEl.textContent = "This entry payment cannot restart a failed run. Creating discounted restart payment…";
+      if (tierKey) localStorage.setItem("risx_payment_intent", "restart");
+      closeModal();
+      window.RISX_openPayModalForTier?.(tierKey || "beginner");
+      return;
+    }
+
     if (paymentId && tierKey) {
       setPaymentSession({
         status: "paid",

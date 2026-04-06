@@ -6412,6 +6412,12 @@ ${msg}
 async function hasValidUnlockForTier(tier) {
   const tierKey = String(tier || "").toLowerCase();
   if (!tierKey) return false;
+  const restartRequired = isRestartRequired?.() === true;
+  const storedIntentRaw = String(localStorage.getItem("risx_unlock_intent") || getPaymentSessionState?.()?.intent || "entry").toLowerCase();
+  const restartIntentCheck = validateRecoveryIntent(storedIntentRaw, localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "");
+  if (restartRequired && restartIntentCheck.intent !== "restart") {
+    return false;
+  }
 
   const token = String(localStorage.getItem("risx_unlock_token") || "");
   if (token) {
@@ -6424,6 +6430,10 @@ async function hasValidUnlockForTier(tier) {
 
       const j = await r.json().catch(() => ({}));
       const ok = !!(r.ok && j.valid && String(j.tierKey || "").toLowerCase() === tierKey);
+      if (ok && restartRequired) {
+        const tokenIntent = String(j.intent || "entry").toLowerCase();
+        if (tokenIntent !== "restart") return false;
+      }
       if (ok) return true;
     } catch {}
   }
@@ -6765,6 +6775,17 @@ async function startChallengeNow(tier) {
       okText: "Close",
     });
     return;
+  }
+
+  if (isRestartRequired?.() === true) {
+    const storedIntentRaw = String(localStorage.getItem("risx_unlock_intent") || getPaymentSessionState?.()?.intent || "entry").toLowerCase();
+    const restartIntentCheck = validateRecoveryIntent(storedIntentRaw, localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "");
+    if (restartIntentCheck.intent !== "restart") {
+      toast?.("Restart payment required to continue this failed challenge.");
+      localStorage.setItem("risx_payment_intent", "restart");
+      window.RISX_openPayModalForTier?.(tierKey);
+      return;
+    }
   }
 
   const preparedRunId = await ensureReadyRunForTier(tierKey);
