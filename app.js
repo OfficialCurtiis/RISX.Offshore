@@ -354,16 +354,16 @@ async function applyUnlockFromAdminMint(resp = {}) {
 
   let verifyJson = {};
   try {
-    const verifyRes = await fetch("/api/verify-token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
-    });
-    verifyJson = await verifyRes.json().catch(() => ({}));
+    const verifyRes = await postVerifyToken({ token });
+    verifyJson = verifyRes.body || {};
     const ok = !!(verifyRes.ok && verifyJson?.valid && verifyJson?.tierKey === tier);
     if (!ok) {
       setAdminSecurityOutput(adminMintOut, `Verify failed for tier:${tier}`);
-      if (adminMsg) adminMsg.textContent = "Minted token failed /api/verify-token.";
+      if (adminMsg) {
+        adminMsg.textContent = verifyRes.status === 404
+          ? "Minted token check unavailable: /api/verify-token is missing."
+          : "Minted token failed /api/verify-token.";
+      }
       return false;
     }
   } catch (err) {
@@ -1801,23 +1801,25 @@ async function postRunProgressSync({ runId, liveBalance, status = "active" } = {
   if (!resume || !id || resume.runId !== id) return { ok: false, skipped: true, reason: "no_resume_state" };
 
   try {
-    const r = await fetch("/api/verify-token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        mode: "sync_run",
-        resumeToken: resume.token,
-        runId: id,
-        liveBalance: Number.isFinite(Number(liveBalance)) ? Number(liveBalance) : undefined,
-        status: status || "active",
-      }),
+    const verifyRes = await postVerifyToken({
+      mode: "sync_run",
+      resumeToken: resume.token,
+      runId: id,
+      liveBalance: Number.isFinite(Number(liveBalance)) ? Number(liveBalance) : undefined,
+      status: status || "active",
     });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok || !j?.ok) {
-      if (r.status === 401 || r.status === 404 || r.status === 409) {
+    const j = verifyRes.body || {};
+    if (!verifyRes.ok || !j?.ok) {
+      if (verifyRes.status === 401 || verifyRes.status === 404 || verifyRes.status === 409) {
         clearRunResumeState();
       }
-      return { ok: false, status: r.status, error: String(j?.error || "sync_failed") };
+      return {
+        ok: false,
+        status: verifyRes.status,
+        error: verifyRes.status === 404
+          ? "verify_token_api_missing"
+          : String(j?.error || "sync_failed"),
+      };
     }
 
     patchRunRecordInCache(String(j.runId || id), {
@@ -1974,6 +1976,47 @@ function setPaymentSessionState(nextState) {
   renderRecoveryCtas?.();
 }
 
+let verifyTokenApiMissing = false;
+let verifyTokenApiMissingLogged = false;
+
+function markVerifyTokenApiMissing(status = 0) {
+  verifyTokenApiMissing = true;
+  if (verifyTokenApiMissingLogged) return;
+  verifyTokenApiMissingLogged = true;
+  console.warn("[RISX][Unlock] /api/verify-token is unavailable; token checks are disabled for this session.", {
+    status: Number(status || 0),
+  });
+}
+
+async function postVerifyToken(payload = {}) {
+  if (verifyTokenApiMissing) {
+    return { ok: false, status: 404, body: { valid: false, error: "verify_token_api_missing" } };
+  }
+  try {
+    const response = await fetch("/api/verify-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload || {}),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (response.status === 404) {
+      markVerifyTokenApiMissing(404);
+      return {
+        ok: false,
+        status: 404,
+        body: { ...body, valid: false, error: String(body?.error || "verify_token_api_missing") },
+      };
+    }
+    return { ok: response.ok, status: response.status, body };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      body: { valid: false, error: "network_error", detail: String(err?.message || "network_error") },
+    };
+  }
+}
+
 function clearRunResumeState() {
   localStorage.removeItem(RUN_RESUME_TOKEN_KEY);
   localStorage.removeItem(RUN_RESUME_TOKEN_EXPIRES_KEY);
@@ -2029,13 +2072,9 @@ async function verifyLocalUnlockToken() {
   if (!token) return null;
 
   try {
-    const r = await fetch("/api/verify-token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
-    });
-    const j = await r.json().catch(() => ({}));
-    if (r.ok && j?.valid && j?.tierKey) {
+    const verifyRes = await postVerifyToken({ token });
+    const j = verifyRes.body || {};
+    if (verifyRes.ok && j?.valid && j?.tierKey) {
       const tierKey = String(j.tierKey || "").toLowerCase();
       const verifiedIntent = ["entry", "restart"].includes(String(j.intent || "").toLowerCase())
         ? String(j.intent).toLowerCase()
@@ -2117,50 +2156,18 @@ async function recoverUnlockFromPaymentSession() {
         tier: tierKey,
         intent: resolvedIntent,
       });
-      if (j?.unlock_consumed && j?.consumed_run_id) {
-        const resumeTier = String(j?.resume_run?.tierKey || tierKey || session.tier || "").toLowerCase();
-        let resumeState = getRunResumeState();
-        if (j?.resume_token) {
-          resumeState = setRunResumeState({
-            token: String(j.resume_token || ""),
-            runId: String(j.consumed_run_id || ""),
-            paymentId: String(session.paymentId || ""),
-            tierKey: resumeTier || tierKey || session.tier,
-            exp: Number(j.resume_token_expires_at || 0),
-          });
+      if (j?.unlock_consumed) {
+        if (session.paymentId) {
+          localStorage.setItem("risx_last_payment_id", String(session.paymentId));
+          window.updateSupportIdPill?.();
         }
-        if (!resumeState) return null;
-        upsertRunFromResumeSnapshot({
-          ...(j?.resume_run && typeof j.resume_run === "object" ? j.resume_run : {}),
-          run_id: String(j.consumed_run_id || j?.resume_run?.run_id || ""),
-          payment_id: String(session.paymentId || j?.resume_run?.payment_id || ""),
-          tierKey: resumeTier || tierKey || session.tier,
-          status: String(j?.resume_run?.status || "resumed"),
-          live_balance: j?.resume_run?.live_balance ?? null,
-        }, {
-          runId: String(j.consumed_run_id || ""),
-          paymentId: String(session.paymentId || ""),
-          tier: resumeTier || tierKey || session.tier,
-        });
-
-        localStorage.setItem("risx_unlock_tier", resumeTier || tierKey);
-        localStorage.setItem("risx_unlock_intent", resolvedIntent);
-        if (resolvedIntent === "restart" && failedRunId) {
-          localStorage.setItem(RESTART_FAILED_RUN_ID_KEY, failedRunId);
-        }
-
-        setPaymentSessionState({
-          ...session,
-          status: "paid",
-          tier: resumeTier || tierKey,
-          intent: resolvedIntent,
-        });
-
-        return {
-          tier: resumeTier || tierKey,
-          intent: resolvedIntent,
-          failedRunId,
-        };
+        clearRunResumeState();
+        localStorage.removeItem("risx_unlock_token");
+        localStorage.removeItem("risx_unlock_tier");
+        localStorage.removeItem("risx_unlock_intent");
+        localStorage.removeItem("risx_payment_intent");
+        setPaymentSessionState(null);
+        return null;
       }
 
       if (j?.unlock_token && j?.tierKey) {
@@ -4545,12 +4552,25 @@ let runRecordsLoadPromise = null;
 const supabaseProbeSessionKey = `${RISX_SAVE_KEY}::supabase_runs_probe_done_v1`;
 let supabaseProbePromise = null;
 let supabaseProbeDone = false;
+let supabaseProbeFailureLogged = false;
 
 function isSupabaseUnauthorizedError(error) {
   const status = Number(error?.status || error?.statusCode || error?.response?.status || 0);
-  const code = String(error?.code || "");
+  const code = String(error?.code || "").toUpperCase();
   const msg = String(error?.message || "").toLowerCase();
-  return status === 401 || status === 403 || code === "401" || code === "403" || msg.includes("unauthorized") || msg.includes("forbidden");
+  return (
+    status === 401 ||
+    status === 403 ||
+    code === "401" ||
+    code === "403" ||
+    code === "42501" ||
+    code === "PGRST301" ||
+    code === "PGRST302" ||
+    msg.includes("unauthorized") ||
+    msg.includes("forbidden") ||
+    msg.includes("row-level security") ||
+    msg.includes("permission denied")
+  );
 }
 
 function disableSupabaseRuns(reason = "", detail = null) {
@@ -4872,6 +4892,8 @@ async function runSupabaseDirectInsertProbe({ force = false } = {}) {
 
     if (error) {
       console.error("[RISX][Supabase] Direct insert probe FAILED:", { probeRunId, error });
+      supabaseProbeDone = true;
+      setSupabaseProbeSessionFlag();
       if (isSupabaseUnauthorizedError(error)) {
         disableSupabaseRuns("probe_unauthorized", error);
       }
@@ -4885,6 +4907,8 @@ async function runSupabaseDirectInsertProbe({ force = false } = {}) {
   })()
     .catch((err) => {
       console.error("[RISX][Supabase] Direct insert probe threw:", err);
+      supabaseProbeDone = true;
+      setSupabaseProbeSessionFlag();
       return { ok: false, skipped: false, error: err };
     })
     .finally(() => {
@@ -5007,7 +5031,10 @@ function queueRunSync(runInput) {
       if (!supabaseProbeDone && !getSupabaseProbeSessionFlag()) {
         const probe = await runSupabaseDirectInsertProbe();
         if (!probe?.ok) {
-          console.error("[RISX][Supabase] Direct insert probe did not pass; attempting run sync anyway.", probe);
+          if (!supabaseProbeFailureLogged) {
+            console.error("[RISX][Supabase] Direct insert probe did not pass; attempting run sync anyway.", probe);
+            supabaseProbeFailureLogged = true;
+          }
         }
       }
       if (!supabaseRunsEnabled) return;
@@ -6442,19 +6469,19 @@ async function hasValidUnlockForTier(tier) {
   const token = String(localStorage.getItem("risx_unlock_token") || "");
   if (token) {
     try {
-      const r = await fetch("/api/verify-token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
-      });
-
-      const j = await r.json().catch(() => ({}));
-      const ok = !!(r.ok && j.valid && String(j.tierKey || "").toLowerCase() === tierKey);
+      const verifyRes = await postVerifyToken({ token });
+      const j = verifyRes.body || {};
+      const ok = !!(verifyRes.ok && j.valid && String(j.tierKey || "").toLowerCase() === tierKey);
       if (ok && restartRequired) {
         const tokenIntent = String(j.intent || "entry").toLowerCase();
         if (tokenIntent !== "restart") return false;
       }
       if (ok) return true;
+      if (verifyRes.status === 401 || verifyRes.status === 404 || verifyRes.status === 409) {
+        localStorage.removeItem("risx_unlock_token");
+        localStorage.removeItem("risx_unlock_tier");
+        localStorage.removeItem("risx_unlock_intent");
+      }
     } catch {}
   }
 
@@ -6501,23 +6528,24 @@ async function consumeUnlockForRun(tier, runId) {
   if (!tierKey) return { ok: false, reason: "missing_tier" };
 
   try {
-    const r = await fetch("/api/verify-token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        token,
-        consume: true,
-        tierKey,
-        runId: String(runId || ""),
-      }),
+    const verifyRes = await postVerifyToken({
+      token,
+      consume: true,
+      tierKey,
+      runId: String(runId || ""),
     });
-    const j = await r.json().catch(() => ({}));
-    const ok = !!(r.ok && j.valid && j.consumed && String(j.tierKey || "").toLowerCase() === tierKey);
+    const j = verifyRes.body || {};
+    const ok = !!(verifyRes.ok && j.valid && j.consumed && String(j.tierKey || "").toLowerCase() === tierKey);
     if (!ok) {
+      if (verifyRes.status === 401 || verifyRes.status === 404 || verifyRes.status === 409) {
+        localStorage.removeItem("risx_unlock_token");
+      }
       return {
         ok: false,
-        reason: String(j?.error || "consume_failed"),
-        status: r.status,
+        reason: verifyRes.status === 404
+          ? "verify_token_api_missing"
+          : String(j?.error || "consume_failed"),
+        status: verifyRes.status,
       };
     }
     return {
@@ -6845,6 +6873,18 @@ async function startChallengeNow(tier) {
   if (!usedUnlockToken) {
     resumeAuth = await authorizeResumeStartForRun(tierKey, preparedRunId);
     if (!resumeAuth.ok) {
+      if (String(resumeAuth.reason || "") === "verify_token_api_missing") {
+        clearRunResumeState();
+        localStorage.removeItem("risx_unlock_token");
+        localStorage.removeItem("risx_unlock_tier");
+        localStorage.removeItem("risx_unlock_intent");
+        setPaymentSessionState(null);
+        localStorage.setItem("risx_payment_intent", isRestartRequired?.() ? "restart" : "entry");
+        window.RISX_openPayModalForTier?.(tierKey);
+        toast?.("This payment ID was already used. Create a new payment to continue.");
+        renderRecoveryCtas?.();
+        return;
+      }
       toast?.("Unlock token was already used or invalid. Please resume payment.");
       renderRecoveryCtas?.();
       return;
