@@ -2157,6 +2157,53 @@ async function recoverUnlockFromPaymentSession() {
         intent: resolvedIntent,
       });
       if (j?.unlock_consumed) {
+        const resumeTier = String(j?.resume_run?.tierKey || tierKey || session.tier || "").toLowerCase();
+        const resumeRunStatus = String(j?.resume_run?.status || "").toLowerCase();
+        const resumeRunTerminal = isTerminalRunStatus(resumeRunStatus);
+
+        if (!resumeRunTerminal && j?.resume_token && j?.consumed_run_id) {
+          const resumeState = setRunResumeState({
+            token: String(j.resume_token || ""),
+            runId: String(j.consumed_run_id || ""),
+            paymentId: String(session.paymentId || ""),
+            tierKey: resumeTier || tierKey || session.tier,
+            exp: Number(j.resume_token_expires_at || 0),
+          });
+          if (!resumeState) return null;
+
+          upsertRunFromResumeSnapshot({
+            ...(j?.resume_run && typeof j.resume_run === "object" ? j.resume_run : {}),
+            run_id: String(j.consumed_run_id || j?.resume_run?.run_id || ""),
+            payment_id: String(session.paymentId || j?.resume_run?.payment_id || ""),
+            tierKey: resumeTier || tierKey || session.tier,
+            status: String(j?.resume_run?.status || "resumed"),
+            live_balance: j?.resume_run?.live_balance ?? null,
+          }, {
+            runId: String(j.consumed_run_id || ""),
+            paymentId: String(session.paymentId || ""),
+            tier: resumeTier || tierKey || session.tier,
+          });
+
+          localStorage.setItem("risx_unlock_tier", resumeTier || tierKey);
+          localStorage.setItem("risx_unlock_intent", resolvedIntent);
+          if (resolvedIntent === "restart" && failedRunId) {
+            localStorage.setItem(RESTART_FAILED_RUN_ID_KEY, failedRunId);
+          }
+
+          setPaymentSessionState({
+            ...session,
+            status: "paid",
+            tier: resumeTier || tierKey,
+            intent: resolvedIntent,
+          });
+
+          return {
+            tier: resumeTier || tierKey,
+            intent: resolvedIntent,
+            failedRunId,
+          };
+        }
+
         if (session.paymentId) {
           localStorage.setItem("risx_last_payment_id", String(session.paymentId));
           window.updateSupportIdPill?.();

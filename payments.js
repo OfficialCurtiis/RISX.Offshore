@@ -384,6 +384,73 @@ function handleConfirmed(resp) {
 
   if (resp?.unlock_consumed) {
     const restartRequired = String(localStorage.getItem("risx_restart_required") || "") === "1";
+    const resumeRunStatus = String(resp?.resume_run?.status || "").toLowerCase();
+    const resumeRunTerminal = isTerminalRunStatus(resumeRunStatus);
+    const canResumeConsumedRun = !resumeRunTerminal && !!resp?.resume_token && !!resp?.consumed_run_id;
+
+    if (canResumeConsumedRun) {
+      if (paymentId && tierKey) {
+        setPaymentSession({
+          status: "paid",
+          intent,
+          tier: tierKey,
+          invoiceId: paymentId,
+          paymentId,
+          amount,
+          currency,
+          payAddress: String(pending?.payAddress || ""),
+          createdAt: Number(pending?.createdAt || Date.now()),
+        });
+        syncPaymentRecord({
+          paymentId,
+          tier: tierKey,
+          amount,
+          currency,
+          status: "paid",
+          createdAt: Number(pending?.createdAt || Date.now()),
+        });
+      }
+
+      try {
+        window.RISX_setRunResumeState?.({
+          token: String(resp.resume_token || ""),
+          runId: String(resp.consumed_run_id || ""),
+          paymentId: paymentId || String(resp?.payment_id || ""),
+          tierKey: tierKey || String(resp?.resume_run?.tierKey || ""),
+          exp: Number(resp.resume_token_expires_at || 0),
+        });
+      } catch {}
+
+      try {
+        window.RISX_upsertRunFromResumeSnapshot?.({
+          ...(resp?.resume_run && typeof resp.resume_run === "object" ? resp.resume_run : {}),
+          run_id: String(resp?.consumed_run_id || resp?.resume_run?.run_id || ""),
+          payment_id: paymentId || String(resp?.resume_run?.payment_id || ""),
+          tierKey: tierKey || String(resp?.resume_run?.tierKey || ""),
+          live_balance: resp?.resume_run?.live_balance ?? null,
+          status: String(resp?.resume_run?.status || "resumed"),
+        }, {
+          runId: String(resp?.consumed_run_id || ""),
+          paymentId: paymentId || String(resp?.payment_id || ""),
+          tier: tierKey || String(resp?.resume_run?.tierKey || ""),
+        });
+      } catch {}
+
+      if (tierKey) localStorage.setItem("risx_unlock_tier", tierKey);
+      localStorage.setItem("risx_unlock_intent", intent);
+      if (intent === "restart" && failedRunId) {
+        localStorage.setItem(RESTART_FAILED_RUN_ID_KEY, failedRunId);
+      }
+
+      statusEl.textContent = "Payment ID already used. Resuming your in-progress run…";
+      updatePaymentSessionStatus("paid");
+      activeTierKey = tierKey || activeTierKey;
+      setUnlocked(activeTierKey || "beginner");
+      closeModal();
+      window.RISX_startChallengeFromPayment?.(tierKey || "beginner");
+      return;
+    }
+
     const nextIntent = restartRequired ? "restart" : "entry";
     if (tierKey) localStorage.setItem("risx_payment_intent", nextIntent);
     if (paymentId) {
