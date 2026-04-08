@@ -384,9 +384,10 @@ function handleConfirmed(resp) {
 
   if (resp?.unlock_consumed) {
     const restartRequired = String(localStorage.getItem("risx_restart_required") || "") === "1";
+    const consumedRunId = String(resp?.consumed_run_id || resp?.resume_run?.run_id || "");
     const resumeRunStatus = String(resp?.resume_run?.status || "").toLowerCase();
     const resumeRunTerminal = isTerminalRunStatus(resumeRunStatus);
-    const canResumeConsumedRun = !resumeRunTerminal && !!resp?.resume_token && !!resp?.consumed_run_id;
+    const canResumeConsumedRun = !resumeRunTerminal && !!consumedRunId;
 
     if (canResumeConsumedRun) {
       if (paymentId && tierKey) {
@@ -411,26 +412,28 @@ function handleConfirmed(resp) {
         });
       }
 
-      try {
-        window.RISX_setRunResumeState?.({
-          token: String(resp.resume_token || ""),
-          runId: String(resp.consumed_run_id || ""),
-          paymentId: paymentId || String(resp?.payment_id || ""),
-          tierKey: tierKey || String(resp?.resume_run?.tierKey || ""),
-          exp: Number(resp.resume_token_expires_at || 0),
-        });
-      } catch {}
+      if (resp?.resume_token) {
+        try {
+          window.RISX_setRunResumeState?.({
+            token: String(resp.resume_token || ""),
+            runId: consumedRunId,
+            paymentId: paymentId || String(resp?.payment_id || ""),
+            tierKey: tierKey || String(resp?.resume_run?.tierKey || ""),
+            exp: Number(resp.resume_token_expires_at || 0),
+          });
+        } catch {}
+      }
 
       try {
         window.RISX_upsertRunFromResumeSnapshot?.({
           ...(resp?.resume_run && typeof resp.resume_run === "object" ? resp.resume_run : {}),
-          run_id: String(resp?.consumed_run_id || resp?.resume_run?.run_id || ""),
+          run_id: consumedRunId,
           payment_id: paymentId || String(resp?.resume_run?.payment_id || ""),
           tierKey: tierKey || String(resp?.resume_run?.tierKey || ""),
           live_balance: resp?.resume_run?.live_balance ?? null,
           status: String(resp?.resume_run?.status || "resumed"),
         }, {
-          runId: String(resp?.consumed_run_id || ""),
+          runId: consumedRunId,
           paymentId: paymentId || String(resp?.payment_id || ""),
           tier: tierKey || String(resp?.resume_run?.tierKey || ""),
         });

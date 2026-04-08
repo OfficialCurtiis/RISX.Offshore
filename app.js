@@ -6920,7 +6920,8 @@ async function startChallengeNow(tier) {
   if (!usedUnlockToken) {
     resumeAuth = await authorizeResumeStartForRun(tierKey, preparedRunId);
     if (!resumeAuth.ok) {
-      if (String(resumeAuth.reason || "") === "verify_token_api_missing") {
+      const resumeFailReason = String(resumeAuth.reason || "");
+      if (resumeFailReason === "verify_token_api_missing") {
         clearRunResumeState();
         localStorage.removeItem("risx_unlock_token");
         localStorage.removeItem("risx_unlock_tier");
@@ -6932,9 +6933,26 @@ async function startChallengeNow(tier) {
         renderRecoveryCtas?.();
         return;
       }
+      const preparedRun = getRunById(preparedRunId);
+      const preparedStatus = String(preparedRun?.status || "").toLowerCase();
+      const canResumeLocallyWithoutToken =
+        resumeFailReason === "missing_resume_token" &&
+        !!preparedRun &&
+        ["ready", "active", "resumed"].includes(preparedStatus);
+      if (canResumeLocallyWithoutToken) {
+        resumeAuth = {
+          ok: true,
+          runId: preparedRunId,
+          liveBalance: Number.isFinite(Number(preparedRun?.liveBalance))
+            ? Number(preparedRun.liveBalance)
+            : null,
+          localOnly: true,
+        };
+      } else {
       toast?.("Unlock token was already used or invalid. Please resume payment.");
       renderRecoveryCtas?.();
       return;
+      }
     }
     if (unlockToken && consumeRes && !consumeRes.ok) {
       localStorage.removeItem("risx_unlock_token");
