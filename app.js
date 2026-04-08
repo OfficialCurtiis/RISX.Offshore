@@ -4668,7 +4668,18 @@ function normalizeRunStatus(status) {
 
 function runIsTerminalStatus(run) {
   const status = String(run?.status || "").toLowerCase();
-  return ["failed", "won", "claimed", "paid", "void"].includes(status);
+  if (["failed", "won", "claimed", "paid", "void"].includes(status)) return true;
+  if (["active", "resumed"].includes(status)) {
+    const live = Number(run?.liveBalance);
+    if (Number.isFinite(live) && live <= 0) return true;
+  }
+  return false;
+}
+
+function runIsStartable(run) {
+  const status = String(run?.status || "").toLowerCase();
+  if (!["ready", "active", "resumed"].includes(status)) return false;
+  return !runIsTerminalStatus(run);
 }
 
 function inferAssetChainFromCurrency(cur) {
@@ -5374,7 +5385,7 @@ function createRunFromPayment(paymentPayload = {}, opts = {}) {
 
 function markRunStarted({ tier, paymentId, runId } = {}) {
   const list = readRunRecords();
-  const isStartableStatus = (r) => ["ready", "active", "resumed"].includes(String(r?.status || "").toLowerCase());
+  const isStartableStatus = (r) => runIsStartable(r);
   const tierKey = String(tier || "").toLowerCase();
   const preferredRunId = String(runId || "");
   const byRunId = preferredRunId ? list.find((r) => r.runId === preferredRunId) : null;
@@ -5420,7 +5431,7 @@ function markRunResumed(runId) {
   const run = list.find((r) => r.runId === id);
   if (!run) return null;
   if (!run.startedAt) return markRunStarted({ tier: run.tier, paymentId: run.paymentId });
-  if (run.status === "won" || run.status === "failed" || run.status === "claimed" || run.status === "paid" || run.status === "void") {
+  if (runIsTerminalStatus(run)) {
     return null;
   }
   run.status = "resumed";
@@ -5444,6 +5455,25 @@ function markRunFailed(reason = "") {
   run.endedAt = Date.now();
   if (run.startedAt) run.durationMs = Math.max(0, run.endedAt - run.startedAt);
   appendRunEvent(run, { type: "challenge_failed", reason: run.failReason });
+  writeRunRecords(list);
+  finalizeActiveRunLocalState("failed", run.runId, run.endedAt);
+  return run;
+}
+
+function markRunFailedById(runId, reason = "", finalBalance = 0) {
+  const id = String(runId || "");
+  if (!id) return null;
+  const list = readRunRecords();
+  const run = list.find((r) => r.runId === id);
+  if (!run) return null;
+
+  run.status = "failed";
+  run.liveBalance = clamp2(Math.max(0, Number(finalBalance || 0)));
+  run.failReason = String(reason || run.failReason || "balance_depleted");
+  run.resetRequired = true;
+  run.endedAt = Date.now();
+  if (run.startedAt) run.durationMs = Math.max(0, run.endedAt - run.startedAt);
+  appendRunEvent(run, { type: "challenge_failed_auto", reason: run.failReason });
   writeRunRecords(list);
   finalizeActiveRunLocalState("failed", run.runId, run.endedAt);
   return run;
@@ -6536,7 +6566,7 @@ async function hasValidUnlockForTier(tier) {
   if (!(resume && String(resume.tierKey || "").toLowerCase() === tierKey)) return false;
   const run = getRunById(String(resume.runId || ""));
   if (!run) return true;
-  return ["ready", "active", "resumed"].includes(String(run.status || "").toLowerCase());
+  return runIsStartable(run);
 }
 
 async function authorizeResumeStartForRun(tier, runId) {
@@ -6669,8 +6699,7 @@ async function ensureReadyRunForTier(tier) {
   if (!tierKey) return null;
 
   const runs = readRunRecords();
-  const startable = new Set(["ready", "active", "resumed"]);
-  const isStartable = (r) => startable.has(String(r?.status || "").toLowerCase());
+  const isStartable = (r) => runIsStartable(r);
   const unlockOk = await hasValidUnlockForTier(tierKey);
   if (!unlockOk) return null;
   const token = String(localStorage.getItem("risx_unlock_token") || "");
@@ -6998,6 +7027,22 @@ async function startChallengeNow(tier) {
     const startedRun = getRunById(runId);
     const runLive = Number(startedRun?.liveBalance);
     if (Number.isFinite(runLive)) initialBalance = runLive;
+  }
+
+  if (!Number.isFinite(Number(initialBalance)) || Number(initialBalance) <= 0) {
+    markRunFailedById(runId, "balance_depleted_before_resume", 0);
+    challengeState.status = "failed";
+    CHALLENGE.active = false;
+    challengeActive = false;
+    saveChallengeActive(false);
+    saveChallengeState?.();
+    lockAppUI?.(true);
+    clearRun();
+    localStorage.setItem("risx_payment_intent", isRestartRequired?.() ? "restart" : "entry");
+    window.RISX_openPayModalForTier?.(tierKey);
+    toast?.("This run already ended. Payment ID is no longer playable.");
+    renderRecoveryCtas?.();
+    return;
   }
 
   balance = clamp2(Math.max(0, Number(initialBalance || 0)));

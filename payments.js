@@ -386,8 +386,10 @@ function handleConfirmed(resp) {
     const restartRequired = String(localStorage.getItem("risx_restart_required") || "") === "1";
     const consumedRunId = String(resp?.consumed_run_id || resp?.resume_run?.run_id || "");
     const resumeRunStatus = String(resp?.resume_run?.status || "").toLowerCase();
+    const resumeRunLiveBalance = Number(resp?.resume_run?.live_balance);
     const resumeRunTerminal = isTerminalRunStatus(resumeRunStatus);
-    const canResumeConsumedRun = !resumeRunTerminal && !!consumedRunId;
+    const resumeRunDepleted = Number.isFinite(resumeRunLiveBalance) && resumeRunLiveBalance <= 0;
+    const canResumeConsumedRun = !resumeRunTerminal && !resumeRunDepleted && !!consumedRunId;
 
     if (canResumeConsumedRun) {
       if (paymentId && tierKey) {
