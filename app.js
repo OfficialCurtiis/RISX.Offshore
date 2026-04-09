@@ -5234,6 +5234,18 @@ function getRunByPaymentId(paymentId) {
   return readRunRecords().find((r) => r.paymentId === id) || null;
 }
 
+function getStartableRunByPaymentId(paymentId, tier = "") {
+  const id = String(paymentId || "").trim();
+  if (!id) return null;
+  const tierKey = String(tier || "").toLowerCase();
+  const run = readRunRecords().find((r) =>
+    String(r?.paymentId || "") === id &&
+    (!tierKey || String(r?.tier || "").toLowerCase() === tierKey) &&
+    runIsStartable(r)
+  );
+  return run ? cloneRunRecord(run) : null;
+}
+
 function upsertRunFromResumeSnapshot(snapshot = {}, opts = {}) {
   const runId = String(snapshot.run_id || snapshot.runId || opts.runId || "").trim();
   if (!runId) return null;
@@ -5612,6 +5624,7 @@ window.RISX_createRunFromPayment = createRunFromPayment;
 window.RISX_upsertRunFromResumeSnapshot = upsertRunFromResumeSnapshot;
 window.RISX_setRunResumeState = setRunResumeState;
 window.RISX_getRunResumeState = getRunResumeState;
+window.RISX_getStartableRunByPaymentId = getStartableRunByPaymentId;
 window.RISX_runSupabaseProbe = () => runSupabaseDirectInsertProbe({ force: true });
 
 // Admin
@@ -6562,11 +6575,25 @@ async function hasValidUnlockForTier(tier) {
     } catch {}
   }
 
+  const session = getPaymentSessionState?.();
+  const sessionTier = String(session?.tier || "").toLowerCase();
+  const sessionStatus = String(session?.status || "").toLowerCase();
+  const sessionPaymentId = String(session?.paymentId || "");
+  if (
+    sessionPaymentId &&
+    sessionTier === tierKey &&
+    ["paid", "pending"].includes(sessionStatus)
+  ) {
+    const paymentRun = getStartableRunByPaymentId(sessionPaymentId, tierKey);
+    if (paymentRun) return true;
+  }
+
   const resume = getRunResumeState();
   if (!(resume && String(resume.tierKey || "").toLowerCase() === tierKey)) return false;
   const run = getRunById(String(resume.runId || ""));
   if (!run) return true;
-  return runIsStartable(run);
+  if (runIsStartable(run)) return true;
+  return false;
 }
 
 async function authorizeResumeStartForRun(tier, runId) {

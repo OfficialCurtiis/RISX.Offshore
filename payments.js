@@ -389,14 +389,25 @@ function handleConfirmed(resp) {
     const resumeRunLiveBalance = Number(resp?.resume_run?.live_balance);
     const resumeRunTerminal = isTerminalRunStatus(resumeRunStatus);
     const resumeRunDepleted = Number.isFinite(resumeRunLiveBalance) && resumeRunLiveBalance <= 0;
-    const canResumeConsumedRun = !resumeRunTerminal && !resumeRunDepleted && !!consumedRunId;
+    const localStartableRun =
+      window.RISX_getStartableRunByPaymentId?.(paymentId, tierKey) ||
+      window.RISX_getStartableRunByPaymentId?.(paymentId) ||
+      null;
+    const effectiveTierKey = String(
+      tierKey || resp?.resume_run?.tierKey || localStartableRun?.tier || pending?.tier || ""
+    ).toLowerCase();
+    const localResumeRunId = String(localStartableRun?.runId || "");
+    const serverCanResume = !resumeRunTerminal && !resumeRunDepleted && !!consumedRunId;
+    const optimisticResume = !!paymentId && !!effectiveTierKey;
+    const canResumeConsumedRun = serverCanResume || !!localResumeRunId || optimisticResume;
+    const resumeRunId = serverCanResume ? consumedRunId : localResumeRunId;
 
     if (canResumeConsumedRun) {
-      if (paymentId && tierKey) {
+      if (paymentId && effectiveTierKey) {
         setPaymentSession({
           status: "paid",
           intent,
-          tier: tierKey,
+          tier: effectiveTierKey,
           invoiceId: paymentId,
           paymentId,
           amount,
@@ -406,7 +417,7 @@ function handleConfirmed(resp) {
         });
         syncPaymentRecord({
           paymentId,
-          tier: tierKey,
+          tier: effectiveTierKey,
           amount,
           currency,
           status: "paid",
@@ -418,9 +429,9 @@ function handleConfirmed(resp) {
         try {
           window.RISX_setRunResumeState?.({
             token: String(resp.resume_token || ""),
-            runId: consumedRunId,
+            runId: resumeRunId,
             paymentId: paymentId || String(resp?.payment_id || ""),
-            tierKey: tierKey || String(resp?.resume_run?.tierKey || ""),
+            tierKey: effectiveTierKey,
             exp: Number(resp.resume_token_expires_at || 0),
           });
         } catch {}
@@ -429,19 +440,21 @@ function handleConfirmed(resp) {
       try {
         window.RISX_upsertRunFromResumeSnapshot?.({
           ...(resp?.resume_run && typeof resp.resume_run === "object" ? resp.resume_run : {}),
-          run_id: consumedRunId,
-          payment_id: paymentId || String(resp?.resume_run?.payment_id || ""),
-          tierKey: tierKey || String(resp?.resume_run?.tierKey || ""),
-          live_balance: resp?.resume_run?.live_balance ?? null,
-          status: String(resp?.resume_run?.status || "resumed"),
+          run_id: resumeRunId,
+          payment_id: paymentId || String(resp?.resume_run?.payment_id || localStartableRun?.paymentId || ""),
+          tierKey: effectiveTierKey,
+          live_balance: serverCanResume
+            ? (resp?.resume_run?.live_balance ?? null)
+            : (localStartableRun?.liveBalance ?? null),
+          status: String(serverCanResume ? (resp?.resume_run?.status || "resumed") : (localStartableRun?.status || "resumed")),
         }, {
-          runId: consumedRunId,
-          paymentId: paymentId || String(resp?.payment_id || ""),
-          tier: tierKey || String(resp?.resume_run?.tierKey || ""),
+          runId: resumeRunId,
+          paymentId: paymentId || String(resp?.payment_id || localStartableRun?.paymentId || ""),
+          tier: effectiveTierKey,
         });
       } catch {}
 
-      if (tierKey) localStorage.setItem("risx_unlock_tier", tierKey);
+      if (effectiveTierKey) localStorage.setItem("risx_unlock_tier", effectiveTierKey);
       localStorage.setItem("risx_unlock_intent", intent);
       if (intent === "restart" && failedRunId) {
         localStorage.setItem(RESTART_FAILED_RUN_ID_KEY, failedRunId);
@@ -449,10 +462,10 @@ function handleConfirmed(resp) {
 
       statusEl.textContent = "Payment ID already used. Resuming your in-progress run…";
       updatePaymentSessionStatus("paid");
-      activeTierKey = tierKey || activeTierKey;
+      activeTierKey = effectiveTierKey || activeTierKey;
       setUnlocked(activeTierKey || "beginner");
       closeModal();
-      window.RISX_startChallengeFromPayment?.(tierKey || "beginner");
+      window.RISX_startChallengeFromPayment?.(effectiveTierKey || "beginner");
       return;
     }
 
