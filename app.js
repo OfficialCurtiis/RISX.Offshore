@@ -6615,7 +6615,11 @@ async function authorizeResumeStartForRun(tier, runId) {
     status: "resumed",
   });
   if (!sync?.ok) {
-    return { ok: false, reason: String(sync?.error || "resume_auth_failed") };
+    return {
+      ok: false,
+      reason: String(sync?.error || "resume_auth_failed"),
+      status: Number(sync?.status || 0),
+    };
   }
   return {
     ok: true,
@@ -6977,6 +6981,7 @@ async function startChallengeNow(tier) {
     resumeAuth = await authorizeResumeStartForRun(tierKey, preparedRunId);
     if (!resumeAuth.ok) {
       const resumeFailReason = String(resumeAuth.reason || "");
+      const resumeFailStatus = Number(resumeAuth.status || 0);
       if (resumeFailReason === "verify_token_api_missing") {
         clearRunResumeState();
         localStorage.removeItem("risx_unlock_token");
@@ -6991,11 +6996,23 @@ async function startChallengeNow(tier) {
       }
       const preparedRun = getRunById(preparedRunId);
       const preparedStatus = String(preparedRun?.status || "").toLowerCase();
+      const resumeConflictLike =
+        resumeFailStatus === 409 ||
+        resumeFailReason.includes("conflict") ||
+        resumeFailReason.includes("already_used") ||
+        resumeFailReason.includes("used") ||
+        resumeFailReason.includes("invalid");
       const canResumeLocallyWithoutToken =
-        resumeFailReason === "missing_resume_token" &&
+        (
+          resumeFailReason === "missing_resume_token" ||
+          resumeConflictLike
+        ) &&
         !!preparedRun &&
         ["ready", "active", "resumed"].includes(preparedStatus);
       if (canResumeLocallyWithoutToken) {
+        if (resumeConflictLike) {
+          clearRunResumeState();
+        }
         resumeAuth = {
           ok: true,
           runId: preparedRunId,
