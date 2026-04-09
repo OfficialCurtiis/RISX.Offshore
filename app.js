@@ -1,4 +1,6 @@
 document.documentElement.classList.add("js-ready");
+const RISX_BUILD_TAG = "2026-04-09-resume-balance-fix-4";
+console.info("[RISX][BuildTag]", RISX_BUILD_TAG);
 
 // =========================
 // RISX: CORE STATE
@@ -6682,7 +6684,6 @@ function consumeUnlockForStartedRun() {
   localStorage.removeItem("risx_unlock_tier");
   localStorage.removeItem("risx_unlock_intent");
   localStorage.removeItem("risx_payment_intent");
-  setPaymentSessionState(null);
   return consumedIntent;
 }
 
@@ -7107,10 +7108,26 @@ async function startChallengeNow(tier) {
   // Unlock tokens are one-use; payment recovery state is no longer needed once run starts.
   if (usedUnlockToken) {
     consumeUnlockForStartedRun();
-  } else {
-    setPaymentSessionState(null);
-    localStorage.removeItem("risx_pending_payment");
-    localStorage.removeItem("risx_payment_intent");
+  }
+  localStorage.removeItem("risx_pending_payment");
+  localStorage.removeItem("risx_payment_intent");
+
+  const startedRunForSession = getRunById(runId);
+  if (startedRunForSession?.paymentId) {
+    const payment = getPaymentRecordById(startedRunForSession.paymentId);
+    const existingSession = getPaymentSessionState();
+    if (!existingSession || String(existingSession.paymentId || "") !== String(startedRunForSession.paymentId || "")) {
+      setPaymentSessionState({
+        status: "paid",
+        intent: startIntent === "restart" ? "restart" : "entry",
+        tier: String(startedRunForSession.tier || tierKey || ""),
+        invoiceId: String(startedRunForSession.paymentId || ""),
+        paymentId: String(startedRunForSession.paymentId || ""),
+        amount: Number(payment?.amount || 0),
+        currency: String(payment?.asset || payment?.currency || ""),
+        createdAt: Number(payment?.createdAt || Date.now()),
+      });
+    }
   }
 
   if (startIntent === "restart") {
