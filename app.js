@@ -1859,15 +1859,16 @@ async function flushRunProgressSync() {
 function queueRunProgressSync({ immediate = false, status = "active" } = {}) {
   const runId = String(localStorage.getItem(RUN_ID_KEY) || "");
   if (!runId || !challengeActive) return;
-  const resume = getRunResumeState();
-  if (!resume || resume.runId !== runId) return;
-
   const liveBalance = clamp2(Math.max(0, Number(balance || 0)));
   patchRunRecordInCache(runId, {
     liveBalance,
     status: status || "active",
     lastClientSyncAt: Date.now(),
   });
+
+  const resume = getRunResumeState();
+  if (!resume || resume.runId !== runId) return;
+
   runProgressSyncPending = { runId, liveBalance, status: status || "active" };
 
   if (immediate) {
