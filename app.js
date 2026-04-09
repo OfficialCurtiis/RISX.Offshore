@@ -5231,22 +5231,51 @@ function getRunById(runId) {
   return readRunRecords().find((r) => r.runId === id) || null;
 }
 
+function runSelectionScore(run) {
+  const status = String(run?.status || "").toLowerCase();
+  let score = 0;
+  if (runIsTerminalStatus(run)) score -= 1000;
+  if (status === "active" || status === "resumed") score += 400;
+  else if (status === "ready") score += 300;
+  else if (status === "created") score += 200;
+  else score += 100;
+  if (Number(run?.startedAt || 0) > 0) score += 50;
+  if (Number(run?.resumedAt || 0) > 0) score += 10;
+  if (Number.isFinite(Number(run?.liveBalance))) score += 5;
+  return score;
+}
+
+function selectBestRun(candidates = []) {
+  if (!Array.isArray(candidates) || !candidates.length) return null;
+  return [...candidates].sort((a, b) => {
+    const scoreDiff = runSelectionScore(b) - runSelectionScore(a);
+    if (scoreDiff !== 0) return scoreDiff;
+    const aTs = Number(a?.updatedAt || a?.resumedAt || a?.startedAt || a?.createdAt || 0);
+    const bTs = Number(b?.updatedAt || b?.resumedAt || b?.startedAt || b?.createdAt || 0);
+    if (bTs !== aTs) return bTs - aTs;
+    return Number(b?.createdAt || 0) - Number(a?.createdAt || 0);
+  })[0] || null;
+}
+
 function getRunByPaymentId(paymentId) {
   const id = String(paymentId || "");
   if (!id) return null;
-  return readRunRecords().find((r) => r.paymentId === id) || null;
+  const matches = readRunRecords().filter((r) => String(r?.paymentId || "") === id);
+  const best = selectBestRun(matches);
+  return best ? cloneRunRecord(best) : null;
 }
 
 function getStartableRunByPaymentId(paymentId, tier = "") {
   const id = String(paymentId || "").trim();
   if (!id) return null;
   const tierKey = String(tier || "").toLowerCase();
-  const run = readRunRecords().find((r) =>
+  const matches = readRunRecords().filter((r) =>
     String(r?.paymentId || "") === id &&
     (!tierKey || String(r?.tier || "").toLowerCase() === tierKey) &&
     runIsStartable(r)
   );
-  return run ? cloneRunRecord(run) : null;
+  const best = selectBestRun(matches);
+  return best ? cloneRunRecord(best) : null;
 }
 
 function upsertRunFromResumeSnapshot(snapshot = {}, opts = {}) {
@@ -5260,7 +5289,7 @@ function upsertRunFromResumeSnapshot(snapshot = {}, opts = {}) {
 
   const list = readRunRecords();
   let run = list.find((r) => r.runId === runId);
-  if (!run && paymentId) run = list.find((r) => String(r.paymentId || "") === paymentId);
+  if (!run && paymentId) run = selectBestRun(list.filter((r) => String(r?.paymentId || "") === paymentId));
 
   if (!run) {
     run = {
@@ -5314,7 +5343,12 @@ function createRunFromPayment(paymentPayload = {}, opts = {}) {
   if (!payment) return null;
 
   const list = readRunRecords();
-  let run = list.find((r) => r.paymentId === payment.paymentId);
+  let run = selectBestRun(
+    list.filter((r) =>
+      String(r?.paymentId || "") === String(payment.paymentId || "") &&
+      (!String(opts?.tier || "").toLowerCase() || String(r?.tier || "").toLowerCase() === String(opts.tier || "").toLowerCase())
+    )
+  );
   if (!run) {
     const baseTierKey = String(payment.tier || opts.tier || "").toLowerCase();
     const tierCfg = CHALLENGE_TIERS[baseTierKey];
@@ -5404,7 +5438,9 @@ function markRunStarted({ tier, paymentId, runId } = {}) {
   const tierKey = String(tier || "").toLowerCase();
   const preferredRunId = String(runId || "");
   const byRunId = preferredRunId ? list.find((r) => r.runId === preferredRunId) : null;
-  const byPayment = paymentId ? list.find((r) => r.paymentId === String(paymentId)) : null;
+  const byPayment = paymentId
+    ? selectBestRun(list.filter((r) => String(r?.paymentId || "") === String(paymentId)))
+    : null;
   const byLocalRunId = list.find((r) => r.runId === String(localStorage.getItem(RUN_ID_KEY) || ""));
   const byTier = list
     .filter((r) => String(r.tier || "").toLowerCase() === tierKey && isStartableStatus(r) && !r.claimId)
