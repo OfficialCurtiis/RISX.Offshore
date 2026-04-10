@@ -40,6 +40,8 @@
   let activeTierKey = null;
   let activePaymentId = null;
   let pollTimer = null;
+  let confirmInFlight = false;
+  let confirmPaymentId = "";
 
   // ------- Helpers -------
 
@@ -378,6 +380,10 @@ function handleConfirmed(resp) {
   const intent = String(resp?.intent || pending?.intent || "entry").toLowerCase() === "restart" ? "restart" : "entry";
   const tierKey = String(resp?.tierKey || pending?.tier || "").toLowerCase();
   const paymentId = String(pending?.paymentId || activePaymentId || resp?.payment_id || "").trim();
+  if (confirmInFlight && paymentId && confirmPaymentId === paymentId) return;
+  confirmInFlight = true;
+  confirmPaymentId = paymentId;
+  try {
   const failedRunId = String(resp?.failedRunId || localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "");
   const amount = Number(pending?.amount || resp?.pay_amount || 0);
   const currency = String(pending?.currency || resp?.pay_currency || "");
@@ -397,9 +403,10 @@ function handleConfirmed(resp) {
       tierKey || resp?.resume_run?.tierKey || localStartableRun?.tier || pending?.tier || ""
     ).toLowerCase();
     const localResumeRunId = String(localStartableRun?.runId || "");
-    const serverCanResume = !resumeRunTerminal && !resumeRunDepleted && !!consumedRunId;
-    const optimisticResume = !!paymentId && !!effectiveTierKey;
-    const canResumeConsumedRun = serverCanResume || !!localResumeRunId || optimisticResume;
+    const serverExplicitlyTerminal = !!resumeRunStatus && (resumeRunTerminal || resumeRunDepleted);
+    const serverCanResume = !serverExplicitlyTerminal && !resumeRunTerminal && !resumeRunDepleted && !!consumedRunId;
+    const localCanResume = !serverExplicitlyTerminal && !!localResumeRunId;
+    const canResumeConsumedRun = serverCanResume || localCanResume;
     const resumeRunId = serverCanResume ? consumedRunId : localResumeRunId;
 
     if (canResumeConsumedRun) {
@@ -553,6 +560,10 @@ function handleConfirmed(resp) {
   } else {
     window.RISX_startChallengeFromPayment?.(tierKey);
   }
+  } finally {
+    confirmInFlight = false;
+    confirmPaymentId = "";
+  }
 }
 
 function startPolling(paymentId) {
@@ -646,12 +657,17 @@ function startPolling(paymentId) {
   });
 
 checkBtn?.addEventListener("click", async () => {
+  if (checkBtn.disabled) return;
+  checkBtn.disabled = true;
+  checkBtn.textContent = "Checking…";
   // Pull from active id, or pending storage (refresh-safe)
   const pending = getPaymentSession();
   const pid = activePaymentId || pending?.paymentId;
 
   if (!pid) {
     alert("Create a payment first.");
+    checkBtn.disabled = false;
+    checkBtn.textContent = "Verify Payment";
     return;
   }
 
@@ -680,6 +696,9 @@ checkBtn?.addEventListener("click", async () => {
     startPolling(pid);
   } catch (e) {
     statusEl.textContent = "Status check error (try again)";
+  } finally {
+    checkBtn.disabled = false;
+    checkBtn.textContent = "Verify Payment";
   }
 });
 

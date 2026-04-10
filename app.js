@@ -1,5 +1,5 @@
 document.documentElement.classList.add("js-ready");
-const RISX_BUILD_TAG = "2026-04-09-resume-balance-fix-4";
+const RISX_BUILD_TAG = "2026-04-09-resume-balance-fix-5";
 console.info("[RISX][BuildTag]", RISX_BUILD_TAG);
 
 // =========================
@@ -118,6 +118,7 @@ let lastResolvedRecoveryState = {
   paymentId: "",
   failedRunId: "",
 };
+let refreshPostPaymentRecoveryPromise = null;
 
 function debounce(fn, delay = 150) {
   let t;
@@ -948,33 +949,32 @@ function refreshChallengeHud() {
   goalEl.textContent = (goal > 0) ? formatCredits(goal) : "—";
 }
 
-  // Not in a live challenge
-  if (!challengeActive && status === "") {
+  // Non-live challenge state should never display warning/live loops.
+  if (!challengeActive) {
+    if (status === "won") {
+      setChallengeHud({
+        state: "cleared",
+        text: "CLEARED",
+        sub: "Challenge completed",
+        mercyOn: false
+      });
+      return;
+    }
+
+    if (status === "failed") {
+      setChallengeHud({
+        state: "failed",
+        text: "FAILED",
+        sub: "Run ended",
+        mercyOn: false
+      });
+      return;
+    }
+
     setChallengeHud({
       state: "ready",
       text: "READY",
       sub: "Demo • Wallet-mode credits across all games",
-      mercyOn: false
-    });
-    return;
-  }
-
-  // Ended states
-  if (status === "won") {
-    setChallengeHud({
-      state: "cleared",
-      text: "CLEARED",
-      sub: "Challenge completed",
-      mercyOn: false
-    });
-    return;
-  }
-
-  if (status === "failed") {
-    setChallengeHud({
-      state: "failed",
-      text: "FAILED",
-      sub: "Run ended",
       mercyOn: false
     });
     return;
@@ -2291,11 +2291,29 @@ async function resolveRecoveryState({ allowPaymentRecovery = true } = {}) {
   const paymentSession = getPaymentSessionState();
   if (paymentSession && ["pending", "paid"].includes(String(paymentSession.status || "").toLowerCase())) {
     const validated = validateRecoveryIntent(paymentSession.intent, localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "");
+    const paymentTier = String(paymentSession.tier || "").toLowerCase();
+    const paymentId = String(paymentSession.paymentId || "");
+    const paymentStatus = String(paymentSession.status || "").toLowerCase();
+    const paymentRun = paymentId
+      ? (
+        getStartableRunByPaymentId(paymentId, paymentTier) ||
+        getStartableRunByPaymentId(paymentId)
+      )
+      : null;
+    if (paymentStatus === "paid" && paymentRun) {
+      return {
+        kind: "unlock",
+        tier: paymentTier || String(paymentRun.tier || "").toLowerCase(),
+        intent: validated.intent,
+        paymentId,
+        failedRunId: validated.failedRunId,
+      };
+    }
     return {
       kind: "payment",
-      tier: String(paymentSession.tier || "").toLowerCase(),
+      tier: paymentTier,
       intent: validated.intent,
-      paymentId: String(paymentSession.paymentId || ""),
+      paymentId,
       failedRunId: validated.failedRunId,
     };
   }
@@ -2310,41 +2328,50 @@ async function resolveRecoveryState({ allowPaymentRecovery = true } = {}) {
 }
 
 async function refreshPostPaymentRecovery() {
-  if (challengeActive) {
-    recoveryUnlockTier = "";
-    recoveryUnlockIntent = "entry";
-    lastResolvedRecoveryState = {
-      kind: "none",
-      tier: "",
-      intent: "entry",
-      paymentId: "",
-      failedRunId: "",
-    };
+  if (refreshPostPaymentRecoveryPromise) return refreshPostPaymentRecoveryPromise;
+
+  refreshPostPaymentRecoveryPromise = (async () => {
+    if (challengeActive) {
+      recoveryUnlockTier = "";
+      recoveryUnlockIntent = "entry";
+      lastResolvedRecoveryState = {
+        kind: "none",
+        tier: "",
+        intent: "entry",
+        paymentId: "",
+        failedRunId: "",
+      };
+      renderRecoveryCtas?.();
+      return;
+    }
+
+    const recovery = await resolveRecoveryState();
+    lastResolvedRecoveryState = recovery;
+    recoveryUnlockTier = recovery.kind === "unlock" ? String(recovery.tier || "").toLowerCase() : "";
+    recoveryUnlockIntent = String(recovery.intent || "entry");
+
+    if (recoveryUnlockTier && challengeTier) {
+      challengeTier.value = recoveryUnlockTier;
+      challengeTierSelected = recoveryUnlockTier;
+      CHALLENGE.tier = recoveryUnlockTier;
+      renderTierSummary?.();
+    }
+
+    const hasAnyRecovery = recovery.kind !== "none";
+
+    if (!challengeActive && challengeModal) {
+      const modalOpen = challengeModal.classList.contains("open") || challengeModal.style.display === "block";
+      if (hasAnyRecovery && modalOpen) closeModal(challengeModal);
+      if (!hasAnyRecovery && !modalOpen) openModal(challengeModal);
+    }
+
     renderRecoveryCtas?.();
-    return;
-  }
+  })()
+    .finally(() => {
+      refreshPostPaymentRecoveryPromise = null;
+    });
 
-  const recovery = await resolveRecoveryState();
-  lastResolvedRecoveryState = recovery;
-  recoveryUnlockTier = recovery.kind === "unlock" ? String(recovery.tier || "").toLowerCase() : "";
-  recoveryUnlockIntent = String(recovery.intent || "entry");
-
-  if (recoveryUnlockTier && challengeTier) {
-    challengeTier.value = recoveryUnlockTier;
-    challengeTierSelected = recoveryUnlockTier;
-    CHALLENGE.tier = recoveryUnlockTier;
-    renderTierSummary?.();
-  }
-
-  const hasAnyRecovery = recovery.kind !== "none";
-
-  if (!challengeActive && challengeModal) {
-    const modalOpen = challengeModal.classList.contains("open") || challengeModal.style.display === "block";
-    if (hasAnyRecovery && modalOpen) closeModal(challengeModal);
-    if (!hasAnyRecovery && !modalOpen) openModal(challengeModal);
-  }
-
-  renderRecoveryCtas?.();
+  return refreshPostPaymentRecoveryPromise;
 }
 
 function normalizeClaimRecoveryState(raw) {
@@ -2467,12 +2494,17 @@ function renderRecoveryCtas() {
   const paymentSession = getPaymentSessionState();
   const showClaim = recovery.kind === "claim" && !!claimState;
   const showStart = !challengeActive && recovery.kind === "unlock";
-  const showPayment = !challengeActive && recovery.kind === "payment" && !!paymentSession && paymentSession.status === "pending";
+  const showPayment = !challengeActive && recovery.kind === "payment" && !!paymentSession && ["pending", "paid"].includes(String(paymentSession.status || "").toLowerCase());
 
   challengeRecoveryCtas.style.display = (showPayment || showStart || showClaim) ? "flex" : "none";
 
   if (resumePaymentBtn) {
     resumePaymentBtn.style.display = showPayment ? "inline-flex" : "none";
+    if (showPayment) {
+      resumePaymentBtn.textContent = String(paymentSession?.status || "").toLowerCase() === "paid"
+        ? "Re-Verify Payment"
+        : "Resume Payment";
+    }
   }
   if (startChallengeRecoveryBtn) {
     startChallengeRecoveryBtn.style.display = showStart ? "inline-flex" : "none";
@@ -5283,7 +5315,7 @@ function upsertRunFromResumeSnapshot(snapshot = {}, opts = {}) {
   if (!runId) return null;
   const paymentId = String(snapshot.payment_id || snapshot.paymentId || opts.paymentId || "").trim();
   const tierKey = String(snapshot.tierKey || snapshot.tier || opts.tier || "").toLowerCase();
-  const status = normalizeRunStatus(snapshot.status || "resumed");
+  let status = normalizeRunStatus(snapshot.status || "resumed");
   const liveBalanceRaw = Number(snapshot.live_balance ?? snapshot.liveBalance ?? null);
   const liveBalance = Number.isFinite(liveBalanceRaw) ? clamp2(Math.max(0, liveBalanceRaw)) : null;
 
@@ -5322,11 +5354,19 @@ function upsertRunFromResumeSnapshot(snapshot = {}, opts = {}) {
     list.unshift(run);
   }
 
+  const existingWasTerminal = !!run && runIsTerminalStatus(run);
+  const incomingIsTerminal = runIsTerminalStatus({ status, liveBalance });
+  if (existingWasTerminal && !incomingIsTerminal) {
+    status = String(run.status || status || "failed");
+  }
+
   run.runId = runId;
   if (paymentId) run.paymentId = paymentId;
   if (tierKey) run.tier = tierKey;
   run.status = status;
-  if (liveBalance !== null) run.liveBalance = liveBalance;
+  if (liveBalance !== null && !(existingWasTerminal && !incomingIsTerminal)) {
+    run.liveBalance = liveBalance;
+  }
   const startedAt = toEpochMs(snapshot.started_at || snapshot.startedAt);
   if (startedAt) run.startedAt = startedAt;
   const endedAt = toEpochMs(snapshot.ended_at || snapshot.endedAt);
@@ -6295,6 +6335,10 @@ async function init() {
     status = "won";
     setChallengeStatus("won");
   }
+  if (!challengeActive && status === "active") {
+    clearChallengeStatus();
+    status = "";
+  }
 
   // If last run ended, do NOT auto-resume.
   if (status === "failed" || status === "won") {
@@ -7114,6 +7158,7 @@ async function startChallengeNow(tier) {
   if (!Number.isFinite(Number(initialBalance)) || Number(initialBalance) <= 0) {
     markRunFailedById(runId, "balance_depleted_before_resume", 0);
     challengeState.status = "failed";
+    setChallengeStatus?.("failed");
     CHALLENGE.active = false;
     challengeActive = false;
     saveChallengeActive(false);
