@@ -1,5 +1,5 @@
 document.documentElement.classList.add("js-ready");
-const RISX_BUILD_TAG = "2026-04-09-resume-balance-fix-5";
+const RISX_BUILD_TAG = "2026-04-10-resume-refresh-lockout-fix-6";
 console.info("[RISX][BuildTag]", RISX_BUILD_TAG);
 
 // =========================
@@ -1698,8 +1698,10 @@ function setActiveWallet(w) {
   // persist active wallet using YOUR existing key
   localStorage.setItem(WALLET_KEY, wallet);
 
- // If challenge hasn't started yet, keep them locked at 0
-  if (!challengeActive && !CHALLENGE.active) {
+  // When challenge wallet is selected outside a live run, keep UI at 0
+  // but do not overwrite stored challenge balance.
+  const hideChallengeWalletBalance = (!challengeActive && !CHALLENGE.active && wallet === CHALLENGE_WALLET_ID);
+  if (hideChallengeWalletBalance) {
     balance = 0;
   } else {
     balance = (st && typeof st.balance === "number") ? st.balance : 0;
@@ -1713,8 +1715,10 @@ function setActiveWallet(w) {
 
   updateBalanceDisplay?.();
 
-  // make sure it exists in storage (seed once)
-  persistActiveWalletState();
+  // Persist active wallet except hidden challenge-wallet placeholder state.
+  if (!hideChallengeWalletBalance) {
+    persistActiveWalletState();
+  }
 }
 
 // =============================
@@ -1812,7 +1816,7 @@ async function postRunProgressSync({ runId, liveBalance, status = "active" } = {
     });
     const j = verifyRes.body || {};
     if (!verifyRes.ok || !j?.ok) {
-      if (verifyRes.status === 401 || verifyRes.status === 404 || verifyRes.status === 409) {
+      if (verifyRes.status === 401 || verifyRes.status === 409) {
         clearRunResumeState();
       }
       return {
@@ -2073,6 +2077,10 @@ function setRunResumeState(payload = {}) {
 async function verifyLocalUnlockToken() {
   const token = String(localStorage.getItem("risx_unlock_token") || "");
   if (!token) return null;
+  const storedTier = String(localStorage.getItem("risx_unlock_tier") || "").toLowerCase();
+  const storedIntent = String(localStorage.getItem("risx_unlock_intent") || getPaymentSessionState()?.intent || "entry").toLowerCase();
+  const fallbackIntent = storedIntent === "restart" ? "restart" : "entry";
+  const fallbackFailedRunId = String(localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "");
 
   try {
     const verifyRes = await postVerifyToken({ token });
@@ -2092,6 +2100,12 @@ async function verifyLocalUnlockToken() {
         localStorage.setItem(RESTART_FAILED_RUN_ID_KEY, failedRunId);
       }
       return { tier: tierKey, intent, failedRunId };
+    }
+    if (verifyRes.status === 404) {
+      if (storedTier) {
+        return { tier: storedTier, intent: fallbackIntent, failedRunId: fallbackFailedRunId };
+      }
+      return null;
     }
   } catch {}
 
@@ -6414,8 +6428,11 @@ async function init() {
   // =============================
   if (!challengeActive) {
     const bootWallet = localStorage.getItem(WALLET_KEY) || "";
-    if (bootWallet) {
+    if (bootWallet && bootWallet !== CHALLENGE_WALLET_ID) {
       setActiveWallet(bootWallet);
+    } else if (bootWallet === CHALLENGE_WALLET_ID) {
+      localStorage.removeItem(WALLET_KEY);
+      if (currentWalletEl) currentWalletEl.textContent = "—";
     } else {
       if (currentWalletEl) currentWalletEl.textContent = "—";
     }
@@ -6650,7 +6667,11 @@ async function hasValidUnlockForTier(tier) {
         if (tokenIntent !== "restart") return false;
       }
       if (ok) return true;
-      if (verifyRes.status === 401 || verifyRes.status === 404 || verifyRes.status === 409) {
+      if (verifyRes.status === 404) {
+        const localTier = String(localStorage.getItem("risx_unlock_tier") || "").toLowerCase();
+        if (localTier && localTier === tierKey) return true;
+      }
+      if (verifyRes.status === 401 || verifyRes.status === 409) {
         localStorage.removeItem("risx_unlock_token");
         localStorage.removeItem("risx_unlock_tier");
         localStorage.removeItem("risx_unlock_intent");
@@ -6728,7 +6749,7 @@ async function consumeUnlockForRun(tier, runId) {
     const j = verifyRes.body || {};
     const ok = !!(verifyRes.ok && j.valid && j.consumed && String(j.tierKey || "").toLowerCase() === tierKey);
     if (!ok) {
-      if (verifyRes.status === 401 || verifyRes.status === 404 || verifyRes.status === 409) {
+      if (verifyRes.status === 401 || verifyRes.status === 409) {
         localStorage.removeItem("risx_unlock_token");
       }
       return {
@@ -7064,18 +7085,6 @@ async function startChallengeNow(tier) {
     if (!resumeAuth.ok) {
       const resumeFailReason = String(resumeAuth.reason || "");
       const resumeFailStatus = Number(resumeAuth.status || 0);
-      if (resumeFailReason === "verify_token_api_missing") {
-        clearRunResumeState();
-        localStorage.removeItem("risx_unlock_token");
-        localStorage.removeItem("risx_unlock_tier");
-        localStorage.removeItem("risx_unlock_intent");
-        setPaymentSessionState(null);
-        localStorage.setItem("risx_payment_intent", isRestartRequired?.() ? "restart" : "entry");
-        window.RISX_openPayModalForTier?.(tierKey);
-        toast?.("This payment ID was already used. Create a new payment to continue.");
-        renderRecoveryCtas?.();
-        return;
-      }
       const preparedRun = getRunById(preparedRunId);
       const preparedStatus = String(preparedRun?.status || "").toLowerCase();
       const resumeConflictLike =
@@ -7086,6 +7095,7 @@ async function startChallengeNow(tier) {
         resumeFailReason.includes("invalid");
       const canResumeLocallyWithoutToken =
         (
+          resumeFailReason === "verify_token_api_missing" ||
           resumeFailReason === "missing_resume_token" ||
           resumeConflictLike
         ) &&
@@ -7153,6 +7163,17 @@ async function startChallengeNow(tier) {
     const startedRun = getRunById(runId);
     const runLive = Number(startedRun?.liveBalance);
     if (Number.isFinite(runLive)) initialBalance = runLive;
+  }
+
+  if (!Number.isFinite(Number(initialBalance)) || Number(initialBalance) <= 0) {
+    const startedRun = getRunById(runId);
+    const startedStatus = String(startedRun?.status || "").toLowerCase();
+    const challengeWalletBalance = Number(loadWalletState(CHALLENGE_WALLET_ID)?.balance);
+    if (startedStatus === "active" && Number(t.startCredits || 0) > 0) {
+      initialBalance = Number(t.startCredits || 0);
+    } else if (Number.isFinite(challengeWalletBalance) && challengeWalletBalance > 0) {
+      initialBalance = challengeWalletBalance;
+    }
   }
 
   if (!Number.isFinite(Number(initialBalance)) || Number(initialBalance) <= 0) {
