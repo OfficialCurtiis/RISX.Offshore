@@ -772,7 +772,7 @@ checkBtn?.addEventListener("click", async () => {
   const recovery = await window.RISX_resolveRecoveryState?.({ allowPaymentRecovery: false }).catch?.(() => null);
   const hasVerifiedUnlock = recovery?.kind === "unlock" && String(recovery?.tier || "").toLowerCase() === String(tierKey || "").toLowerCase();
   if (intent === "entry" && hasVerifiedUnlock) {
-    toast?.(`✅ ${tierKey} already unlocked.`);
+    await window.RISX_startChallengeFromPayment?.(tierKey);
     return;
   }
 

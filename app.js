@@ -1,5 +1,5 @@
 document.documentElement.classList.add("js-ready");
-const RISX_BUILD_TAG = "2026-04-10-resume-refresh-lockout-fix-6";
+const RISX_BUILD_TAG = "2026-04-12-resume-clickflow-fix-7";
 console.info("[RISX][BuildTag]", RISX_BUILD_TAG);
 
 // =========================
@@ -6649,6 +6649,13 @@ ${msg}
 async function hasValidUnlockForTier(tier) {
   const tierKey = String(tier || "").toLowerCase();
   if (!tierKey) return false;
+  await ensureRunRecordsReady();
+
+  const recovery = await resolveRecoveryState();
+  if (String(recovery?.kind || "") === "unlock" && String(recovery?.tier || "").toLowerCase() === tierKey) {
+    return true;
+  }
+
   const restartRequired = isRestartRequired?.() === true;
   const storedIntentRaw = String(localStorage.getItem("risx_unlock_intent") || getPaymentSessionState?.()?.intent || "entry").toLowerCase();
   const restartIntentCheck = validateRecoveryIntent(storedIntentRaw, localStorage.getItem(RESTART_FAILED_RUN_ID_KEY) || "");
@@ -7546,11 +7553,22 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
 
   if (resumePaymentBtn && !resumePaymentBtn._bound) {
     resumePaymentBtn._bound = true;
-    resumePaymentBtn.addEventListener("click", () => {
+    resumePaymentBtn.addEventListener("click", async () => {
       const paymentSession = getPaymentSessionState();
-      if (!paymentSession || paymentSession.status !== "pending") return;
-      localStorage.setItem("risx_payment_intent", paymentSession.intent || "entry");
-      window.RISX_openPayModalForTier?.(paymentSession.tier);
+      if (!paymentSession) return;
+      const sessionStatus = String(paymentSession.status || "").toLowerCase();
+      const sessionTier = String(paymentSession.tier || "").toLowerCase();
+      if (!sessionTier) return;
+
+      if (sessionStatus === "paid") {
+        await window.RISX_startChallengeFromPayment?.(sessionTier);
+        return;
+      }
+
+      if (sessionStatus === "pending") {
+        localStorage.setItem("risx_payment_intent", paymentSession.intent || "entry");
+        window.RISX_openPayModalForTier?.(sessionTier);
+      }
     });
   }
 
