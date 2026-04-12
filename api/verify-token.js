@@ -15,6 +15,16 @@ function normalizeIntent(intent) {
   return String(intent || "").toLowerCase() === "restart" ? "restart" : "entry";
 }
 
+function parseJsonObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function normalizeLiveBalance(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.round(n * 100) / 100);
+}
+
 function isTerminalRunStatus(status) {
   const s = String(status || "").toLowerCase();
   return ["failed", "won", "claimed", "paid", "void"].includes(s);
@@ -76,6 +86,26 @@ async function consumeUnlockRow({ jti, runId }) {
   });
 }
 
+async function findConsumedUnlockForResume({ runId = "", paymentId = "" } = {}) {
+  const safeRunId = sanitizeText(runId, 120);
+  const safePaymentId = sanitizeText(paymentId, 180);
+  if (!safeRunId && !safePaymentId) return null;
+
+  return withSupabaseAdmin("verify_token_find_consumed_unlock_for_resume", async (admin) => {
+    let query = admin
+      .from("unlock_tokens")
+      .select("*")
+      .not("consumed_at", "is", null)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    if (safeRunId) query = query.eq("run_id", safeRunId);
+    else query = query.eq("payment_id", safePaymentId);
+    const { data, error } = await query.maybeSingle();
+    if (error) throw error;
+    return data || null;
+  });
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
@@ -103,6 +133,13 @@ export default async function handler(req, res) {
         : null;
 
       const updatedRun = await withSupabaseAdmin("verify_token_sync_run", async (admin) => {
+        const consumedUnlock = await findConsumedUnlockForResume({
+          runId: tokenRunId,
+          paymentId: String(vr.payload.paymentId || ""),
+        });
+        const unlockMetadata = parseJsonObject(consumedUnlock?.metadata);
+        const unlockLiveBalance = normalizeLiveBalance(unlockMetadata.liveBalance);
+        const unlockStatus = String(unlockMetadata.status || unlockMetadata.runStatus || "").toLowerCase();
         const { data: existing, error: findErr } = await admin
           .from("runs")
           .select("*")
@@ -110,25 +147,63 @@ export default async function handler(req, res) {
           .limit(1)
           .maybeSingle();
         if (findErr) throw findErr;
-        if (!existing) return null;
+        let current = existing || null;
 
-        const existingPaymentId = String(existing.payment_id || "");
+        if (!current && consumedUnlock) {
+          const nowIso = new Date().toISOString();
+          const seededStatus = ["ready", "active", "resumed", "failed", "won", "claimed", "paid", "void"].includes(unlockStatus)
+            ? unlockStatus
+            : (syncStatus || "resumed");
+          const seededLiveBalance = clampedBalance ?? unlockLiveBalance;
+          const seededMetadata = {
+            ...unlockMetadata,
+            liveBalance: seededLiveBalance,
+            lastClientSyncAt: nowIso,
+          };
+
+          const { data: inserted, error: insertErr } = await admin
+            .from("runs")
+            .insert({
+              run_id: tokenRunId,
+              wallet_address: "",
+              tier: String(vr.payload.tierKey || ""),
+              status: seededStatus,
+              payment_id: String(vr.payload.paymentId || "") || null,
+              metadata: seededMetadata,
+              created_at: nowIso,
+              updated_at: nowIso,
+            })
+            .select("*")
+            .single();
+          if (insertErr) throw insertErr;
+          current = inserted || null;
+        }
+
+        if (!current) return null;
+
+        const existingPaymentId = String(current.payment_id || "");
         if (existingPaymentId && existingPaymentId !== String(vr.payload.paymentId || "")) {
           throw new Error("payment mismatch");
         }
 
-        const metadata = (existing.metadata && typeof existing.metadata === "object") ? existing.metadata : {};
-        const existingStatus = String(existing.status || "").toLowerCase();
+        const metadata = {
+          ...unlockMetadata,
+          ...parseJsonObject(current.metadata),
+        };
+        const existingStatus = String(current.status || "").toLowerCase();
         const allowStatusTransition = canTransitionRunStatus(existingStatus, syncStatus);
         const updateBalance = !isTerminalRunStatus(existingStatus);
+        const mergedLiveBalance = updateBalance
+          ? (clampedBalance ?? normalizeLiveBalance(metadata.liveBalance) ?? unlockLiveBalance)
+          : (normalizeLiveBalance(metadata.liveBalance) ?? unlockLiveBalance);
         if (!allowStatusTransition && isTerminalRunStatus(existingStatus)) {
-          return existing;
+          return current;
         }
         const patch = {
           updated_at: new Date().toISOString(),
           metadata: {
             ...metadata,
-            liveBalance: updateBalance ? (clampedBalance ?? metadata.liveBalance ?? null) : (metadata.liveBalance ?? null),
+            liveBalance: mergedLiveBalance,
             lastClientSyncAt: new Date().toISOString(),
           },
         };
@@ -141,6 +216,25 @@ export default async function handler(req, res) {
           .select("*")
           .single();
         if (updateErr) throw updateErr;
+
+        if (consumedUnlock?.id) {
+          const nextUnlockMetadata = {
+            ...unlockMetadata,
+            liveBalance: normalizeLiveBalance(updated?.metadata?.liveBalance ?? mergedLiveBalance),
+            status: String(updated?.status || patch.status || existingStatus || ""),
+            runStatus: String(updated?.status || patch.status || existingStatus || ""),
+            lastClientSyncAt: patch.metadata.lastClientSyncAt,
+          };
+          const { error: unlockUpdateErr } = await admin
+            .from("unlock_tokens")
+            .update({
+              metadata: nextUnlockMetadata,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", consumedUnlock.id);
+          if (unlockUpdateErr) throw unlockUpdateErr;
+        }
+
         return updated;
       });
 

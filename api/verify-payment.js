@@ -75,6 +75,12 @@ function parseRunLiveBalance(runRow) {
   return Math.max(0, Math.round(raw * 100) / 100);
 }
 
+function normalizeLiveBalance(value) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) return null;
+  return Math.max(0, Math.round(raw * 100) / 100);
+}
+
 function isTerminalRunStatus(status) {
   const s = String(status || "").toLowerCase();
   return ["failed", "won", "claimed", "paid", "void"].includes(s);
@@ -99,17 +105,18 @@ function buildResumeRunPayload(runRow, fallback = {}) {
   const metadata = parseJsonObject(runRow?.metadata);
   const runId = String(runRow?.run_id || fallback.runId || "").trim();
   if (!runId) return null;
+  const fallbackLiveBalance = normalizeLiveBalance(fallback.liveBalance ?? fallback.live_balance ?? null);
   return {
     run_id: runId,
     payment_id: String(runRow?.payment_id || fallback.paymentId || "").trim() || null,
     tierKey: String(runRow?.tier || fallback.tierKey || "").toLowerCase() || null,
-    status: String(runRow?.status || "").toLowerCase() || null,
-    started_at: runRow?.started_at || null,
-    ended_at: runRow?.ended_at || null,
+    status: String(runRow?.status || fallback.status || "").toLowerCase() || null,
+    started_at: runRow?.started_at || fallback.startedAt || null,
+    ended_at: runRow?.ended_at || fallback.endedAt || null,
     result: runRow?.result ?? metadata.result ?? null,
     pnl: runRow?.pnl ?? metadata.pnl ?? null,
-    live_balance: parseRunLiveBalance(runRow),
-    updated_at: runRow?.updated_at || null,
+    live_balance: parseRunLiveBalance(runRow) ?? fallbackLiveBalance,
+    updated_at: runRow?.updated_at || fallback.updatedAt || null,
   };
 }
 
@@ -126,7 +133,15 @@ async function buildConsumedResumeData(consumedUnlock, fallback = {}) {
 
   const paymentId = String(runRow?.payment_id || fallback.paymentId || consumedUnlock?.payment_id || "").trim();
   const tierKey = String(runRow?.tier || fallback.tierKey || "").toLowerCase();
-  const resumeRun = buildResumeRunPayload(runRow, { runId, paymentId, tierKey });
+  const unlockMetadata = parseJsonObject(consumedUnlock?.metadata);
+  const resumeRun = buildResumeRunPayload(runRow, {
+    runId,
+    paymentId,
+    tierKey,
+    status: String(unlockMetadata.status || unlockMetadata.runStatus || "").toLowerCase(),
+    liveBalance: unlockMetadata.liveBalance,
+    updatedAt: unlockMetadata.lastClientSyncAt || consumedUnlock?.updated_at || null,
+  });
   const runIsTerminal = isTerminalRunStatus(runRow?.status || resumeRun?.status || "");
 
   if (!paymentId || !tierKey || runIsTerminal) {
