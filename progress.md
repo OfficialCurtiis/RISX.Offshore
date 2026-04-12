@@ -1,0 +1,6 @@
+Original prompt: right off the get go with data deleted and new payment id, i played oneround and simply refreshed the page. it zero'd the balance and shows the start challenge button. again does nothing unless spam clicked and than pay modal opens. re-rentering payment id restarts the challenge with the beginning start balance. doa indepth search for the bug thats causing this. this payment -> entry -> save balance through window exits and site data delete -> entry/restart tokens are deleted when fail/pass is reached. balance must persist when page is closed and new is opened, refreshes, and etc. the whole site is glitching and buggy with the closing and refreshing. find the issue using a deep integration and fix it
+
+- Root-cause investigation in progress.
+- Suspected primary bug: `init()` evaluates active challenge state before run records are reliably hydrated, which can clear the live run pointer on refresh and reopen the start flow.
+- Suspected secondary bug: run records are only mirrored to local storage when Supabase is disabled, so fast refreshes can fall back to stale remote `liveBalance`.
+- Suspected tertiary bug: run-progress sync is debounced but not flushed on page hide/unload, so the latest balance can be lost if the page is refreshed immediately after a round.

@@ -1,5 +1,5 @@
 document.documentElement.classList.add("js-ready");
-const RISX_BUILD_TAG = "2026-04-12-resume-clickflow-fix-7";
+const RISX_BUILD_TAG = "2026-04-12-refresh-persistence-fix-8";
 console.info("[RISX][BuildTag]", RISX_BUILD_TAG);
 
 // =========================
@@ -1687,13 +1687,20 @@ function getActiveWallet() {
   return String(localStorage.getItem(WALLET_KEY) || "").trim();
 }
 
+function getDefaultWalletState(wallet) {
+  return {
+    balance: wallet === CHALLENGE_WALLET_ID ? 0 : 1000,
+    currency: "USDT",
+  };
+}
+
 function setActiveWallet(w) {
   const wallet = String(w || "").trim();
   if (!wallet) return;
 
   currentWallet = wallet;
   challengeCompleted = loadChallengeCompleted();
-  const st = loadWalletState(wallet) || { balance: 1000, currency: "USDT" };
+  const st = loadWalletState(wallet) || getDefaultWalletState(wallet);
 
   // persist active wallet using YOUR existing key
   localStorage.setItem(WALLET_KEY, wallet);
@@ -2000,10 +2007,12 @@ async function postVerifyToken(payload = {}) {
     return { ok: false, status: 404, body: { valid: false, error: "verify_token_api_missing" } };
   }
   try {
+    const requestMode = String(payload?.mode || "").toLowerCase();
     const response = await fetch("/api/verify-token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload || {}),
+      keepalive: requestMode === "sync_run",
     });
     const body = await response.json().catch(() => ({}));
     if (response.status === 404) {
@@ -4855,6 +4864,76 @@ function sortRunRecords(list = []) {
   return [...list].sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
 }
 
+function readRunRecordsLocalMirror() {
+  return sortRunRecords(
+    readList(runsKey)
+      .filter(Boolean)
+      .map(normalizeRunRecord)
+      .filter((r) => !!r.runId)
+  );
+}
+
+function writeRunRecordsLocalMirror(list) {
+  writeList(
+    runsKey,
+    sortRunRecords(
+      (list || [])
+        .filter(Boolean)
+        .map(normalizeRunRecord)
+        .filter((r) => !!r.runId)
+    )
+  );
+}
+
+function getRunRecordFreshness(run) {
+  return Math.max(
+    Number(run?.updatedAt || 0),
+    Number(run?.lastClientSyncAt || 0),
+    Number(run?.endedAt || 0),
+    Number(run?.resumedAt || 0),
+    Number(run?.startedAt || 0),
+    Number(run?.createdAt || 0)
+  );
+}
+
+function choosePreferredRunRecord(existing, candidate) {
+  const a = existing ? normalizeRunRecord(existing) : null;
+  const b = candidate ? normalizeRunRecord(candidate) : null;
+  if (!a?.runId) return b;
+  if (!b?.runId) return a;
+
+  const aFresh = getRunRecordFreshness(a);
+  const bFresh = getRunRecordFreshness(b);
+  if (bFresh !== aFresh) return bFresh > aFresh ? b : a;
+
+  const aTerminal = runIsTerminalStatus(a);
+  const bTerminal = runIsTerminalStatus(b);
+  if (aTerminal !== bTerminal) return bTerminal ? b : a;
+
+  return selectBestRun([b, a]) || b || a;
+}
+
+function mergeRunRecordLists(...lists) {
+  const merged = new Map();
+  lists.flat().forEach((raw) => {
+    const run = normalizeRunRecord(raw);
+    if (!run.runId) return;
+    merged.set(run.runId, choosePreferredRunRecord(merged.get(run.runId), run));
+  });
+  return sortRunRecords([...merged.values()]);
+}
+
+function persistRunCacheToLocalMirror(list = runRecordsCache) {
+  writeRunRecordsLocalMirror((list || []).map(cloneRunRecord));
+}
+
+function hydrateRunCacheFromLocalMirror() {
+  const localMirror = readRunRecordsLocalMirror();
+  if (!localMirror.length) return false;
+  runRecordsCache = mergeRunRecordLists(runRecordsCache, localMirror);
+  return true;
+}
+
 function deriveRunResult(run) {
   const status = String(run?.status || "").toLowerCase();
   if (["won", "claimed", "paid"].includes(status)) return "pass";
@@ -5032,6 +5111,7 @@ function upsertRunCache(runInput) {
   if (idx >= 0) runRecordsCache[idx] = run;
   else runRecordsCache.unshift(run);
   runRecordsCache = sortRunRecords(runRecordsCache);
+  persistRunCacheToLocalMirror(runRecordsCache);
 }
 
 async function refreshRunRecordsFromSupabase({ silent = false } = {}) {
@@ -5043,7 +5123,7 @@ async function refreshRunRecordsFromSupabase({ silent = false } = {}) {
   if (error) {
     if (isSupabaseUnauthorizedError(error)) {
       disableSupabaseRuns("select_unauthorized", error);
-      runRecordsCache = sortRunRecords(readList(runsKey).filter(Boolean).map(normalizeRunRecord).filter((r) => !!r.runId));
+      runRecordsCache = readRunRecordsLocalMirror();
       runRecordsReady = true;
       return runRecordsCache.map(cloneRunRecord);
     }
@@ -5056,12 +5136,13 @@ async function refreshRunRecordsFromSupabase({ silent = false } = {}) {
     return runRecordsCache.map(cloneRunRecord);
   }
   const rows = Array.isArray(data) ? data : [];
-  runRecordsCache = sortRunRecords(
-    rows
+  const remoteRuns = rows
       .filter((row) => !isSupabaseProbeRow(row))
       .map(mapSupabaseRowToRunRecord)
       .filter((r) => !!r.runId)
-  );
+  ;
+  runRecordsCache = mergeRunRecordLists(remoteRuns, readRunRecordsLocalMirror());
+  persistRunCacheToLocalMirror(runRecordsCache);
   runRecordsReady = true;
   return runRecordsCache.map(cloneRunRecord);
 }
@@ -5156,7 +5237,7 @@ function queueRunSync(runInput) {
 async function migrateLegacyRunsToSupabase() {
   if (!supabaseRunsEnabled) return false;
   if (localStorage.getItem(runsSupabaseMigrationKey) === "1") return false;
-  const legacyRuns = readList(runsKey).filter(Boolean).map(normalizeRunRecord).filter((r) => !!r.runId);
+  const legacyRuns = readRunRecordsLocalMirror();
   if (!legacyRuns.length) {
     localStorage.setItem(runsSupabaseMigrationKey, "1");
     return false;
@@ -5178,7 +5259,6 @@ async function migrateLegacyRunsToSupabase() {
       return false;
     }
   }
-  localStorage.removeItem(runsKey);
   localStorage.setItem(runsSupabaseMigrationKey, "1");
   return pending.length > 0;
 }
@@ -5187,13 +5267,15 @@ async function ensureRunRecordsReady(opts = {}) {
   const force = !!opts?.force;
   if (!supabaseRunsEnabled) {
     if (!runRecordsReady || force) {
-      runRecordsCache = sortRunRecords(readList(runsKey).filter(Boolean).map(normalizeRunRecord).filter((r) => !!r.runId));
+      runRecordsCache = readRunRecordsLocalMirror();
       runRecordsReady = true;
     }
     return runRecordsCache.map(cloneRunRecord);
   }
   if (!force && runRecordsReady) return runRecordsCache.map(cloneRunRecord);
   if (!force && runRecordsLoadPromise) return runRecordsLoadPromise;
+
+  hydrateRunCacheFromLocalMirror();
 
   runRecordsLoadPromise = (async () => {
     const probe = await runSupabaseDirectInsertProbe();
@@ -5216,8 +5298,10 @@ async function ensureRunRecordsReady(opts = {}) {
 }
 
 function readRunRecords() {
+  if (!runRecordsReady) {
+    hydrateRunCacheFromLocalMirror();
+  }
   if (!runRecordsReady && !supabaseRunsEnabled) {
-    runRecordsCache = sortRunRecords(readList(runsKey).filter(Boolean).map(normalizeRunRecord).filter((r) => !!r.runId));
     runRecordsReady = true;
   }
   if (supabaseRunsEnabled && !runRecordsReady && !runRecordsLoadPromise) {
@@ -5230,10 +5314,8 @@ function writeRunRecords(list) {
   const normalizedList = sortRunRecords((list || []).filter(Boolean).map(normalizeRunRecord).filter((r) => !!r.runId));
   runRecordsCache = normalizedList;
   runRecordsReady = true;
-  if (!supabaseRunsEnabled) {
-    writeList(runsKey, normalizedList);
-    return;
-  }
+  persistRunCacheToLocalMirror(normalizedList);
+  if (!supabaseRunsEnabled) return;
   normalizedList.forEach((run) => queueRunSync(run));
 }
 
@@ -5251,9 +5333,7 @@ function patchRunRecordInCache(runId, patch = {}) {
   runRecordsCache[idx] = merged;
   runRecordsCache = sortRunRecords(runRecordsCache);
   runRecordsReady = true;
-  if (!supabaseRunsEnabled) {
-    writeList(runsKey, runRecordsCache);
-  }
+  persistRunCacheToLocalMirror(runRecordsCache);
   return cloneRunRecord(merged);
 }
 
@@ -6381,6 +6461,11 @@ async function init() {
     localStorage.setItem(RUN_START_KEY, String(resumed.startedAt || Date.now()));
     localStorage.removeItem(RUN_END_KEY);
     setActiveWallet(CHALLENGE_WALLET_ID);
+    if (Number.isFinite(Number(resumed?.liveBalance))) {
+      balance = clamp2(Math.max(0, Number(resumed.liveBalance)));
+      updateBalanceDisplay?.();
+      persistActiveWalletState?.();
+    }
     setChallengeWalletUI?.();
     lockAppUI(false);
     closeModal(challengeModal);
@@ -7692,8 +7777,20 @@ document.getElementById("copySupportId")?.addEventListener("click", async () => 
   void refreshPostPaymentRecovery();
   window.updateSupportIdPill?.();
 
+  const flushActiveRunOnPageHide = () => {
+    if (!challengeActive) return;
+    persistActiveWalletState?.();
+    queueRunProgressSync?.({
+      immediate: true,
+      status: String(localStorage.getItem(RUN_STATUS_KEY) || "active") || "active",
+    });
+  };
+
   window.addEventListener("focus", () => { void refreshPostPaymentRecovery(); });
+  window.addEventListener("pagehide", flushActiveRunOnPageHide);
+  window.addEventListener("beforeunload", flushActiveRunOnPageHide);
   document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushActiveRunOnPageHide();
     if (document.visibilityState === "visible") void refreshPostPaymentRecovery();
   });
 
