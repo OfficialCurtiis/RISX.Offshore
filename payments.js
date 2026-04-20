@@ -391,6 +391,7 @@ function handleConfirmed(resp) {
   if (resp?.unlock_consumed) {
     const restartRequired = String(localStorage.getItem("risx_restart_required") || "") === "1";
     const consumedRunId = String(resp?.consumed_run_id || resp?.resume_run?.run_id || "");
+    const resumeSnapshotRunId = String(resp?.resume_run?.run_id || resp?.consumed_run_id || "");
     const resumeRunStatus = String(resp?.resume_run?.status || "").toLowerCase();
     const resumeRunLiveBalance = Number(resp?.resume_run?.live_balance);
     const resumeRunTerminal = isTerminalRunStatus(resumeRunStatus);
@@ -404,10 +405,16 @@ function handleConfirmed(resp) {
     ).toLowerCase();
     const localResumeRunId = String(localStartableRun?.runId || "");
     const serverExplicitlyTerminal = !!resumeRunStatus && (resumeRunTerminal || resumeRunDepleted);
-    const serverCanResume = !serverExplicitlyTerminal && !resumeRunTerminal && !resumeRunDepleted && !!consumedRunId;
+    const hasServerResumeHandle =
+      !!String(resp?.resume_token || "").trim() ||
+      !!consumedRunId ||
+      !!resumeSnapshotRunId;
+    const serverCanResume = !serverExplicitlyTerminal && hasServerResumeHandle;
     const localCanResume = !serverExplicitlyTerminal && !!localResumeRunId;
     const canResumeConsumedRun = serverCanResume || localCanResume;
-    const resumeRunId = serverCanResume ? consumedRunId : localResumeRunId;
+    const resumeRunId = serverCanResume
+      ? String(consumedRunId || resumeSnapshotRunId || "")
+      : localResumeRunId;
 
     if (canResumeConsumedRun) {
       if (paymentId && effectiveTierKey) {
@@ -447,7 +454,7 @@ function handleConfirmed(resp) {
       try {
         window.RISX_upsertRunFromResumeSnapshot?.({
           ...(resp?.resume_run && typeof resp.resume_run === "object" ? resp.resume_run : {}),
-          run_id: resumeRunId,
+          run_id: resumeRunId || resumeSnapshotRunId,
           payment_id: paymentId || String(resp?.resume_run?.payment_id || localStartableRun?.paymentId || ""),
           tierKey: effectiveTierKey,
           live_balance: serverCanResume

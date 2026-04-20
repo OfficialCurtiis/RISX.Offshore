@@ -81,6 +81,14 @@ function normalizeLiveBalance(value) {
   return Math.max(0, Math.round(raw * 100) / 100);
 }
 
+function toEpochMs(value) {
+  if (!value) return 0;
+  const n = Number(value);
+  if (Number.isFinite(n) && n > 0) return n;
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function isTerminalRunStatus(status) {
   const s = String(status || "").toLowerCase();
   return ["failed", "won", "claimed", "paid", "void"].includes(s);
@@ -106,6 +114,22 @@ function buildResumeRunPayload(runRow, fallback = {}) {
   const runId = String(runRow?.run_id || fallback.runId || "").trim();
   if (!runId) return null;
   const fallbackLiveBalance = normalizeLiveBalance(fallback.liveBalance ?? fallback.live_balance ?? null);
+  const runLiveBalance = parseRunLiveBalance(runRow);
+  const runFreshness = Math.max(
+    toEpochMs(metadata.lastClientSyncAt),
+    toEpochMs(runRow?.updated_at),
+    toEpochMs(runRow?.ended_at),
+    toEpochMs(runRow?.started_at)
+  );
+  const fallbackFreshness = Math.max(
+    toEpochMs(fallback.updatedAt),
+    toEpochMs(fallback.lastClientSyncAt),
+    toEpochMs(fallback.consumedAt)
+  );
+  const resolvedLiveBalance =
+    fallbackLiveBalance !== null && fallbackFreshness > runFreshness
+      ? fallbackLiveBalance
+      : (runLiveBalance ?? fallbackLiveBalance);
   return {
     run_id: runId,
     payment_id: String(runRow?.payment_id || fallback.paymentId || "").trim() || null,
@@ -115,8 +139,8 @@ function buildResumeRunPayload(runRow, fallback = {}) {
     ended_at: runRow?.ended_at || fallback.endedAt || null,
     result: runRow?.result ?? metadata.result ?? null,
     pnl: runRow?.pnl ?? metadata.pnl ?? null,
-    live_balance: parseRunLiveBalance(runRow) ?? fallbackLiveBalance,
-    updated_at: runRow?.updated_at || fallback.updatedAt || null,
+    live_balance: resolvedLiveBalance,
+    updated_at: (fallbackFreshness > runFreshness ? fallback.updatedAt : null) || runRow?.updated_at || fallback.updatedAt || null,
   };
 }
 
@@ -141,6 +165,8 @@ async function buildConsumedResumeData(consumedUnlock, fallback = {}) {
     status: String(unlockMetadata.status || unlockMetadata.runStatus || "").toLowerCase(),
     liveBalance: unlockMetadata.liveBalance,
     updatedAt: unlockMetadata.lastClientSyncAt || consumedUnlock?.updated_at || null,
+    lastClientSyncAt: unlockMetadata.lastClientSyncAt || null,
+    consumedAt: consumedUnlock?.updated_at || consumedUnlock?.consumed_at || null,
   });
   const runIsTerminal = isTerminalRunStatus(runRow?.status || resumeRun?.status || "");
 

@@ -25,6 +25,14 @@ function normalizeLiveBalance(value) {
   return Math.max(0, Math.round(n * 100) / 100);
 }
 
+function toEpochMs(value) {
+  if (!value) return 0;
+  const n = Number(value);
+  if (Number.isFinite(n) && n > 0) return n;
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function isTerminalRunStatus(status) {
   const s = String(status || "").toLowerCase();
   return ["failed", "won", "claimed", "paid", "void"].includes(s);
@@ -186,10 +194,21 @@ export default async function handler(req, res) {
           throw new Error("payment mismatch");
         }
 
-        const metadata = {
-          ...unlockMetadata,
-          ...parseJsonObject(current.metadata),
-        };
+        const currentMetadata = parseJsonObject(current.metadata);
+        const currentFreshness = Math.max(
+          toEpochMs(currentMetadata.lastClientSyncAt),
+          toEpochMs(current.updated_at),
+          toEpochMs(current.ended_at),
+          toEpochMs(current.started_at)
+        );
+        const unlockFreshness = Math.max(
+          toEpochMs(unlockMetadata.lastClientSyncAt),
+          toEpochMs(consumedUnlock?.updated_at),
+          toEpochMs(consumedUnlock?.consumed_at)
+        );
+        const metadata = unlockFreshness > currentFreshness
+          ? { ...currentMetadata, ...unlockMetadata }
+          : { ...unlockMetadata, ...currentMetadata };
         const existingStatus = String(current.status || "").toLowerCase();
         const allowStatusTransition = canTransitionRunStatus(existingStatus, syncStatus);
         const updateBalance = !isTerminalRunStatus(existingStatus);
