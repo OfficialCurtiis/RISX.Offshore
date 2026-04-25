@@ -3004,9 +3004,21 @@ function quadBezier(p0, p1, p2, t) {
   return (u*u)*p0 + (2*u*t)*p1 + (t*t)*p2;
 }
 
+function plinkoSegmentDurationMs(index, totalSegments) {
+  const progress = totalSegments > 1 ? index / (totalSegments - 1) : 1;
+  const lateChaos = clamp((progress - 0.55) / 0.45, 0, 1);
+  const base = lerp(175, 255, progress);
+  const drift = Math.sin((index + 1) * 1.47) * 22;
+  const volatilityBurst =
+    (Math.sin((index + 1) * 2.31 + 0.8) + Math.cos((index + 1) * 1.13 - 0.35)) * 10;
+  const suspensePocket = Math.sin(progress * Math.PI) * 18;
+  const lateHang = lateChaos * 38;
+  return clamp(base + drift + volatilityBurst + suspensePocket + lateHang, 150, 320);
+}
+
 async function animatePlinkoBall(ballEl, rows, path, options = {}) {
   ballEl.__plinkoAlive = true;
-  const stepMs = options.stepMs ?? 145; // slower cadence for more suspense
+  const baseStepMs = options.stepMs ?? 215; // slower baseline so the drop reads clearly
   const targetBucketIndex = options.targetBucketIndex;
   const g = plinkoGeom;
   const boardW = g?.boardW || plinkoBoardEl.clientWidth || 640;
@@ -3093,13 +3105,15 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
   setBallPosFor(ballEl, points[0].x, points[0].y);
   applyBallGlow(ballEl, 0);
 
-    let finalRenderedX = points[0].x;
+  let finalRenderedX = points[0].x;
+  const totalSegments = Math.max(1, points.length - 1);
 
   for (let i = 0; i < points.length - 1; i++) {
     if (!ballEl.isConnected || !ballEl.__plinkoAlive) break;
     const a = points[i];
     const b = points[i + 1];
     const start = performance.now();
+    const segmentMs = plinkoSegmentDurationMs(i, totalSegments) + (baseStepMs - 215);
 
     await new Promise((resolve) => {
       let rafId = 0;
@@ -3110,8 +3124,13 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
           return resolve();
         }
 
-        const t = Math.min(1, (now - start) / stepMs);
-        const e = smoothstep(t);
+        const t = Math.min(1, (now - start) / segmentMs);
+        const progressOverall = totalSegments > 1 ? i / (totalSegments - 1) : 1;
+        const lateChaos = clamp((progressOverall - 0.62) / 0.38, 0, 1);
+        const weightedT = smoothstep(t);
+        const surge = Math.sin(weightedT * Math.PI) * (0.05 + 0.12 * lateChaos);
+        const hang = (1 - Math.cos(weightedT * Math.PI * 2)) * 0.5 * (0.025 + 0.045 * lateChaos);
+        const e = clamp(weightedT + surge - hang, 0, 1);
 
         const dxSeg = (b.x - a.x);
         const dySeg = (b.y - a.y);
@@ -3123,7 +3142,7 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
         const progressY = clamp(yLin / boardH, 0, 1);
         const chaosT = clamp((progressY - 0.86) / 0.14, 0, 1);
 
-        const arcRaw = dx * (0.07 + 0.16 * chaosT);
+        const arcRaw = dx * (0.09 + 0.20 * chaosT);
         const arcMax = segLen * 0.16;
         const arc = Math.min(arcRaw, arcMax);
 
@@ -3133,11 +3152,11 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
         let x = quadBezier(a.x, mx, b.x, e);
         let y = quadBezier(a.y, my, b.y, e);
 
-        if (chaosT > 0) {
-          const w = now * 0.010;
-          const orbit = Math.min(dx * (0.02 + 0.04 * chaosT), segLen * 0.06);
+        if (chaosT > 0 || lateChaos > 0) {
+          const w = now * (0.0075 + lateChaos * 0.0025);
+          const orbit = Math.min(dx * (0.018 + 0.055 * Math.max(chaosT, lateChaos)), segLen * 0.075);
           x += Math.sin(w) * orbit;
-          y += Math.cos(w * 1.1) * orbit * 0.25;
+          y += Math.cos(w * 1.1) * orbit * (0.22 + lateChaos * 0.08);
         }
 
         x = clamp(x, minX, maxX);
