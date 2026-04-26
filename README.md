@@ -2,8 +2,6 @@
 
 RISX is a crypto-based challenge gaming prototype with a static frontend, Vercel serverless API routes, Supabase-backed payment/run storage, and NOWPayments checkout flow.
 
-Geo/compliance note: the current landing copy states that this is geo-restricted and not for US players. Review your own legal/compliance requirements before launch.
-
 White-label resale rights included.
 
 ## Stack
