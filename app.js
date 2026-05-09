@@ -3014,28 +3014,27 @@ function plinkoChaosValue(seed) {
 
 function plinkoSegmentDurationMs(kind, index, totalSegments) {
   const progress = totalSegments > 1 ? index / (totalSegments - 1) : 1;
-  const lateChaos = clamp((progress - 0.6) / 0.4, 0, 1);
+  const lateChaos = clamp((progress - 0.7) / 0.3, 0, 1);
   const kindBaseMap = {
-    spawn: 120,
-    approach: 105,
-    teeter: 92,
-    orbit: 98,
-    sling: 108,
-    carry: 102,
-    settle: 122,
+    spawn: 88,
+    approach: 82,
+    deflect: 86,
+    transfer: 80,
+    rescue: 90,
+    settle: 98,
   };
-  const base = lerp(kindBaseMap[kind] ?? 105, (kindBaseMap[kind] ?? 105) + 34, progress);
-  const drift = Math.sin((index + 1) * 1.47) * 16;
+  const base = lerp(kindBaseMap[kind] ?? 82, (kindBaseMap[kind] ?? 82) + 18, progress);
+  const drift = Math.sin((index + 1) * 1.47) * 8;
   const volatilityBurst =
-    (Math.sin((index + 1) * 2.31 + 0.8) + Math.cos((index + 1) * 1.13 - 0.35)) * 8;
-  const suspensePocket = Math.sin(progress * Math.PI) * 12;
-  const lateHang = lateChaos * 26;
-  return clamp(base + drift + volatilityBurst + suspensePocket + lateHang, 72, 178);
+    (Math.sin((index + 1) * 2.31 + 0.8) + Math.cos((index + 1) * 1.13 - 0.35)) * 4;
+  const suspensePocket = Math.sin(progress * Math.PI) * 6;
+  const lateHang = lateChaos * 12;
+  return clamp(base + drift + volatilityBurst + suspensePocket + lateHang, 64, 118);
 }
 
 async function animatePlinkoBall(ballEl, rows, path, options = {}) {
   ballEl.__plinkoAlive = true;
-  const baseStepMs = options.stepMs ?? 118;
+  const baseStepMs = options.stepMs ?? 88;
   const targetBucketIndex = options.targetBucketIndex;
   const g = plinkoGeom;
   const boardW = g?.boardW || plinkoBoardEl.clientWidth || 640;
@@ -3086,17 +3085,6 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
       kind,
     });
   };
-  const addOrbit = (peg, startAngle, endAngle, radiusX, radiusY, steps, kind, driftX = 0, driftY = 0) => {
-    for (let i = 1; i <= steps; i++) {
-      const t = i / steps;
-      const angle = lerp(startAngle, endAngle, t);
-      addPoint(
-        peg.x + Math.cos(angle) * radiusX + driftX * t,
-        peg.y + Math.sin(angle) * radiusY + driftY * t,
-        kind
-      );
-    }
-  };
 
   addPoint(first.x + spawnJitterX(), Math.max(12, first.y - dx * 1.3), "spawn");
 
@@ -3111,113 +3099,58 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
     const chaosA = plinkoChaosValue(signatureBase + step * 7.31 + dir * 0.73);
     const chaosB = plinkoChaosValue(signatureBase + step * 11.17 + 1.93);
     const chaosC = plinkoChaosValue(signatureBase + step * 15.07 + 2.41);
-    const chaosT = clamp((progress - 0.12) / 0.88, 0, 1);
-    const orbitBias = 0.4 + chaosT * 0.95;
-    const pivotDir = chaosB > 0.5 ? 1 : -1;
-    const rampLean = dx * (0.18 + chaosA * 0.3 + chaosT * 0.16);
-    const hoverY = pegA.y - dy * (0.62 + chaosA * 0.16);
-    const crownY = pegA.y - (pegR + PLINKO_BALL_R) - dy * (0.04 + chaosB * 0.08);
-    const radiusX = pegR + PLINKO_BALL_R + dx * (0.06 + chaosA * 0.09);
-    const radiusY = pegR + PLINKO_BALL_R + dy * (0.04 + chaosB * 0.08);
-    const loopCount = chaosA > 0.86 ? 2 : chaosA > 0.54 ? 1 : 0;
-    const teeterCount = chaosB > 0.82 ? 3 : chaosB > 0.38 ? 2 : 1;
+    const lateT = clamp((progress - 0.72) / 0.28, 0, 1);
+    const shoulderX = pegR + PLINKO_BALL_R + dx * (0.02 + chaosA * 0.05);
+    const entryX = pegA.x - dir * dx * (0.2 + chaosA * 0.12);
+    const entryY = pegA.y - dy * (0.42 + chaosB * 0.1);
+    const skimX = pegA.x + dir * shoulderX;
+    const skimY = pegA.y - pegR * (0.2 - chaosC * 0.08);
+    const exitX = nextPeg
+      ? lerp(skimX, nextPeg.x, 0.48 + chaosC * 0.08)
+      : skimX + dir * dx * (0.22 + chaosA * 0.08);
+    const exitY = pegA.y + dy * (0.22 + chaosB * 0.08);
 
-    addPoint(
-      pegA.x - dir * rampLean * (0.62 + chaosC * 0.22),
-      hoverY,
-      "approach"
-    );
-    addPoint(
-      pegA.x - dir * rampLean * 0.24,
-      crownY - dy * (0.02 + chaosC * 0.06),
-      "approach"
-    );
+    addPoint(entryX, entryY, "approach");
+    addPoint(skimX, skimY, "deflect");
 
-    for (let teeter = 0; teeter < teeterCount; teeter++) {
-      const swing = dx * (0.1 + chaosT * 0.08 + teeter * 0.03);
-      const tilt = (teeter % 2 === 0 ? -dir : dir) * (0.7 + chaosA * 0.45);
+    const teeterChance = chaosB > 0.82 && progress < 0.82;
+    if (teeterChance) {
       addPoint(
-        pegA.x + tilt * swing,
-        crownY + dy * (0.015 + teeter * 0.01),
-        "teeter"
+        pegA.x + dir * dx * 0.06,
+        pegA.y - pegR * 0.28,
+        "deflect"
+      );
+      addPoint(
+        pegA.x + dir * shoulderX * 0.9,
+        pegA.y + dy * 0.04,
+        "deflect"
       );
     }
 
-    const orbitStart = -Math.PI * (0.58 + dir * 0.06);
-    if (loopCount > 0) {
-      const orbitSpan = (Math.PI * 2 * (loopCount + 0.55 + chaosC * 0.18)) * pivotDir;
-      addOrbit(
-        pegA,
-        orbitStart,
-        orbitStart + orbitSpan,
-        radiusX,
-        radiusY,
-        6 + loopCount * 4,
-        "orbit",
-        dir * dx * 0.04 * loopCount,
-        dy * 0.06 * loopCount
-      );
-    } else {
-      addOrbit(
-        pegA,
-        orbitStart,
-        orbitStart + pivotDir * (Math.PI * (0.72 + chaosC * 0.24)),
-        radiusX,
-        radiusY,
-        3,
-        "orbit"
-      );
-    }
+    const rescueChance = nextPeg && lateT > 0 && chaosC > 0.58;
+    if (rescueChance) {
+      const rescuePull = dx * (0.14 + chaosA * 0.12 + lateT * 0.18);
+      const rescueLift = dy * (0.08 + chaosB * 0.06);
+      const rescueMidX = lerp(pegA.x, nextPeg.x, 0.5) + dir * rescuePull;
+      const rescueMidY = lerp(pegA.y, nextPeg.y, 0.34) - rescueLift;
+      addPoint(rescueMidX, rescueMidY, "rescue");
 
-    const slingBaseX = nextPeg
-      ? lerp(pegA.x, nextPeg.x, 0.42 + chaosC * 0.12)
-      : pegA.x + dir * dx * (0.34 + chaosA * 0.12);
-    const slingBaseY = nextPeg
-      ? lerp(pegA.y, nextPeg.y, 0.48) - dy * (0.16 + chaosB * 0.08)
-      : pegA.y + dy * (0.38 + chaosB * 0.08);
-
-    addPoint(
-      slingBaseX + dir * dx * (0.12 + chaosA * 0.18),
-      slingBaseY,
-      "sling"
-    );
-
-    if (nextPeg && chaosC > 0.62) {
-      const bridgeX = lerp(pegA.x, nextPeg.x, 0.62) + dir * dx * (0.08 + chaosB * 0.12);
-      const bridgeY = lerp(pegA.y, nextPeg.y, 0.7) - dy * (0.06 + chaosA * 0.08);
-      addPoint(bridgeX, bridgeY, "carry");
-
-      if (chaosC > 0.85) {
-        addOrbit(
-          { x: bridgeX, y: bridgeY + dy * 0.08 },
-          dir > 0 ? Math.PI * 0.2 : Math.PI * 0.8,
-          (dir > 0 ? Math.PI * 0.2 : Math.PI * 0.8) + pivotDir * Math.PI * (1.08 + orbitBias * 0.26),
-          dx * (0.14 + chaosA * 0.08),
-          dy * (0.14 + chaosB * 0.06),
-          4,
-          "orbit"
-        );
+      if (chaosC > 0.82) {
+        const rescueSnapX = nextPeg.x - dir * dx * (0.1 + chaosB * 0.08);
+        const rescueSnapY = nextPeg.y - dy * (0.18 + chaosA * 0.04);
+        addPoint(rescueSnapX, rescueSnapY, "rescue");
       }
     }
 
-    const carryX = nextPeg
-      ? lerp(pegA.x, nextPeg.x, 0.78) + dir * dx * (0.04 + chaosB * 0.18)
-      : slingBaseX + dir * dx * 0.24;
-    const carryY = pegA.y + dy * (0.48 + chaosT * 0.12 + chaosC * 0.06);
-    addPoint(carryX, carryY, "carry");
+    addPoint(exitX, exitY, "transfer");
 
     col = nextCol;
   }
 
   const last = points[points.length - 1] || { x: targetX, y: targetY - 22 };
   addPoint(
-    lerp(last.x, targetX, 0.42) + fakeDir * dx * 0.18,
-    lerp(last.y, targetY, 0.48) - dy * 0.08,
-    "settle"
-  );
-  addPoint(
-    lerp(last.x, targetX, 0.7) - fakeDir * dx * 0.1,
-    lerp(last.y, targetY, 0.78),
+    lerp(last.x, targetX, 0.58) + fakeDir * dx * 0.08,
+    lerp(last.y, targetY, 0.58),
     "settle"
   );
   addPoint(targetX, targetY, "settle");
@@ -3233,7 +3166,7 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
     const a = points[i];
     const b = points[i + 1];
     const start = performance.now();
-    const segmentMs = plinkoSegmentDurationMs(b.kind, i, totalSegments) + (baseStepMs - 118);
+    const segmentMs = plinkoSegmentDurationMs(b.kind, i, totalSegments) + (baseStepMs - 88);
 
     await new Promise((resolve) => {
       let rafId = 0;
@@ -3249,14 +3182,13 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
         const lateChaos = clamp((progressOverall - 0.62) / 0.38, 0, 1);
         const weightedT = smoothstep(t);
         const kindChaos = (
-          b.kind === "orbit" ? 1 :
-          b.kind === "teeter" ? 0.84 :
-          b.kind === "sling" ? 0.78 :
-          b.kind === "settle" ? 0.44 :
-          0.58
+          b.kind === "rescue" ? 1 :
+          b.kind === "deflect" ? 0.64 :
+          b.kind === "settle" ? 0.32 :
+          0.44
         );
-        const surge = Math.sin(weightedT * Math.PI) * (0.03 + 0.11 * lateChaos + 0.07 * kindChaos);
-        const hang = (1 - Math.cos(weightedT * Math.PI * 2)) * 0.5 * (0.015 + 0.038 * lateChaos + 0.035 * kindChaos);
+        const surge = Math.sin(weightedT * Math.PI) * (0.02 + 0.065 * lateChaos + 0.032 * kindChaos);
+        const hang = (1 - Math.cos(weightedT * Math.PI * 2)) * 0.5 * (0.01 + 0.022 * lateChaos + 0.018 * kindChaos);
         const e = clamp(weightedT + surge - hang, 0, 1);
 
         const dxSeg = (b.x - a.x);
@@ -3267,16 +3199,15 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
 
         const yLin = lerp(a.y, b.y, e);
         const progressY = clamp(yLin / boardH, 0, 1);
-        const chaosT = clamp((progressY - 0.86) / 0.14, 0, 1);
+        const chaosT = clamp((progressY - 0.82) / 0.18, 0, 1);
 
         const arcBoost =
-          b.kind === "orbit" ? 0.24 :
-          b.kind === "sling" ? 0.2 :
-          b.kind === "teeter" ? 0.08 :
-          b.kind === "settle" ? 0.12 :
-          0.14;
-        const arcRaw = dx * (arcBoost + 0.18 * chaosT);
-        const arcMax = segLen * (b.kind === "orbit" ? 0.24 : 0.18);
+          b.kind === "rescue" ? 0.14 :
+          b.kind === "deflect" ? 0.12 :
+          b.kind === "settle" ? 0.08 :
+          0.1;
+        const arcRaw = dx * (arcBoost + 0.08 * chaosT);
+        const arcMax = segLen * (b.kind === "rescue" ? 0.16 : 0.12);
         const arc = Math.min(arcRaw, arcMax);
 
         const mx = (a.x + b.x) * 0.5 + px * arc;
@@ -3285,14 +3216,14 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
         let x = quadBezier(a.x, mx, b.x, e);
         let y = quadBezier(a.y, my, b.y, e);
 
-        if (chaosT > 0 || lateChaos > 0 || b.kind === "orbit" || b.kind === "sling" || b.kind === "teeter") {
-          const w = now * (0.0068 + lateChaos * 0.0024 + kindChaos * 0.0022);
+        if (chaosT > 0 || lateChaos > 0 || b.kind === "rescue") {
+          const w = now * (0.006 + lateChaos * 0.0015 + kindChaos * 0.0013);
           const orbit = Math.min(
-            dx * (0.018 + 0.05 * Math.max(chaosT, lateChaos) + 0.045 * kindChaos),
-            segLen * (b.kind === "orbit" ? 0.13 : 0.08)
+            dx * (0.008 + 0.022 * Math.max(chaosT, lateChaos) + 0.016 * kindChaos),
+            segLen * (b.kind === "rescue" ? 0.06 : 0.03)
           );
           x += Math.sin(w) * orbit;
-          y += Math.cos(w * 1.21) * orbit * (0.18 + lateChaos * 0.06 + kindChaos * 0.08);
+          y += Math.cos(w * 1.12) * orbit * (0.08 + lateChaos * 0.04 + kindChaos * 0.04);
         }
 
         x = clamp(x, minX, maxX);
