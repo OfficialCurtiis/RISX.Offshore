@@ -2753,6 +2753,8 @@ function setBallPosFor(ballEl, x, y) {
     plinkoBoardEl.appendChild(ballEl);
   }
 
+  const xr = Math.round(x * 2) / 2;
+  const yr = Math.round(y * 2) / 2;
 
   ballEl.style.setProperty("--bx", `${xr}px`);
   ballEl.style.setProperty("--by", `${yr}px`);
@@ -3076,32 +3078,13 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
   );
 
   const points = [];
-
-const addPoint = (x, y, kind) => {
-  const clampedX = clamp(x, minX, maxX);
-  const clampedY = clamp(
-    y,
-    PLINKO_BALL_R + 2,
-    boardH - PLINKO_BALL_R - 2
-  );
-
-  const prev = points[points.length - 1];
-
-  if (prev) {
-    const dist = Math.hypot(
-      clampedX - prev.x,
-      clampedY - prev.y
-    );
-
-    if (dist < 12) return;
-  }
-
-  points.push({
-    x: clampedX,
-    y: clampedY,
-    kind,
-  });
- };
+  const addPoint = (x, y, kind) => {
+    points.push({
+      x: clamp(x, minX, maxX),
+      y: clamp(y, PLINKO_BALL_R + 2, boardH - PLINKO_BALL_R - 2),
+      kind,
+    });
+  };
 
   addPoint(first.x + spawnJitterX(), Math.max(12, first.y - dx * 1.3), "spawn");
 
