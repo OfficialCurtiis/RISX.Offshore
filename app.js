@@ -3078,13 +3078,32 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
   );
 
   const points = [];
-  const addPoint = (x, y, kind) => {
-    points.push({
-      x: clamp(x, minX, maxX),
-      y: clamp(y, PLINKO_BALL_R + 2, boardH - PLINKO_BALL_R - 2),
-      kind,
-    });
-  };
+
+const addPoint = (x, y, kind) => {
+  const clampedX = clamp(x, minX, maxX);
+  const clampedY = clamp(
+    y,
+    PLINKO_BALL_R + 2,
+    boardH - PLINKO_BALL_R - 2
+  );
+
+  const prev = points[points.length - 1];
+
+  if (prev) {
+    const dist = Math.hypot(
+      clampedX - prev.x,
+      clampedY - prev.y
+    );
+
+    if (dist < 12) return;
+  }
+
+  points.push({
+    x: clampedX,
+    y: clampedY,
+    kind,
+  });
+ };
 
   addPoint(first.x + spawnJitterX(), Math.max(12, first.y - dx * 1.3), "spawn");
 
@@ -3100,7 +3119,7 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
     const chaosB = plinkoChaosValue(signatureBase + step * 11.17 + 1.93);
     const chaosC = plinkoChaosValue(signatureBase + step * 15.07 + 2.41);
     const lateT = clamp((progress - 0.72) / 0.28, 0, 1);
-    const shoulderX = pegR + PLINKO_BALL_R + dx * (0.02 + chaosA * 0.05);
+    const shoulderX = pegR + PLINKO_BALL_R + dx * (0.05 + chaosA * 0.12);
     const entryX = pegA.x - dir * dx * (0.2 + chaosA * 0.12);
     const entryY = pegA.y - dy * (0.42 + chaosB * 0.1);
     const skimX = pegA.x + dir * shoulderX;
@@ -3129,7 +3148,7 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
 
     const rescueChance = nextPeg && lateT > 0 && chaosC > 0.58;
     if (rescueChance) {
-      const rescuePull = dx * (0.14 + chaosA * 0.12 + lateT * 0.18);
+      const rescuePull = dx * (0.18 + chaosA * 0.22 + lateT * 0.32);
       const rescueLift = dy * (0.08 + chaosB * 0.06);
       const rescueMidX = lerp(pegA.x, nextPeg.x, 0.5) + dir * rescuePull;
       const rescueMidY = lerp(pegA.y, nextPeg.y, 0.34) - rescueLift;
@@ -3215,16 +3234,6 @@ async function animatePlinkoBall(ballEl, rows, path, options = {}) {
 
         let x = quadBezier(a.x, mx, b.x, e);
         let y = quadBezier(a.y, my, b.y, e);
-
-        if (chaosT > 0 || lateChaos > 0 || b.kind === "rescue") {
-          const w = now * (0.006 + lateChaos * 0.0015 + kindChaos * 0.0013);
-          const orbit = Math.min(
-            dx * (0.008 + 0.022 * Math.max(chaosT, lateChaos) + 0.016 * kindChaos),
-            segLen * (b.kind === "rescue" ? 0.06 : 0.03)
-          );
-          x += Math.sin(w) * orbit;
-          y += Math.cos(w * 1.12) * orbit * (0.08 + lateChaos * 0.04 + kindChaos * 0.04);
-        }
 
         x = clamp(x, minX, maxX);
 
