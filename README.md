@@ -1,8 +1,10 @@
 # RISX.Offshore
 
-RISX is a crypto-based challenge gaming prototype with a static frontend, Vercel serverless API routes, Supabase-backed payment/run storage, and NOWPayments checkout flow.
+RISX is a crypto-based challenge gaming engine/loop. This is a whole new catagory entering the igaming community. 
 
-This is a first generation challenge based loosely off the famous prop firm challenges and the blown up ego of crypto gamers that claim they can go from a few cents to thousands. This challenge integrates decision making, high stress, skill, and tests and challenges your own psychological temptains. The system and challenge parameters are set to lay on top of original games and integrate with crypto casinos. 
+This is a first generation challenge based loosely off the famous prop firm challenges and the blown up ego of crypto gamers that claim they can go from a few cents to thousands. This challenge integrates decisions, temptatitions , high stress, skill, and tests your own psychological against yourself. The system and challenge parameters are set to lay on top of original games and integrate with crypto casinos. 
+
+WORKING PLATFORM IS UP.
 
 
 ///////RISX ENGINE AND CASINO PLATFORM FOR SALE////////
