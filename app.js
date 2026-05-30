@@ -2753,8 +2753,6 @@ function setBallPosFor(ballEl, x, y) {
     plinkoBoardEl.appendChild(ballEl);
   }
 
-  const xr = Math.round(x * 2) / 2;
-  const yr = Math.round(y * 2) / 2;
 
   ballEl.style.setProperty("--bx", `${xr}px`);
   ballEl.style.setProperty("--by", `${yr}px`);
@@ -3148,7 +3146,7 @@ const addPoint = (x, y, kind) => {
 
     const rescueChance = nextPeg && lateT > 0 && chaosC > 0.58;
     if (rescueChance) {
-      const rescuePull = dx * (0.18 + chaosA * 0.22 + lateT * 0.32);
+      const rescuePull = dx * (0.14 + chaosA * 0.12 + lateT * 0.18);
       const rescueLift = dy * (0.08 + chaosB * 0.06);
       const rescueMidX = lerp(pegA.x, nextPeg.x, 0.5) + dir * rescuePull;
       const rescueMidY = lerp(pegA.y, nextPeg.y, 0.34) - rescueLift;
