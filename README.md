@@ -1,5 +1,9 @@
 # RISX.Offshore
 
+WORKING PROTOTYPE ON PLATFORM IS UP FOR SOME TESTING. USERS WELCOME TO TEST IT. LOW ENTRY FEE. WINNERS WILL WIN. CHEATING NOT TOLERATED. FEED BACK APPRECIATED.
+
+https://risx-offshore.vercel.app/
+
 RISX is a crypto-based challenge gaming engine/loop. This is a whole new catagory entering the igaming community. 
 
 This is a first generation challenge based loosely off the famous prop firm challenges and the blown up ego of crypto gamers that claim they can go from a few cents to thousands. This challenge integrates decisions, temptatitions , high stress, skill, and tests your own psychological against yourself. The system and challenge parameters are set to lay on top of original games and integrate with crypto casinos. 
